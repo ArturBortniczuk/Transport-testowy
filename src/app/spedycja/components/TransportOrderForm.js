@@ -1,6 +1,7 @@
 // src/app/spedycja/components/TransportOrderForm.js
 'use client'
 import { useState, useEffect } from 'react'
+import { Calendar, Info, Truck, FileText, MapPin, DollarSign, LinkIcon, Building, ShoppingBag, Weight } from 'lucide-react'
 
 export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
   const [formData, setFormData] = useState({
@@ -12,41 +13,28 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
     emailOdbiorcy: ''
   })
   
-  // Stan dla dodatkowych miejsc
-  const [additionalPlaces, setAdditionalPlaces] = useState([])
-  const [isLoadingTransports, setIsLoadingTransports] = useState(false)
-  const [availableTransports, setAvailableTransports] = useState([])
-  const [showAddPlaceForm, setShowAddPlaceForm] = useState(false)
-  const [selectedTransportId, setSelectedTransportId] = useState('')
-  const [placeType, setPlaceType] = useState('załadunek') // 'załadunek' lub 'rozładunek'
-  
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState(null)
   
-  // Pobierz dostępne transporty przy pierwszym renderowaniu
-  useEffect(() => {
-    const fetchTransports = async () => {
-      try {
-        setIsLoadingTransports(true)
-        const response = await fetch('/api/spedycje?status=new')
-        const data = await response.json()
-        
-        if (data.success && data.spedycje) {
-          // Filtrujemy tylko transporty, które mają numer zamówienia i nie są tym samym transportem
-          const filtered = data.spedycje.filter(t => 
-            t.id !== zamowienie.id && (t.orderNumber || t.order_number)
-          )
-          setAvailableTransports(filtered)
-        }
-      } catch (error) {
-        console.error('Błąd pobierania transportów:', error)
-      } finally {
-        setIsLoadingTransports(false)
-      }
-    }
+  // Sprawdź czy transport jest połączony
+  const isMergedTransport = zamowienie?.merged_transports && zamowienie?.response?.isMerged
+  
+  // Pobierz dane o połączonych transportach
+  const getMergedData = () => {
+    if (!isMergedTransport) return null
     
-    fetchTransports()
-  }, [zamowienie.id])
+    try {
+      return {
+        originalTransports: zamowienie.merged_transports.originalTransports || [],
+        costBreakdown: zamowienie.response?.costBreakdown || null
+      }
+    } catch (error) {
+      console.error('Błąd parsowania danych połączonych transportów:', error)
+      return null
+    }
+  }
+  
+  const mergedData = getMergedData()
   
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -62,11 +50,16 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
     setError(null)
     
     try {
-      await onSubmit({
+      // Przygotuj dane zlecenia - automatycznie uwzględnij wszystkie miejsca z połączonego transportu
+      const orderData = {
         spedycjaId: zamowienie.id,
         ...formData,
-        additionalPlaces // Przekazujemy dodatkowe miejsca
-      })
+        // Dodaj informację o tym czy to transport połączony
+        isMerged: isMergedTransport,
+        mergedTransportsData: mergedData
+      }
+      
+      await onSubmit(orderData)
     } catch (err) {
       setError(err.message || 'Wystąpił błąd podczas wysyłania zlecenia')
     } finally {
@@ -74,44 +67,9 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
     }
   }
   
-  const handleAddPlace = () => {
-    if (!selectedTransportId) return
-    
-    const selectedTransport = availableTransports.find(t => t.id === parseInt(selectedTransportId))
-    if (!selectedTransport) return
-    
-    // Przygotuj dane miejsca w zależności od wybranego typu
-    let placeData = {
-      type: placeType,
-      transportId: selectedTransport.id,
-      orderNumber: selectedTransport.orderNumber || selectedTransport.order_number || '',
-      route: getTransportRoute(selectedTransport)
-    }
-    
-    if (placeType === 'załadunek') {
-      placeData = {
-        ...placeData,
-        location: selectedTransport.location,
-        address: selectedTransport.location === 'Producent' 
-          ? selectedTransport.producerAddress 
-          : selectedTransport.location,
-        contact: selectedTransport.loadingContact
-      }
-    } else { // rozładunek
-      placeData = {
-        ...placeData,
-        address: selectedTransport.delivery,
-        contact: selectedTransport.unloadingContact
-      }
-    }
-    
-    setAdditionalPlaces(prev => [...prev, placeData])
-    setShowAddPlaceForm(false)
-    setSelectedTransportId('')
-  }
-  
+  // Funkcja formatująca trasę transportu
   const getTransportRoute = (transport) => {
-    const start = transport.location === 'Producent' && transport.producerAddress 
+    const start = transport.location === 'Odbiory własne' && transport.producerAddress 
       ? transport.producerAddress.city 
       : transport.location.replace('Magazyn ', '')
     
@@ -120,10 +78,13 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
     return `${start} → ${end}`
   }
   
-  const removeAdditionalPlace = (index) => {
-    setAdditionalPlaces(prev => prev.filter((_, i) => i !== index))
+  // Funkcja formatująca adres
+  const formatAddress = (address) => {
+    if (!address) return 'Brak danych'
+    if (typeof address === 'string') return address
+    return `${address.city || ''}, ${address.postalCode || ''}, ${address.street || ''}`.replace(/^,\s*|,\s*$/g, '')
   }
-  
+
   return (
     <form onSubmit={handleSubmit} className="p-6 space-y-6">
       <div className="flex justify-between items-center mb-6">
@@ -143,6 +104,35 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
         </div>
       )}
 
+      {/* Informacja o transporcie połączonym */}
+      {isMergedTransport && (
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
+          <h3 className="font-medium text-purple-700 mb-3 flex items-center">
+            <LinkIcon size={18} className="mr-2" />
+            Transport połączony - automatycznie uwzględnione wszystkie trasy
+          </h3>
+          
+          <div className="space-y-2 text-sm">
+            {/* Główny transport */}
+            <div className="font-medium text-purple-800">
+              1. {zamowienie.orderNumber} - {getTransportRoute(zamowienie)} (MPK: {zamowienie.mpk})
+            </div>
+            
+            {/* Połączone transporty */}
+            {mergedData?.originalTransports.map((transport, index) => (
+              <div key={transport.id} className="text-purple-700 ml-4">
+                {index + 2}. {transport.orderNumber} - {transport.route} (MPK: {transport.mpk})
+              </div>
+            ))}
+            
+            <div className="mt-3 pt-2 border-t border-purple-200 font-medium text-purple-800">
+              Łączna wartość: {zamowienie.response?.deliveryPrice || 0} PLN
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Podstawowe dane zlecenia */}
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium mb-1">Rodzaj towaru</label>
@@ -153,6 +143,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
             onChange={handleChange}
             className="w-full p-2 border rounded-md"
             required
+            placeholder="Opisz przewożony towar"
           />
         </div>
         <div>
@@ -220,128 +211,110 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
             onChange={handleChange}
             className="w-full p-2 border rounded-md"
             required
+            placeholder="email@przewoznik.pl"
           />
         </div>
       </div>
       
-      {/* Sekcja dodatkowych miejsc */}
-      <div className="mt-6">
-        <div className="flex justify-between items-center mb-2">
-          <h3 className="text-lg font-medium">Dodatkowe miejsca załadunku/rozładunku</h3>
-          <button
-            type="button"
-            onClick={() => setShowAddPlaceForm(true)}
-            className="px-3 py-1 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600"
-          >
-            Dodaj miejsce
-          </button>
+      {/* Informacje o zleceniu */}
+      <div className="mt-6 bg-gray-50 p-4 rounded-md">
+        <h3 className="font-medium mb-3 flex items-center">
+          <FileText size={18} className="mr-2 text-blue-600" />
+          Podsumowanie zlecenia
+        </h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+          <div>
+            <p><span className="font-medium">Numer zlecenia:</span> {zamowienie.orderNumber || zamowienie.id}</p>
+            <p><span className="font-medium">MPK główny:</span> {zamowienie.mpk}</p>
+            <p><span className="font-medium">Dokumenty:</span> {zamowienie.documents}</p>
+            {zamowienie.clientName && (
+              <p><span className="font-medium">Klient:</span> {zamowienie.clientName}</p>
+            )}
+          </div>
+          
+          <div>
+            <p><span className="font-medium">Trasa główna:</span> {getTransportRoute(zamowienie)}</p>
+            <p><span className="font-medium">Odległość:</span> {zamowienie.distanceKm || 0} km</p>
+            <p><span className="font-medium">Wartość transportu:</span> {zamowienie.response?.deliveryPrice || 0} PLN</p>
+            {isMergedTransport && (
+              <p><span className="font-medium">Liczba tras:</span> {(mergedData?.originalTransports.length || 0) + 1}</p>
+            )}
+          </div>
         </div>
         
-        {additionalPlaces.length > 0 ? (
-          <div className="space-y-3">
-            {additionalPlaces.map((place, index) => (
-              <div key={index} className="flex justify-between p-3 bg-gray-50 rounded-md">
+        {/* Szczegóły tras dla transportu połączonego */}
+        {isMergedTransport && mergedData && (
+          <div className="mt-4 pt-3 border-t border-gray-200">
+            <h4 className="font-medium text-sm mb-2 text-purple-700">Szczegóły wszystkich tras:</h4>
+            
+            {/* Główna trasa */}
+            <div className="mb-2 p-2 bg-white rounded border border-purple-100">
+              <div className="flex justify-between items-center">
                 <div>
-                  <div className="font-medium">
-                    {place.type === 'załadunek' ? 'Miejsce załadunku' : 'Miejsce rozładunku'} {index + 1}
+                  <span className="font-medium">GŁÓWNA: {zamowienie.orderNumber}</span>
+                  <div className="text-xs text-gray-600 mt-1">
+                    Załadunek: {zamowienie.location === 'Odbiory własne' 
+                      ? formatAddress(zamowienie.producerAddress) 
+                      : zamowienie.location}
                   </div>
-                  <div className="text-sm text-gray-600">
-                    {place.route} ({place.orderNumber})
+                  <div className="text-xs text-gray-600">
+                    Rozładunek: {formatAddress(zamowienie.delivery)}
                   </div>
                 </div>
-                <button 
-                  type="button" 
-                  onClick={() => removeAdditionalPlace(index)}
-                  className="text-red-500 hover:text-red-700"
-                >
-                  Usuń
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-gray-500 text-sm italic">Brak dodatkowych miejsc</p>
-        )}
-        
-        {/* Formularz dodawania miejsca */}
-        {showAddPlaceForm && (
-          <div className="mt-3 p-4 border border-blue-200 rounded-md bg-blue-50">
-            <h4 className="font-medium mb-2">Dodaj nowe miejsce</h4>
-            <div className="grid grid-cols-3 gap-3 mb-3">
-              <div>
-                <label className="block text-sm font-medium mb-1">Wybierz zlecenie</label>
-                <select
-                  value={selectedTransportId}
-                  onChange={(e) => setSelectedTransportId(e.target.value)}
-                  className="w-full p-2 border rounded-md"
-                  disabled={isLoadingTransports}
-                >
-                  <option value="">Wybierz zlecenie</option>
-                  {availableTransports.map(transport => (
-                    <option key={transport.id} value={transport.id}>
-                      {transport.orderNumber || transport.order_number || transport.id} ({getTransportRoute(transport)})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Typ miejsca</label>
-                <div className="flex gap-2 pt-1">
-                  <button
-                    type="button"
-                    className={`flex-1 py-2 px-3 rounded-md border ${placeType === 'załadunek' ? 'bg-blue-500 text-white' : 'bg-white'}`}
-                    onClick={() => setPlaceType('załadunek')}
-                  >
-                    Załadunek
-                  </button>
-                  <button
-                    type="button"
-                    className={`flex-1 py-2 px-3 rounded-md border ${placeType === 'rozładunek' ? 'bg-blue-500 text-white' : 'bg-white'}`}
-                    onClick={() => setPlaceType('rozładunek')}
-                  >
-                    Rozładunek
-                  </button>
-                </div>
-              </div>
-              <div className="flex items-end">
-                <div className="flex gap-2 w-full">
-                  <button
-                    type="button"
-                    className="flex-1 py-2 px-3 bg-green-500 text-white rounded-md hover:bg-green-600"
-                    onClick={handleAddPlace}
-                    disabled={!selectedTransportId}
-                  >
-                    Dodaj
-                  </button>
-                  <button
-                    type="button"
-                    className="flex-1 py-2 px-3 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
-                    onClick={() => setShowAddPlaceForm(false)}
-                  >
-                    Anuluj
-                  </button>
+                <div className="text-right text-sm">
+                  <div className="font-medium text-green-600">
+                    {mergedData.costBreakdown?.mainTransport?.cost || 0} PLN
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    MPK: {zamowienie.mpk}
+                  </div>
                 </div>
               </div>
             </div>
+            
+            {/* Dodatkowe trasy */}
+            {mergedData.originalTransports.map((transport, index) => (
+              <div key={transport.id} className="mb-2 p-2 bg-white rounded border border-gray-100">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <span className="font-medium">{index + 2}. {transport.orderNumber}</span>
+                    <div className="text-xs text-gray-600 mt-1">
+                      Trasa: {transport.route}
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      Odpowiedzialny: {transport.responsiblePerson || 'Brak'}
+                    </div>
+                  </div>
+                  <div className="text-right text-sm">
+                    <div className="font-medium text-green-600">
+                      {transport.costAssigned || 0} PLN
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      MPK: {transport.mpk}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
       
-      {/* Informacje o zamówieniu */}
-      <div className="mt-4 bg-gray-50 p-4 rounded-md">
-        <h3 className="font-medium mb-2">Informacje o zleceniu</h3>
-        <p className="text-sm"><span className="font-medium">ID zlecenia:</span> {zamowienie.id}</p>
-        <p className="text-sm"><span className="font-medium">Nr zlecenia:</span> {zamowienie.orderNumber || zamowienie.order_number || zamowienie.id}</p>
-        <p className="text-sm"><span className="font-medium">Trasa:</span> {getTransportRoute(zamowienie)}</p>
-        <p className="text-sm"><span className="font-medium">MPK:</span> {zamowienie.mpk}</p>
-      </div>
-      
-      <div className="flex justify-end gap-2">
+      <div className="flex justify-end gap-2 pt-4 border-t">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors"
+        >
+          Anuluj
+        </button>
         <button
           type="submit"
           disabled={isSubmitting}
-          className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors disabled:opacity-50"
+          className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center gap-2"
         >
+          <Truck size={16} />
           {isSubmitting ? 'Wysyłanie...' : 'Wyślij zlecenie'}
         </button>
       </div>
