@@ -40,7 +40,7 @@ export async function GET(request) {
       await db.schema.createTable('spedycje', table => {
         table.increments('id').primary();
         table.string('status').defaultTo('new');
-        table.string('order_number'); // Dodana kolumna na numer zamówienia
+        table.string('order_number');
         table.string('created_by');
         table.string('created_by_email');
         table.string('responsible_person');
@@ -58,10 +58,12 @@ export async function GET(request) {
         table.string('completed_by');
         table.timestamp('created_at').defaultTo(db.fn.now());
         table.timestamp('completed_at');
-        table.integer('distance_km'); // Dodana kolumna do przechowywania odległości
-        table.string('client_name'); // Dodana kolumna na nazwę klienta/odbiorcy
-        table.text('goods_description'); // Dodana kolumna na opis towaru
-        table.text('responsible_constructions'); // Dodana kolumna na odpowiedzialne budowy
+        table.integer('distance_km');
+        table.string('client_name');
+        table.text('goods_description');
+        table.text('responsible_constructions');
+        // NOWA KOLUMNA dla połączonych transportów
+        table.text('merged_transports');
       });
     }
     
@@ -91,7 +93,7 @@ export async function GET(request) {
       });
     }
     
-    // Sprawdź nowe kolumny (dodane)
+    // Sprawdź nowe kolumny
     const hasClientNameColumn = await db.schema.hasColumn('spedycje', 'client_name');
     if (!hasClientNameColumn) {
       await db.schema.table('spedycje', table => {
@@ -110,6 +112,14 @@ export async function GET(request) {
     if (!hasResponsibleConstructionsColumn) {
       await db.schema.table('spedycje', table => {
         table.text('responsible_constructions');
+      });
+    }
+    
+    // NOWA KOLUMNA dla połączonych transportów
+    const hasMergedTransportsColumn = await db.schema.hasColumn('spedycje', 'merged_transports');
+    if (!hasMergedTransportsColumn) {
+      await db.schema.table('spedycje', table => {
+        table.text('merged_transports');
       });
     }
     
@@ -146,6 +156,10 @@ export async function GET(request) {
         if (item.responsible_constructions) {
           item.responsible_constructions = JSON.parse(item.responsible_constructions);
         }
+        // NOWE: Parsowanie danych o połączonych transportach
+        if (item.merged_transports) {
+          item.merged_transports = JSON.parse(item.merged_transports);
+        }
       } catch (e) {
         console.error('Error parsing JSON data in spedycje:', e);
       }
@@ -176,7 +190,9 @@ export async function GET(request) {
         distanceKm: item.distance_km,
         clientName: item.client_name,
         goodsDescription: item.goods_description,
-        responsibleConstructions: item.responsible_constructions
+        responsibleConstructions: item.responsible_constructions,
+        // NOWE: Dodaj dane o połączonych transportach
+        merged_transports: item.merged_transports
       };
     });
     
@@ -240,7 +256,7 @@ export async function POST(request) {
     // Generowanie numeru zamówienia
     const now = new Date();
     const year = now.getFullYear();
-    const month = now.getMonth() + 1; // Miesiące są 0-indexed w JavaScript
+    const month = now.getMonth() + 1;
     
     // Pobierz ostatni numer zamówienia z tego miesiąca i roku
     const lastOrderQuery = await db('spedycje')
@@ -252,7 +268,6 @@ export async function POST(request) {
     // Ustal numer dla nowego zamówienia
     let orderNumber = 1;
     if (lastOrderQuery && lastOrderQuery.order_number) {
-      // Jeśli istnieje już zamówienie z tego miesiąca/roku, wyciągnij numer
       const lastOrderMatch = lastOrderQuery.order_number.match(/^(\d+)\/\d+\/\d+$/);
       if (lastOrderMatch) {
         orderNumber = parseInt(lastOrderMatch[1], 10) + 1;
@@ -262,7 +277,7 @@ export async function POST(request) {
     // Sformatuj numer zamówienia
     const formattedOrderNumber = `${orderNumber.toString().padStart(4, '0')}/${month}/${year}`;
     
-    // Przygotowanie danych do zapisania - przetwarzanie nowych pól
+    // Przygotowanie danych do zapisania
     let goodsDescriptionJson = null;
     if (spedycjaData.goodsDescription) {
       goodsDescriptionJson = JSON.stringify(spedycjaData.goodsDescription);
@@ -291,66 +306,15 @@ export async function POST(request) {
       documents: spedycjaData.documents,
       notes: spedycjaData.notes,
       distance_km: spedycjaData.distanceKm || 0,
-      client_name: spedycjaData.clientName || '', // Nowe pole
-      goods_description: goodsDescriptionJson, // Nowe pole
-      responsible_constructions: responsibleConstructionsJson, // Nowe pole
-      created_at: db.fn.now()
+      client_name: spedycjaData.clientName || '',
+      goods_description: goodsDescriptionJson,
+      responsible_constructions: responsibleConstructionsJson,
+      created_at: db.fn.now(),
+      // NOWE: Inicjalizacja pola merged_transports jako null
+      merged_transports: null
     };
     
     console.log('Dane do zapisania w bazie:', dataToSave);
-    
-    // Sprawdź czy tabela istnieje, jeśli nie - utwórz ją z nowymi kolumnami
-    const tableExists = await db.schema.hasTable('spedycje');
-    if (!tableExists) {
-      await db.schema.createTable('spedycje', table => {
-        table.increments('id').primary();
-        table.string('status').defaultTo('new');
-        table.string('order_number');
-        table.string('created_by');
-        table.string('created_by_email');
-        table.string('responsible_person');
-        table.string('responsible_email');
-        table.string('mpk');
-        table.string('location');
-        table.text('location_data');
-        table.text('delivery_data');
-        table.string('loading_contact');
-        table.string('unloading_contact');
-        table.date('delivery_date');
-        table.string('documents');
-        table.text('notes');
-        table.text('response_data');
-        table.string('completed_by');
-        table.timestamp('created_at').defaultTo(db.fn.now());
-        table.timestamp('completed_at');
-        table.integer('distance_km');
-        table.string('client_name'); // Nowe pole
-        table.text('goods_description'); // Nowe pole
-        table.text('responsible_constructions'); // Nowe pole
-      });
-    } else {
-      // Sprawdź czy nowe kolumny istnieją, jeśli nie - dodaj je
-      const hasClientNameColumn = await db.schema.hasColumn('spedycje', 'client_name');
-      if (!hasClientNameColumn) {
-        await db.schema.table('spedycje', table => {
-          table.string('client_name');
-        });
-      }
-      
-      const hasGoodsDescriptionColumn = await db.schema.hasColumn('spedycje', 'goods_description');
-      if (!hasGoodsDescriptionColumn) {
-        await db.schema.table('spedycje', table => {
-          table.text('goods_description');
-        });
-      }
-      
-      const hasResponsibleConstructionsColumn = await db.schema.hasColumn('spedycje', 'responsible_constructions');
-      if (!hasResponsibleConstructionsColumn) {
-        await db.schema.table('spedycje', table => {
-          table.text('responsible_constructions');
-        });
-      }
-    }
     
     // Zapisujemy do bazy danych
     const [id] = await db('spedycje').insert(dataToSave).returning('id');
@@ -368,70 +332,153 @@ export async function POST(request) {
   }
 }
 
-// NOWA FUNKCJA: Automatyczne uzupełnianie odpowiedzi w połączonych transportach
-const createResponsesForConnectedTransports = async (connectedTransports, mainResponseData) => {
-  console.log('Tworzenie odpowiedzi dla połączonych transportów:', connectedTransports);
+// NOWA FUNKCJA: Funkcja pomocnicza do pobierania trasy transportu
+const getTransportRoute = (transport) => {
+  let start = '';
+  let end = '';
   
-  for (const connectedTransport of connectedTransports) {
+  // Ustal punkt startowy
+  if (transport.location === 'Odbiory własne' && transport.location_data) {
     try {
-      // Pobierz aktualne dane transportu
-      const currentTransport = await db('spedycje')
-        .where('id', connectedTransport.id)
-        .first();
-      
-      if (!currentTransport) {
-        console.error(`Transport o ID ${connectedTransport.id} nie istnieje`);
-        continue;
-      }
-      
-      // Sprawdź czy transport już ma odpowiedź
-      if (currentTransport.response_data && currentTransport.response_data !== 'null' && currentTransport.response_data !== '{}') {
-        console.log(`Transport ${connectedTransport.id} już ma odpowiedź, pomijam`);
-        continue;
-      }
-      
-      // Przygotuj odpowiedź dla tego transportu
-      const connectedResponseData = {
-        driverName: mainResponseData.driverName,
-        driverSurname: mainResponseData.driverSurname,
-        driverPhone: mainResponseData.driverPhone,
-        vehicleNumber: mainResponseData.vehicleNumber,
-        deliveryPrice: mainResponseData.costPerTransport, // Użyj podzielonej ceny
-        distanceKm: currentTransport.distance_km || 0,
-        pricePerKm: currentTransport.distance_km > 0 ? 
-          (mainResponseData.costPerTransport / currentTransport.distance_km).toFixed(2) : 0,
-        adminNotes: mainResponseData.adminNotes || '',
-        // Dodaj informację, że to automatyczna odpowiedź
-        autoGenerated: true,
-        sourceTransportId: mainResponseData.sourceTransportId || null,
-        connectedFrom: `Transport ID: ${mainResponseData.sourceTransportId || 'Główny'}`
-      };
-      
-      // Jeśli zmieniono datę dostawy w głównym transporcie, zastosuj to samo
-      if (mainResponseData.dateChanged) {
-        connectedResponseData.newDeliveryDate = mainResponseData.newDeliveryDate;
-        connectedResponseData.originalDeliveryDate = currentTransport.delivery_date;
-        connectedResponseData.dateChanged = true;
-      }
-      
-      console.log(`Zapisuję odpowiedź dla transportu ${connectedTransport.id}:`, connectedResponseData);
-      
-      // Zapisz odpowiedź dla połączonego transportu
-      await db('spedycje')
-        .where('id', connectedTransport.id)
-        .update({
-          response_data: JSON.stringify(connectedResponseData)
-        });
-      
-      console.log(`Pomyślnie utworzono odpowiedź dla transportu ${connectedTransport.id}`);
-      
-    } catch (error) {
-      console.error(`Błąd tworzenia odpowiedzi dla transportu ${connectedTransport.id}:`, error);
+      const locationData = typeof transport.location_data === 'string' 
+        ? JSON.parse(transport.location_data) 
+        : transport.location_data;
+      start = locationData.city || 'Odbiory własne';
+    } catch (e) {
+      start = 'Odbiory własne';
+    }
+  } else if (transport.location === 'Magazyn Białystok') {
+    start = 'Białystok';
+  } else if (transport.location === 'Magazyn Zielonka') {
+    start = 'Zielonka';
+  } else {
+    start = transport.location || 'Brak danych';
+  }
+  
+  // Ustal punkt końcowy
+  if (transport.delivery_data) {
+    try {
+      const deliveryData = typeof transport.delivery_data === 'string' 
+        ? JSON.parse(transport.delivery_data) 
+        : transport.delivery_data;
+      end = deliveryData.city || 'Brak danych';
+    } catch (e) {
+      end = 'Brak danych';
     }
   }
+  
+  return `${start} → ${end}`;
 };
 
-// Aktualizacja spedycji (odpowiedź) - ZMODYFIKOWANA
+// NOWA FUNKCJA: Mergowanie transportów
+const mergeTransports = async (mainTransportId, transportsToMerge, costDistribution, responseData, userId) => {
+  console.log('Mergowanie transportów:', { 
+    mainTransportId, 
+    transportsToMerge: transportsToMerge.map(t => t.id), 
+    costDistribution 
+  });
+  
+  // Pobierz główny transport
+  const mainTransport = await db('spedycje').where('id', mainTransportId).first();
+  if (!mainTransport) throw new Error('Nie znaleziono głównego transportu');
+
+  // Pobierz transporty do połączenia
+  const mergeTransportIds = transportsToMerge.map(t => t.id);
+  const mergeTransportsData = await db('spedycje')
+    .whereIn('id', mergeTransportIds)
+    .select('*');
+
+  if (mergeTransportsData.length !== mergeTransportIds.length) {
+    throw new Error('Nie znaleziono wszystkich transportów do połączenia');
+  }
+
+  // Oblicz całkowitą odległość
+  const mainDistance = mainTransport.distance_km || 0;
+  const mergeDistances = mergeTransportsData.reduce((sum, t) => sum + (t.distance_km || 0), 0);
+  const totalDistance = mainDistance + mergeDistances;
+
+  // Oblicz koszt głównego transportu
+  const totalDistributedCost = Object.values(costDistribution).reduce((sum, cost) => sum + parseFloat(cost || 0), 0);
+  const mainTransportCost = responseData.deliveryPrice - totalDistributedCost;
+
+  // Przygotuj dane połączonego transportu
+  const mergedData = {
+    originalTransports: mergeTransportsData.map(t => ({
+      id: t.id,
+      orderNumber: t.order_number,
+      mpk: t.mpk,
+      route: getTransportRoute(t),
+      responsiblePerson: t.responsible_person,
+      costAssigned: parseFloat(costDistribution[t.id] || 0),
+      distance: t.distance_km || 0,
+      // Zachowaj wszystkie ważne dane
+      location: t.location,
+      location_data: t.location_data,
+      delivery_data: t.delivery_data,
+      documents: t.documents,
+      notes: t.notes,
+      loading_contact: t.loading_contact,
+      unloading_contact: t.unloading_contact,
+      delivery_date: t.delivery_date,
+      client_name: t.client_name,
+      goods_description: t.goods_description,
+      responsible_constructions: t.responsible_constructions
+    })),
+    totalMergedCost: totalDistributedCost,
+    mergedAt: new Date().toISOString(),
+    mergedBy: userId,
+    mainTransportCost: mainTransportCost,
+    totalDistance: totalDistance
+  };
+
+  // Przygotuj zaktualizowaną odpowiedź
+  const updatedResponseData = {
+    ...responseData,
+    isMerged: true,
+    mergedTransportsCount: transportsToMerge.length,
+    totalDistance: totalDistance,
+    costBreakdown: {
+      mainTransport: {
+        id: mainTransportId,
+        mpk: mainTransport.mpk,
+        cost: mainTransportCost,
+        distance: mainDistance
+      },
+      mergedTransports: transportsToMerge.map(t => {
+        const originalTransport = mergeTransportsData.find(mt => mt.id === t.id);
+        return {
+          id: t.id,
+          mpk: originalTransport?.mpk || '',
+          cost: parseFloat(costDistribution[t.id] || 0),
+          distance: originalTransport?.distance_km || 0
+        };
+      })
+    }
+  };
+
+  // Wykonaj transakcję: usuń stare transporty i zaktualizuj główny
+  await db.transaction(async (trx) => {
+    // Usuń transporty do połączenia
+    await trx('spedycje').whereIn('id', mergeTransportIds).del();
+    
+    // Zaktualizuj główny transport
+    await trx('spedycje').where('id', mainTransportId).update({
+      merged_transports: JSON.stringify(mergedData),
+      response_data: JSON.stringify(updatedResponseData),
+      // Zaktualizuj odległość na całkowitą
+      distance_km: totalDistance
+    });
+  });
+
+  console.log('Transporty zostały pomyślnie połączone');
+  return {
+    mergedCount: transportsToMerge.length,
+    totalDistance: totalDistance,
+    totalCost: responseData.deliveryPrice
+  };
+};
+
+// Aktualizacja spedycji (odpowiedź) - ZMODYFIKOWANA dla mergowania
 export async function PUT(request) {
   try {
     // Sprawdzamy uwierzytelnienie
@@ -445,8 +492,13 @@ export async function PUT(request) {
       }, { status: 401 });
     }
     
-    const { id, ...data } = await request.json();
-    console.log('Otrzymane dane odpowiedzi:', { id, ...data });
+    const { id, transportsToMerge, costDistribution, ...responseData } = await request.json();
+    console.log('Otrzymane dane odpowiedzi:', { 
+      id, 
+      hasTransportsToMerge: !!(transportsToMerge && transportsToMerge.length > 0),
+      transportsCount: transportsToMerge?.length || 0,
+      responseData 
+    });
     
     // Sprawdzamy czy użytkownik ma uprawnienia
     const user = await db('users')
@@ -475,20 +527,37 @@ export async function PUT(request) {
       }, { status: 403 });
     }
     
-    // Dodaj ID źródłowego transportu do danych odpowiedzi
-    const responseData = {
-      ...data,
-      sourceTransportId: id
-    };
+    // NOWE: Jeśli są transporty do połączenia, wykonaj merge
+    if (transportsToMerge && transportsToMerge.length > 0) {
+      console.log('Rozpoczynam mergowanie transportów...');
+      
+      try {
+        const mergeResult = await mergeTransports(id, transportsToMerge, costDistribution, responseData, userId);
+        
+        return NextResponse.json({ 
+          success: true,
+          message: `Transport został połączony z ${mergeResult.mergedCount} innymi transportami. Łączna odległość: ${mergeResult.totalDistance} km, koszt: ${mergeResult.totalCost} PLN.`
+        });
+      } catch (mergeError) {
+        console.error('Błąd podczas mergowania transportów:', mergeError);
+        return NextResponse.json({ 
+          success: false, 
+          error: `Błąd łączenia transportów: ${mergeError.message}` 
+        }, { status: 500 });
+      }
+    }
     
-    // Przygotowujemy dane odpowiedzi - teraz bez zmiany statusu i daty zakończenia
+    // Standardowa logika dla normalnych odpowiedzi (bez mergowania)
+    console.log('Zapisuję standardową odpowiedź...');
+    
+    // Przygotowujemy dane odpowiedzi
     const updateData = {
       response_data: JSON.stringify(responseData)
     };
     
     // Jeśli odległość jest podana w odpowiedzi, zapiszmy ją również bezpośrednio
-    if (data.distanceKm) {
-      updateData.distance_km = data.distanceKm;
+    if (responseData.distanceKm) {
+      updateData.distance_km = responseData.distanceKm;
     }
     
     console.log('Dane odpowiedzi do zapisania:', updateData);
@@ -505,17 +574,9 @@ export async function PUT(request) {
       }, { status: 404 });
     }
     
-    // NOWA LOGIKA: Jeśli są połączone transporty, utwórz dla nich odpowiedzi
-    if (data.connectedTransports && data.connectedTransports.length > 0) {
-      console.log('Wykryto połączone transporty, tworzę automatyczne odpowiedzi...');
-      await createResponsesForConnectedTransports(data.connectedTransports, responseData);
-    }
-    
     return NextResponse.json({ 
       success: true,
-      message: data.connectedTransports?.length > 0 ? 
-        `Zapisano odpowiedź i utworzono automatyczne odpowiedzi dla ${data.connectedTransports.length} połączonych transportów` :
-        'Zapisano odpowiedź'
+      message: 'Zapisano odpowiedź'
     });
   } catch (error) {
     console.error('Error updating spedycja:', error);
