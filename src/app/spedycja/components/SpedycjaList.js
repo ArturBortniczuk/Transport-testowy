@@ -54,38 +54,22 @@ export default function SpedycjaList({
     return zamowienie.delivery?.city || '';
   }
 
-  // Funkcja do generowania linku do Google Maps
-  const generateGoogleMapsLink = (transport) => {
-    // Pobierz dane źródłowe i docelowe
-    let origin = '';
-    let destination = '';
-    
-    // Ustal miejsce załadunku
-    if (transport.location === 'Odbiory własne' && transport.producerAddress) {
-      const addr = transport.producerAddress;
-      origin = `${addr.city},${addr.postalCode},${addr.street || ''}`;
+  // Funkcja pomocnicza do określania nazwy firmy załadunku
+  const getLoadingCompanyName = (transport) => {
+    if (transport.location === 'Odbiory własne') {
+      return transport.sourceClientName || transport.clientName || 'Odbiory własne';
     } else if (transport.location === 'Magazyn Białystok') {
-      origin = 'Białystok';
+      return 'Grupa Eltron Sp. z o.o.';
     } else if (transport.location === 'Magazyn Zielonka') {
-      origin = 'Zielonka';
+      return 'Grupa Eltron Sp. z o.o.';
     }
-    
-    // Ustal miejsce dostawy
-    if (transport.delivery) {
-      const addr = transport.delivery;
-      destination = `${addr.city},${addr.postalCode},${addr.street || ''}`;
-    }
-    
-    // Jeśli brakuje któregoś z punktów, zwróć pusty string
-    if (!origin || !destination) return '';
-    
-    // Kodowanie URI komponentów
-    origin = encodeURIComponent(origin);
-    destination = encodeURIComponent(destination);
-    
-    // Zwróć link do Google Maps
-    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
-  };
+    return transport.location || 'Nie podano';
+  }
+
+  // Funkcja pomocnicza do określania nazwy firmy rozładunku
+  const getUnloadingCompanyName = (transport) => {
+    return transport.clientName || 'Nie podano';
+  }
 
   // NOWA FUNKCJA: Sprawdza czy transport jest połączony
   const isMergedTransport = (zamowienie) => {
@@ -113,6 +97,96 @@ export default function SpedycjaList({
       console.error('Błąd parsowania danych połączonych transportów:', error);
       return null;
     }
+  };
+
+  // Funkcja do generowania linku do Google Maps - ZAKTUALIZOWANA
+  const generateGoogleMapsLink = (transport) => {
+    const isMerged = isMergedTransport(transport);
+    
+    if (!isMerged) {
+      // Dla normalnego transportu - stara logika
+      let origin = '';
+      let destination = '';
+      
+      if (transport.location === 'Odbiory własne' && transport.producerAddress) {
+        const addr = transport.producerAddress;
+        origin = `${addr.city},${addr.postalCode},${addr.street || ''}`;
+      } else if (transport.location === 'Magazyn Białystok') {
+        origin = 'Białystok';
+      } else if (transport.location === 'Magazyn Zielonka') {
+        origin = 'Zielonka';
+      }
+      
+      if (transport.delivery) {
+        const addr = transport.delivery;
+        destination = `${addr.city},${addr.postalCode},${addr.street || ''}`;
+      }
+      
+      if (!origin || !destination) return '';
+      
+      origin = encodeURIComponent(origin);
+      destination = encodeURIComponent(destination);
+      
+      return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
+    }
+    
+    // Dla transportu połączonego - wszystkie punkty
+    const mergedData = getMergedTransportsData(transport);
+    if (!mergedData) return '';
+    
+    const waypoints = [];
+    
+    // Dodaj punkt startowy głównego transportu
+    let mainOrigin = '';
+    if (transport.location === 'Odbiory własne' && transport.producerAddress) {
+      const addr = transport.producerAddress;
+      mainOrigin = `${addr.city},${addr.postalCode},${addr.street || ''}`;
+    } else if (transport.location === 'Magazyn Białystok') {
+      mainOrigin = 'Białystok';
+    } else if (transport.location === 'Magazyn Zielonka') {
+      mainOrigin = 'Zielonka';
+    }
+    
+    // Dodaj punkt końcowy głównego transportu jako waypoint
+    if (transport.delivery) {
+      const addr = transport.delivery;
+      waypoints.push(`${addr.city},${addr.postalCode},${addr.street || ''}`);
+    }
+    
+    // Dodaj wszystkie punkty z połączonych transportów
+    mergedData.originalTransports.forEach(originalTransport => {
+      try {
+        let locationData = originalTransport.location_data;
+        if (typeof locationData === 'string') {
+          locationData = JSON.parse(locationData);
+        }
+        
+        let deliveryData = originalTransport.delivery_data;
+        if (typeof deliveryData === 'string') {
+          deliveryData = JSON.parse(deliveryData);
+        }
+        
+        // Dodaj punkt załadunku jeśli to odbiory własne
+        if (originalTransport.location === 'Odbiory własne' && locationData) {
+          waypoints.push(`${locationData.city},${locationData.postalCode},${locationData.street || ''}`);
+        }
+        
+        // Dodaj punkt dostawy
+        if (deliveryData) {
+          waypoints.push(`${deliveryData.city},${deliveryData.postalCode},${deliveryData.street || ''}`);
+        }
+      } catch (error) {
+        console.error('Błąd parsowania danych trasy:', error);
+      }
+    });
+    
+    if (!mainOrigin || waypoints.length === 0) return '';
+    
+    // Ostatni waypoint staje się destination
+    const destination = waypoints.pop();
+    const waypointsParam = waypoints.length > 0 ? `&waypoints=${encodeURIComponent(waypoints.join('|'))}` : '';
+    
+    return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(mainOrigin)}&destination=${encodeURIComponent(destination)}${waypointsParam}&travelmode=driving`;
   };
 
   // NOWA FUNKCJA: Generuje wyświetlaną trasę dla połączonych transportów
@@ -233,10 +307,46 @@ export default function SpedycjaList({
            (!zamowienie.response || Object.keys(zamowienie.response).length === 0);
   }
   
-  // NOWA FUNKCJA: Renderuje info o połączonych transportach
+  // ZAKTUALIZOWANA FUNKCJA: Renderuje szczegółowe info o połączonych transportach
   const renderMergedTransportsInfo = (transport) => {
     const mergedData = getMergedTransportsData(transport);
     if (!mergedData) return null;
+    
+    // Funkcja pomocnicza do formatowania nazwy firmy z danych transportu
+    const getTransportLoadingCompany = (transportData) => {
+      if (transportData.location === 'Odbiory własne') {
+        return transportData.sourceClientName || transportData.client_name || 'Odbiory własne';
+      } else if (transportData.location === 'Magazyn Białystok') {
+        return 'Grupa Eltron Sp. z o.o.';
+      } else if (transportData.location === 'Magazyn Zielonka') {
+        return 'Grupa Eltron Sp. z o.o.';
+      }
+      return transportData.location || 'Nie podano';
+    };
+    
+    const getTransportUnloadingCompany = (transportData) => {
+      return transportData.client_name || 'Nie podano';
+    };
+    
+    // Funkcja do formatowania adresu z raw danych
+    const formatRawAddress = (addressData) => {
+      if (!addressData) return 'Brak danych';
+      
+      try {
+        let parsed = addressData;
+        if (typeof addressData === 'string') {
+          parsed = JSON.parse(addressData);
+        }
+        
+        if (parsed.city || parsed.postalCode || parsed.street) {
+          return `${parsed.city || ''}, ${parsed.postalCode || ''}, ${parsed.street || ''}`.replace(/^,\s*|,\s*$/g, '');
+        }
+      } catch (error) {
+        console.error('Błąd parsowania adresu:', error);
+      }
+      
+      return 'Brak danych';
+    };
     
     return (
       <div className="mt-4 p-4 bg-purple-50 border border-purple-200 rounded-lg">
@@ -245,25 +355,62 @@ export default function SpedycjaList({
           Transport połączony ({mergedData.originalTransports.length + 1} tras)
         </h4>
         
-        <div className="space-y-3">
+        <div className="space-y-4">
           {/* Główny transport */}
-          <div className="p-3 bg-white rounded border border-purple-300">
-            <div className="flex justify-between items-center">
+          <div className="p-4 bg-white rounded border-l-4 border-purple-400">
+            <div className="flex justify-between items-start mb-3">
               <div>
-                <div className="font-semibold text-purple-800">
+                <div className="font-semibold text-purple-800 text-lg">
                   GŁÓWNY: {transport.orderNumber || transport.id}
                 </div>
                 <div className="text-sm text-gray-600">
-                  {getLoadingCity(transport)} → {getDeliveryCity(transport)} (MPK: {transport.mpk})
-                </div>
-                <div className="text-xs text-gray-500 mt-1">
-                  Odległość: {mergedData.costBreakdown?.mainTransport?.distance || 0} km
+                  MPK: {transport.mpk}
                 </div>
               </div>
               <div className="text-right">
-                <div className="flex items-center text-green-700 font-medium">
-                  <DollarSign size={16} className="mr-1" />
+                <div className="flex items-center text-green-700 font-medium text-lg">
+                  <DollarSign size={18} className="mr-1" />
                   {mergedData.mainTransportCost.toFixed(2)} PLN
+                </div>
+                <div className="text-xs text-gray-500">
+                  {mergedData.costBreakdown?.mainTransport?.distance || 0} km
+                </div>
+              </div>
+            </div>
+            
+            {/* Szczegóły głównego transportu */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 pt-3 border-t border-purple-100">
+              <div>
+                <h5 className="font-medium text-purple-700 mb-2 flex items-center">
+                  <MapPin size={14} className="mr-1" />
+                  Załadunek
+                </h5>
+                <div className="text-sm">
+                  <div className="font-medium">{getLoadingCompanyName(transport)}</div>
+                  <div className="text-gray-600">
+                    {transport.location === 'Odbiory własne' && transport.producerAddress 
+                      ? formatAddress(transport.producerAddress)
+                      : transport.location}
+                  </div>
+                  <div className="text-gray-500 flex items-center mt-1">
+                    <Phone size={12} className="mr-1" />
+                    {transport.loadingContact}
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <h5 className="font-medium text-purple-700 mb-2 flex items-center">
+                  <MapPin size={14} className="mr-1" />
+                  Rozładunek
+                </h5>
+                <div className="text-sm">
+                  <div className="font-medium">{getUnloadingCompanyName(transport)}</div>
+                  <div className="text-gray-600">{formatAddress(transport.delivery)}</div>
+                  <div className="text-gray-500 flex items-center mt-1">
+                    <Phone size={12} className="mr-1" />
+                    {transport.unloadingContact}
+                  </div>
                 </div>
               </div>
             </div>
@@ -271,18 +418,17 @@ export default function SpedycjaList({
           
           {/* Połączone transporty */}
           {mergedData.originalTransports.map((originalTransport, index) => (
-            <div key={originalTransport.id} className="p-3 bg-white rounded border border-gray-200">
-              <div className="flex justify-between items-center">
+            <div key={originalTransport.id} className="p-4 bg-white rounded border-l-4 border-gray-300">
+              <div className="flex justify-between items-start mb-3">
                 <div>
-                  <div className="font-medium">
+                  <div className="font-medium text-gray-800">
                     {index + 2}. {originalTransport.orderNumber}
                   </div>
                   <div className="text-sm text-gray-600">
-                    {originalTransport.route} (MPK: {originalTransport.mpk})
+                    MPK: {originalTransport.mpk}
                   </div>
                   <div className="text-xs text-gray-500 mt-1">
-                    Odp: {originalTransport.responsiblePerson || 'Brak'} • 
-                    Odległość: {originalTransport.distance || 0} km
+                    Odp: {originalTransport.responsiblePerson || 'Brak'}
                   </div>
                 </div>
                 <div className="text-right">
@@ -290,13 +436,60 @@ export default function SpedycjaList({
                     <DollarSign size={16} className="mr-1" />
                     {originalTransport.costAssigned.toFixed(2)} PLN
                   </div>
+                  <div className="text-xs text-gray-500">
+                    {originalTransport.distance || 0} km
+                  </div>
                 </div>
               </div>
+              
+              {/* Szczegóły połączonego transportu */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 pt-3 border-t border-gray-100">
+                <div>
+                  <h5 className="font-medium text-gray-700 mb-2 flex items-center">
+                    <MapPin size={14} className="mr-1" />
+                    Załadunek
+                  </h5>
+                  <div className="text-sm">
+                    <div className="font-medium">{getTransportLoadingCompany(originalTransport)}</div>
+                    <div className="text-gray-600">
+                      {originalTransport.location === 'Odbiory własne' 
+                        ? formatRawAddress(originalTransport.location_data)
+                        : originalTransport.location}
+                    </div>
+                    <div className="text-gray-500 flex items-center mt-1">
+                      <Phone size={12} className="mr-1" />
+                      {originalTransport.loading_contact}
+                    </div>
+                  </div>
+                </div>
+                
+                <div>
+                  <h5 className="font-medium text-gray-700 mb-2 flex items-center">
+                    <MapPin size={14} className="mr-1" />
+                    Rozładunek
+                  </h5>
+                  <div className="text-sm">
+                    <div className="font-medium">{getTransportUnloadingCompany(originalTransport)}</div>
+                    <div className="text-gray-600">{formatRawAddress(originalTransport.delivery_data)}</div>
+                    <div className="text-gray-500 flex items-center mt-1">
+                      <Phone size={12} className="mr-1" />
+                      {originalTransport.unloading_contact}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Dodatkowe informacje */}
+              {originalTransport.documents && (
+                <div className="mt-2 text-xs text-gray-600">
+                  <span className="font-medium">Dokumenty:</span> {originalTransport.documents}
+                </div>
+              )}
             </div>
           ))}
           
           {/* Podsumowanie */}
-          <div className="pt-3 border-t border-purple-200">
+          <div className="pt-3 border-t border-purple-200 bg-purple-25">
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <span className="font-medium text-purple-700">Łączna odległość:</span>
@@ -576,11 +769,20 @@ export default function SpedycjaList({
                         <MapPin size={18} className="mr-2" />
                         Szczegóły załadunku
                       </h4>
-                      {zamowienie.location === 'Odbiory własne' ? (
-                        <p className="mb-2">{formatAddress(zamowienie.producerAddress)}</p>
-                      ) : (
-                        <p className="mb-2">{zamowienie.location}</p>
-                      )}
+                      <div className="mb-2">
+                        <div className="font-medium text-sm text-gray-700">Firma:</div>
+                        <div className="text-sm">{getLoadingCompanyName(zamowienie)}</div>
+                      </div>
+                      <div className="mb-2">
+                        <div className="font-medium text-sm text-gray-700">Adres:</div>
+                        <div className="text-sm">
+                          {zamowienie.location === 'Odbiory własne' ? (
+                            formatAddress(zamowienie.producerAddress)
+                          ) : (
+                            zamowienie.location
+                          )}
+                        </div>
+                      </div>
                       <p className="text-sm text-gray-600 mb-3 flex items-center">
                         <Phone size={14} className="mr-1" />
                         Kontakt: {zamowienie.loadingContact}
@@ -590,7 +792,14 @@ export default function SpedycjaList({
                         <MapPin size={18} className="mr-2" />
                         Szczegóły dostawy
                       </h4>
-                      <p className="mb-2">{formatAddress(zamowienie.delivery)}</p>
+                      <div className="mb-2">
+                        <div className="font-medium text-sm text-gray-700">Firma:</div>
+                        <div className="text-sm">{getUnloadingCompanyName(zamowienie)}</div>
+                      </div>
+                      <div className="mb-2">
+                        <div className="font-medium text-sm text-gray-700">Adres:</div>
+                        <div className="text-sm">{formatAddress(zamowienie.delivery)}</div>
+                      </div>
                       <p className="text-sm text-gray-600 mb-3 flex items-center">
                         <Phone size={14} className="mr-1" />
                         Kontakt: {zamowienie.unloadingContact}
