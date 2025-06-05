@@ -1,7 +1,7 @@
 // src/app/spedycja/components/SpedycjaForm.js
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { Calendar, Search, X, Info, Truck, PlusCircle } from 'lucide-react'
+import { Calendar, Search, X, Info, Truck, PlusCircle, LinkIcon, DollarSign } from 'lucide-react'
 
 export default function SpedycjaForm({ onSubmit, onCancel, initialData, isResponse, isEditing }) {
   const [selectedLocation, setSelectedLocation] = useState(initialData?.location || '')
@@ -9,8 +9,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
   const [constructions, setConstructions] = useState([])
   const [selectedUser, setSelectedUser] = useState(null)
   const [selectedConstructions, setSelectedConstructions] = useState([])
-  const [totalPrice, setTotalPrice] = useState(initialData?.response?.deliveryPrice || 0) // Zmiana nazwy
-  const [pricePerTransport, setPricePerTransport] = useState(0) // Nowa zmienna
+  const [totalPrice, setTotalPrice] = useState(initialData?.response?.deliveryPrice || 0)
   const [currentUser, setCurrentUser] = useState({
     email: '',
     name: ''
@@ -35,10 +34,11 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     weight: initialData?.goodsDescription?.weight || ''
   })
   
-  // Stan dla obsługi wielu transportów
-  const [connectedTransports, setConnectedTransports] = useState([])
+  // NOWE STANY DLA UPROSZCZONEGO SYSTEMU ŁĄCZENIA
+  const [transportsToMerge, setTransportsToMerge] = useState([])
+  const [costDistribution, setCostDistribution] = useState({})
   const [availableTransports, setAvailableTransports] = useState([])
-  const [showTransportsSection, setShowTransportsSection] = useState(false)
+  const [showMergeSection, setShowMergeSection] = useState(false)
   
   // Stałe dla magazynów
   const MAGAZYNY = {
@@ -68,18 +68,16 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     }
   };
 
-  // Funkcja do automatycznego obliczania ceny na transport
-  const calculatePricePerTransport = (total, transportsCount) => {
-    if (transportsCount === 0) return total;
-    return Math.round((total / transportsCount) * 100) / 100;
-  };
-
-  // Effect do automatycznego przeliczania ceny na transport
-  useEffect(() => {
-    const transportsCount = connectedTransports.length + 1; // +1 dla bieżącego transportu
-    const calculatedPrice = calculatePricePerTransport(totalPrice, transportsCount);
-    setPricePerTransport(calculatedPrice);
-  }, [totalPrice, connectedTransports]);
+  // Funkcja pomocnicza do formatowania trasy
+  const getTransportRoute = (transport) => {
+    const start = transport.location === 'Odbiory własne' && transport.producerAddress 
+      ? transport.producerAddress.city 
+      : transport.location.replace('Magazyn ', '')
+    
+    const end = transport.delivery?.city || 'Brak danych'
+    
+    return `${start} → ${end}`
+  }
 
   // Pobierz listę użytkowników, budów i dane bieżącego użytkownika
   useEffect(() => {
@@ -151,7 +149,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       }
     };
     
-    // Pobierz dostępne transporty (dla isResponse)
+    // NOWE: Pobierz dostępne transporty do łączenia (dla isResponse)
     const fetchAvailableTransports = async () => {
       if (!isResponse) return;
       
@@ -161,9 +159,12 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
           const data = await response.json();
           
           if (data.success && data.spedycje) {
-            // Filtruj, żeby nie pokazywać bieżącego transportu
+            // Filtruj, żeby nie pokazywać bieżącego transportu i już połączonych
             const filteredTransports = data.spedycje.filter(t => 
-              t.id !== (initialData?.id || 0) && t.status === 'new'
+              t.id !== (initialData?.id || 0) && 
+              t.status === 'new' &&
+              !t.merged_transports && // nie pokazuj już połączonych
+              (!t.response || Object.keys(t.response).length === 0) // nie pokazuj z odpowiedziami
             );
             setAvailableTransports(filteredTransports);
           }
@@ -213,12 +214,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         setShowGoodsDescription(true);
       }
       
-      // Ustaw połączone transporty, jeśli istnieją
-      if (initialData.response?.connectedTransports && initialData.response.connectedTransports.length > 0) {
-        setConnectedTransports(initialData.response.connectedTransports);
-        setShowTransportsSection(true);
-      }
-      
       if (isResponse) {
         // Dla formularza odpowiedzi
         if (initialData.deliveryDate) {
@@ -242,6 +237,34 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       }
     }
   }, [initialData, isResponse, isEditing, users, constructions]);
+
+  // NOWE FUNKCJE DLA ŁĄCZENIA TRANSPORTÓW
+  const handleAddTransportToMerge = (transportId) => {
+    const transport = availableTransports.find(t => t.id === parseInt(transportId));
+    if (transport && !transportsToMerge.find(t => t.id === transport.id)) {
+      setTransportsToMerge([...transportsToMerge, transport]);
+    }
+  };
+
+  const handleRemoveTransportFromMerge = (transportId) => {
+    setTransportsToMerge(transportsToMerge.filter(t => t.id !== transportId));
+    const newCostDistribution = { ...costDistribution };
+    delete newCostDistribution[transportId];
+    setCostDistribution(newCostDistribution);
+  };
+
+  const handleCostDistributionChange = (transportId, cost) => {
+    setCostDistribution({
+      ...costDistribution,
+      [transportId]: cost
+    });
+  };
+
+  // Oblicz pozostałą kwotę dla głównego transportu
+  const getMainTransportCost = () => {
+    const distributedCosts = Object.values(costDistribution).reduce((sum, cost) => sum + parseFloat(cost || 0), 0);
+    return Math.max(0, totalPrice - distributedCosts);
+  };
 
   // Klasy dla przycisków
   const buttonClasses = {
@@ -413,56 +436,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     }));
   };
   
-  // Funkcja do dodawania połączonego transportu
-  const handleAddConnectedTransport = (transport) => {
-    if (!transport) return;
-    
-    // Sprawdź czy transport nie jest już dodany
-    if (connectedTransports.some(t => t.id === transport.id)) {
-      return;
-    }
-    
-    setConnectedTransports(prev => [
-      ...prev, 
-      {
-        id: transport.id,
-        orderNumber: transport.orderNumber,
-        route: `${transport.location === 'Odbiory własne' ? 
-          (transport.producerAddress?.city || 'Odbiory własne') : 
-          transport.location.replace('Magazyn ', '')} → ${transport.delivery?.city || 'Brak danych'}`,
-        responsiblePerson: transport.responsiblePerson,
-        mpk: transport.mpk,
-        order: connectedTransports.length + 1,
-        type: 'loading' // domyślnie jako załadunek
-      }
-    ]);
-  };
-  
-  // Funkcja do usuwania połączonego transportu
-  const handleRemoveConnectedTransport = (id) => {
-    setConnectedTransports(prev => prev.filter(t => t.id !== id));
-  };
-  
-  // Funkcja do zmiany kolejności transportu
-  const handleChangeTransportOrder = (id, newOrder) => {
-    setConnectedTransports(prev => {
-      const updated = prev.map(t => {
-        if (t.id === id) {
-          return { ...t, order: newOrder };
-        }
-        return t;
-      });
-      return updated.sort((a, b) => a.order - b.order);
-    });
-  };
-  
-  // Funkcja do zmiany typu transportu (załadunek/rozładunek)
-  const handleChangeTransportType = (id, newType) => {
-    setConnectedTransports(prev => 
-      prev.map(t => t.id === id ? { ...t, type: newType } : t)
-    );
-  };
-  
   // Filter users and constructions based on search term
   const filteredItems = [...users, ...constructions].filter(item => 
     item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -509,24 +482,22 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       const distanceKm = initialData.distanceKm || 0;
       console.log('Odległość używana do obliczeń:', distanceKm);
                      
-      // ZMIANA: Używamy całkowitej ceny zamiast ceny na transport
       const totalDeliveryPrice = Number(totalPrice);
       const pricePerKm = distanceKm > 0 ? (totalDeliveryPrice / distanceKm).toFixed(2) : 0;
       
       console.log('Obliczenia:', {
         totalDeliveryPrice,
-        pricePerTransport,
         distanceKm,
         pricePerKm
       });
       
-      // Dodaj informację o zmianie daty dostawy
+      // Przygotuj dane odpowiedzi
       const responseData = {
         driverName: formData.get('driverName'),
         driverSurname: formData.get('driverSurname'),
         driverPhone: formData.get('driverPhone'),
         vehicleNumber: formData.get('vehicleNumber'),
-        deliveryPrice: totalDeliveryPrice, // Całkowita cena
+        deliveryPrice: totalDeliveryPrice,
         distanceKm: Number(distanceKm),
         pricePerKm: Number(pricePerKm),
         adminNotes: formData.get('adminNotes')
@@ -539,12 +510,10 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         responseData.dateChanged = true;
       }
       
-      // Dodaj połączone transporty, jeśli są
-      if (connectedTransports.length > 0) {
-        responseData.connectedTransports = connectedTransports;
-        
-        // Oblicz podział kosztów
-        responseData.costPerTransport = pricePerTransport;
+      // NOWE: Dodaj dane o transportach do połączenia
+      if (transportsToMerge.length > 0) {
+        responseData.transportsToMerge = transportsToMerge;
+        responseData.costDistribution = costDistribution;
       }
       
       onSubmit(initialData.id, responseData);
@@ -571,7 +540,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       const editedData = {
         location: selectedLocation,
         documents: formData.get('documents'),
-        clientName: formData.get('clientName') || '',  // Dodane pole nazwy klienta
+        clientName: formData.get('clientName') || '',
         producerAddress: selectedLocation === 'Odbiory własne' ? {
           city: formData.get('producerCity'),
           postalCode: formData.get('producerPostalCode'),
@@ -629,7 +598,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       const data = {
         location: selectedLocation,
         documents: formData.get('documents'),
-        clientName: formData.get('clientName') || '',  // Dodane pole nazwy klienta
+        clientName: formData.get('clientName') || '',
         producerAddress: selectedLocation === 'Odbiory własne' ? {
           city: formData.get('producerCity'),
           postalCode: formData.get('producerPostalCode'),
@@ -645,7 +614,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         loadingContact: formData.get('loadingContact'),
         unloadingContact: formData.get('unloadingContact'),
         deliveryDate: formData.get('deliveryDate'),
-        distanceKm: routeDistance, // Upewnij się, że odległość jest zapisywana
+        distanceKm: routeDistance,
         notes: formData.get('notes'),
         // Dodajemy informacje o użytkowniku dodającym i odpowiedzialnym
         createdBy: currentUser.name,
@@ -767,9 +736,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
             <div>
               <label className="block text-sm font-medium mb-1">
                 Cena całkowita transportu
-                {connectedTransports.length > 0 && (
-                  <span className="text-sm text-gray-600"> (do podziału na {connectedTransports.length + 1} miejsc)</span>
-                )}
               </label>
               <input
                 name="totalPrice"
@@ -779,18 +745,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                 onChange={(e) => setTotalPrice(Number(e.target.value))}
                 required
               />
-              
-              {/* Wyświetl cenę na transport, jeśli są połączone transporty */}
-              {connectedTransports.length > 0 && (
-                <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
-                  <p className="text-sm font-medium text-yellow-800">
-                    Cena na transport: {pricePerTransport} PLN
-                  </p>
-                  <p className="text-xs text-yellow-700">
-                    (Podzielona na {connectedTransports.length + 1} miejsc)
-                  </p>
-                </div>
-              )}
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Odległość</label>
@@ -804,113 +758,144 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
             </div>
           </div>
           
-          {/* Dodawanie powiązanych transportów */}
-          <div className="mt-3">
-            <div className="flex justify-between items-center">
-              <label className="block text-sm font-medium mb-1">Powiązane transporty</label>
+          {/* NOWA SEKCJA: Łączenie transportów */}
+          <div className="mt-6 border-t pt-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium flex items-center">
+                <LinkIcon size={20} className="mr-2 text-blue-600" />
+                Połącz z innymi transportami
+              </h3>
               <button
                 type="button"
-                className={showTransportsSection ? buttonClasses.toggleActive : buttonClasses.toggle}
-                onClick={() => setShowTransportsSection(!showTransportsSection)}
+                className={showMergeSection ? buttonClasses.toggleActive : buttonClasses.toggle}
+                onClick={() => setShowMergeSection(!showMergeSection)}
               >
-                {showTransportsSection ? 'Ukryj transporty' : 'Dodaj powiązane transporty'}
+                {showMergeSection ? 'Ukryj łączenie' : 'Pokaż łączenie'}
               </button>
             </div>
             
-            {showTransportsSection && (
-              <div className="mt-3 border border-gray-200 rounded-md p-4 bg-gray-50">
-                {/* Wybór transportów do połączenia */}
+            {showMergeSection && (
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
                 <div className="mb-4">
-                  <label className="block text-sm font-medium mb-2">Wybierz transporty do połączenia</label>
+                  <label className="block text-sm font-medium mb-2">
+                    Wybierz transporty do połączenia:
+                  </label>
                   <select 
                     className="w-full p-2 border rounded-md"
                     onChange={(e) => {
-                      const selectedTransport = availableTransports.find(t => t.id === parseInt(e.target.value));
-                      if (selectedTransport) {
-                        handleAddConnectedTransport(selectedTransport);
+                      const transportId = e.target.value;
+                      if (transportId) {
+                        handleAddTransportToMerge(transportId);
+                        e.target.value = '';
                       }
                     }}
                     value=""
                   >
-                    <option value="">Wybierz transport...</option>
-                    {availableTransports.map(transport => (
-                      <option key={transport.id} value={transport.id}>
-                        {transport.orderNumber || transport.id} - {transport.delivery?.city || 'Brak danych'} 
-                        ({transport.responsiblePerson || 'Brak'})
-                      </option>
-                    ))}
+                    <option value="">Wybierz transport do połączenia...</option>
+                    {availableTransports
+                      .filter(t => !transportsToMerge.find(tm => tm.id === t.id))
+                      .map(transport => (
+                        <option key={transport.id} value={transport.id}>
+                          {transport.orderNumber || transport.id} - {getTransportRoute(transport)} (MPK: {transport.mpk})
+                        </option>
+                      ))
+                    }
                   </select>
                 </div>
-                
-                {/* Lista wybranych transportów */}
-                {connectedTransports.length > 0 ? (
+
+                {transportsToMerge.length > 0 && (
                   <div className="space-y-3">
-                    {connectedTransports.map((transport, index) => (
-                      <div key={transport.id} className="flex flex-col border rounded-md p-3 bg-white">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <div className="font-bold">{transport.orderNumber || transport.id}</div>
-                            <div className="text-sm text-gray-600">{transport.route}</div>
-                            <div className="text-sm">MPK: {transport.mpk}</div>
-                            <div className="text-sm">Osoba: {transport.responsiblePerson}</div>
+                    <h4 className="font-medium text-blue-700">Transporty do połączenia:</h4>
+                    
+                    {/* Główny transport */}
+                    <div className="p-3 bg-white rounded border border-blue-200">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <div className="font-semibold text-blue-800">
+                            GŁÓWNY: {initialData.orderNumber || initialData.id}
                           </div>
-                          <button 
-                            type="button" 
-                            onClick={() => handleRemoveConnectedTransport(transport.id)}
-                            className="text-red-500 hover:text-red-700"
-                          >
-                            Usuń
-                          </button>
+                          <div className="text-sm text-gray-600">
+                            {getTransportRoute(initialData)} (MPK: {initialData.mpk})
+                          </div>
                         </div>
-                        
-                        <div className="flex items-center mt-3 space-x-4">
-                          <div>
-                            <label className="block text-sm mb-1">Kolejność</label>
-                            <input 
-                              type="number" 
-                              min="1"
-                              value={transport.order || index + 1}
-                              onChange={(e) => handleChangeTransportOrder(transport.id, parseInt(e.target.value))}
-                              className="w-16 p-2 border rounded-md"
-                            />
-                          </div>
-                          
+                        <div className="flex items-center">
+                          <DollarSign size={16} className="mr-1 text-green-600" />
+                          <span className="font-medium text-green-700">
+                            {getMainTransportCost().toFixed(2)} PLN
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Transporty do połączenia */}
+                    {transportsToMerge.map(transport => (
+                      <div key={transport.id} className="p-3 bg-white rounded border border-gray-200">
+                        <div className="flex justify-between items-start">
                           <div className="flex-1">
-                            <label className="block text-sm mb-1">Typ</label>
-                            <div className="flex space-x-2">
-                              <button
-                                type="button"
-                                className={`flex-1 py-1 px-3 text-sm rounded-md ${transport.type === 'loading' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
-                                onClick={() => handleChangeTransportType(transport.id, 'loading')}
-                              >
-                                Załadunek
-                              </button>
-                              <button
-                                type="button"
-                                className={`flex-1 py-1 px-3 text-sm rounded-md ${transport.type === 'unloading' ? 'bg-green-500 text-white' : 'bg-gray-200'}`}
-                                onClick={() => handleChangeTransportType(transport.id, 'unloading')}
-                              >
-                                Rozładunek
-                              </button>
+                            <div className="font-medium">
+                              {transport.orderNumber || transport.id}
                             </div>
+                            <div className="text-sm text-gray-600">
+                              {getTransportRoute(transport)} (MPK: {transport.mpk})
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              Odp: {transport.responsiblePerson || 'Brak'}
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2 ml-4">
+                            <div className="flex items-center">
+                              <DollarSign size={14} className="mr-1 text-gray-500" />
+                              <input
+                                type="number"
+                                placeholder="Koszt PLN"
+                                className="w-20 p-1 border rounded text-sm"
+                                value={costDistribution[transport.id] || ''}
+                                onChange={(e) => handleCostDistributionChange(transport.id, e.target.value)}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveTransportFromMerge(transport.id)}
+                              className="text-red-500 hover:text-red-700 p-1"
+                            >
+                              <X size={16} />
+                            </button>
                           </div>
                         </div>
                       </div>
                     ))}
                     
-                    {connectedTransports.length > 0 && (
-                      <div className="mt-3 p-3 bg-yellow-50 border border-yellow-100 rounded-md">
-                        <p className="text-sm font-medium text-yellow-800">
-                          Koszt transportu zostanie podzielony między {connectedTransports.length + 1} transporty:
-                        </p>
-                        <p className="text-sm mt-1">
-                          Koszt na transport: ~{pricePerTransport} PLN/transport
-                        </p>
+                    {/* Podsumowanie kosztów */}
+                    <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                      <div className="text-sm">
+                        <div className="flex justify-between">
+                          <span>Cena całkowita:</span>
+                          <span className="font-medium">{totalPrice} PLN</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Przydzielone do innych:</span>
+                          <span>{Object.values(costDistribution).reduce((sum, cost) => sum + parseFloat(cost || 0), 0).toFixed(2)} PLN</span>
+                        </div>
+                        <div className="flex justify-between font-medium border-t pt-1 mt-1">
+                          <span>Pozostaje dla głównego:</span>
+                          <span className={getMainTransportCost() < 0 ? 'text-red-600' : 'text-green-600'}>
+                            {getMainTransportCost().toFixed(2)} PLN
+                          </span>
+                        </div>
                       </div>
-                    )}
+                      
+                      {getMainTransportCost() < 0 && (
+                        <div className="mt-2 text-xs text-red-600 bg-red-50 p-2 rounded">
+                          ⚠️ Uwaga: Przydzielone koszty przekraczają cenę całkowitą!
+                        </div>
+                      )}
+                      
+                      <div className="mt-2 text-xs text-yellow-800">
+                        <strong>Uwaga:</strong> Po zapisaniu odpowiedzi transporty zostaną połączone w jeden. 
+                        Oryginalne transporty z listy zostaną usunięte.
+                      </div>
+                    </div>
                   </div>
-                ) : (
-                  <p className="text-gray-500 text-sm">Brak wybranych transportów. Wybierz transporty z listy powyżej.</p>
                 )}
               </div>
             )}
