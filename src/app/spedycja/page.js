@@ -7,7 +7,6 @@ import Link from 'next/link'
 import { Clipboard, Archive, Edit, CheckCircle, AlertCircle } from 'lucide-react'
 import TransportOrderForm from './components/TransportOrderForm'
 
-
 export default function SpedycjaPage() {
   const [zamowienia, setZamowienia] = useState([]);
   const [userRole, setUserRole] = useState(null);
@@ -203,10 +202,17 @@ export default function SpedycjaPage() {
     }
   };
 
-  // ZMODYFIKOWANA FUNKCJA handleResponse
+  // ZMODYFIKOWANA FUNKCJA handleResponse - obsługa łączenia transportów
   const handleResponse = async (zamowienieId, response) => {
     try {
       console.log('Odpowiedź na zamówienie ID:', zamowienieId, 'Dane odpowiedzi:', response);
+      
+      // Sprawdź czy to jest łączenie transportów
+      const isMerging = response.transportsToMerge && response.transportsToMerge.length > 0;
+      
+      if (isMerging) {
+        console.log('Wykryto łączenie transportów:', response.transportsToMerge.length);
+      }
       
       // Najpierw spróbuj użyć API
       try {
@@ -227,50 +233,32 @@ export default function SpedycjaPage() {
           setShowForm(false);
           fetchSpedycje();
           
-          // Pokaż komunikat z informacją o automatycznych odpowiedziach
-          if (data.message && data.message.includes('połączonych transportów')) {
-            showOperationMessage(data.message, 'success');
+          // Pokaż komunikat z informacją o łączeniu lub standardowej odpowiedzi
+          if (isMerging) {
+            showOperationMessage(data.message || `Transport został połączony z ${response.transportsToMerge.length} innymi transportami`, 'success');
           } else {
             showOperationMessage('Odpowiedź została pomyślnie zapisana', 'success');
           }
           return;
+        } else {
+          throw new Error(data.error || 'Błąd zapisywania odpowiedzi');
         }
       } catch (apiError) {
         console.error('Błąd API, używam localStorage:', apiError);
+        throw apiError; // Rzuć błąd dalej, żeby nie próbować localStorage dla łączenia
       }
       
-      // Aktualizuj w localStorage jeśli API zawiedzie
-      const savedData = localStorage.getItem('zamowieniaSpedycja');
-      if (savedData) {
-        const zamowienia = JSON.parse(savedData);
-        const updatedZamowienia = zamowienia.map(zam => {
-          if (zam.id === zamowienieId) {
-            return { 
-              ...zam, 
-              response,
-            };
-          }
-          return zam;
-        });
-        
-        localStorage.setItem('zamowieniaSpedycja', JSON.stringify(updatedZamowienia));
-        fetchSpedycje();
-        showOperationMessage('Odpowiedź została zapisana (lokalnie)', 'success');
-      }
-      
-      setShowForm(false);
     } catch (error) {
       console.error('Błąd odpowiedzi na zlecenie:', error);
-      showOperationMessage('Wystąpił błąd podczas zapisywania odpowiedzi', 'error');
+      showOperationMessage('Wystąpił błąd podczas zapisywania odpowiedzi: ' + error.message, 'error');
     }
   };
-
 
   const handleCreateOrder = (zamowienie) => {
     setSelectedOrderZamowienie(zamowienie)
   }
   
-  // Dodajmy funkcję do wysyłania zamówienia
+  // Funkcja do wysyłania zamówienia
   const handleSendOrder = async (orderData) => {
     try {
       console.log('Wysyłanie zlecenia transportowego:', orderData)
@@ -550,17 +538,18 @@ export default function SpedycjaPage() {
           </div>
         </div>
       )}
-        {selectedOrderZamowienie && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-            <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-              <TransportOrderForm
-                onSubmit={handleSendOrder}
-                onCancel={() => setSelectedOrderZamowienie(null)}
-                zamowienie={selectedOrderZamowienie}
-              />
-            </div>
+      
+      {selectedOrderZamowienie && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <TransportOrderForm
+              onSubmit={handleSendOrder}
+              onCancel={() => setSelectedOrderZamowienie(null)}
+              zamowienie={selectedOrderZamowienie}
+            />
           </div>
-        )}
+        </div>
+      )}
     </div>
   );
 }
