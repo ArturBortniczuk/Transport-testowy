@@ -65,7 +65,7 @@ export async function POST(request) {
       }, { status: 403 });
     }
     
-    // Pobierz dane z żądania, dodaj obsługę additionalPlaces
+    // Pobierz dane z żądania - UPROSZCZONE, bez additionalPlaces
     const { 
       spedycjaId, 
       towar, 
@@ -74,13 +74,16 @@ export async function POST(request) {
       dataZaladunku, 
       dataRozladunku, 
       emailOdbiorcy,
-      additionalPlaces = [] // Nowe pole
+      isMerged = false,
+      mergedTransportsData = null
     } = await request.json();
+    
+    console.log('Wysyłanie zlecenia dla:', { spedycjaId, isMerged, mergedCount: mergedTransportsData?.originalTransports?.length || 0 });
     
     // Pobierz dane spedycji
     const spedycja = await db('spedycje')
       .where('id', spedycjaId)
-      .select('*')  // Pobieramy wszystkie pola
+      .select('*')
       .first();
     
     if (!spedycja) {
@@ -94,6 +97,7 @@ export async function POST(request) {
     let producerAddress = {};
     let delivery = {};
     let responseData = {};
+    let mergedTransports = null;
     
     try {
       if (spedycja.location_data) {
@@ -105,59 +109,11 @@ export async function POST(request) {
       if (spedycja.response_data) {
         responseData = JSON.parse(spedycja.response_data);
       }
+      if (spedycja.merged_transports) {
+        mergedTransports = JSON.parse(spedycja.merged_transports);
+      }
     } catch (error) {
       console.error('Błąd parsowania danych JSON:', error);
-    }
-    
-    // Jeśli są dodatkowe miejsca, pobierz dane dla nich
-    const additionalPlacesData = [];
-    
-    if (additionalPlaces && additionalPlaces.length > 0) {
-      for (const place of additionalPlaces) {
-        // Pobierz dane spedycji dla dodatkowego miejsca
-        if (place.transportId) {
-          try {
-            const additionalSpedycja = await db('spedycje')
-              .where('id', place.transportId)
-              .first();
-              
-            if (additionalSpedycja) {
-              // Parsuj dane JSON
-              let additionalProducerAddress = {};
-              let additionalDelivery = {};
-              
-              try {
-                if (additionalSpedycja.location_data) {
-                  additionalProducerAddress = JSON.parse(additionalSpedycja.location_data);
-                }
-                if (additionalSpedycja.delivery_data) {
-                  additionalDelivery = JSON.parse(additionalSpedycja.delivery_data);
-                }
-              } catch (error) {
-                console.error('Błąd parsowania danych JSON dla dodatkowego miejsca:', error);
-              }
-              
-              // Uzupełnij dane miejsca
-              additionalPlacesData.push({
-                type: place.type,
-                transportId: place.transportId,
-                orderNumber: additionalSpedycja.order_number || `${additionalSpedycja.id}`,
-                location: additionalSpedycja.location,
-                producerAddress: additionalProducerAddress,
-                delivery: additionalDelivery,
-                loadingContact: additionalSpedycja.loading_contact,
-                unloadingContact: additionalSpedycja.unloading_contact,
-                route: place.route
-              });
-            }
-          } catch (error) {
-            console.error(`Błąd pobierania danych dla dodatkowego miejsca ID=${place.transportId}:`, error);
-          }
-        } else {
-          // Jeśli nie ma transportId, dodaj miejsce bez dodatkowych danych
-          additionalPlacesData.push(place);
-        }
-      }
     }
     
     // Tworzenie HTML zamówienia
@@ -166,40 +122,45 @@ export async function POST(request) {
       producerAddress,
       delivery,
       responseData,
+      mergedTransports,
       user,
-      additionalData: {
+      orderData: {
         towar,
         terminPlatnosci,
         waga,
         dataZaladunku,
-        dataRozladunku,
-        additionalPlaces: additionalPlacesData
+        dataRozladunku
       }
     });
     
     // Konfiguracja transportera mailowego
-    const transporter = nodemailer.createTransport({
+    const transporter = nodemailer.createTransporter({
       host: process.env.SMTP_HOST,
       port: parseInt(process.env.SMTP_PORT || '465'),
       secure: process.env.SMTP_SECURE === 'true',
       auth: {
-        user: "logistyka@grupaeltron.pl", // Hardcoded - zawsze ten sam adres
+        user: "logistyka@grupaeltron.pl",
         pass: process.env.SMTP_PASSWORD
       }
     });
+    
+    // Przygotuj tytuł e-maila
+    const emailTitle = isMerged 
+      ? `Zlecenie transportowe nr ${spedycja.order_number} (${mergedTransports?.originalTransports?.length + 1 || 1} tras)`
+      : `Zlecenie transportowe nr ${spedycja.order_number}`;
     
     // Wysyłanie maila
     const mailOptions = {
       from: `"System Transportowy" <logistyka@grupaeltron.pl>`,
       to: emailOdbiorcy,
-      cc: user.email, // Opcjonalnie dodaj użytkownika inicjującego wysyłkę w kopii
-      subject: `Zlecenie transportowe nr ${spedycja.order_number || spedycja.id}`,
+      cc: user.email,
+      subject: emailTitle,
       html: htmlContent
     };
     
     const info = await transporter.sendMail(mailOptions);
     
-    // Zapisz informacje o wysłanym zleceniu
+    // Zapisz informacje o wysłanym zleceniu - UPROSZCZONE
     await db('spedycje')
       .where('id', spedycjaId)
       .update({
@@ -213,18 +174,17 @@ export async function POST(request) {
           waga,
           dataZaladunku,
           dataRozladunku,
-          additionalPlaces: additionalPlacesData.map(place => ({
-            type: place.type,
-            transportId: place.transportId,
-            orderNumber: place.orderNumber,
-            route: place.route
-          }))
+          isMerged,
+          mergedTransportsCount: mergedTransports?.originalTransports?.length || 0
         })
       });
     
     return NextResponse.json({
       success: true,
-      messageId: info.messageId
+      messageId: info.messageId,
+      message: isMerged 
+        ? `Wysłano zlecenie dla transportu połączonego (${mergedTransports?.originalTransports?.length + 1} tras)`
+        : 'Wysłano zlecenie transportowe'
     });
   } catch (error) {
     console.error('Error sending transport order:', error);
@@ -235,9 +195,9 @@ export async function POST(request) {
   }
 }
 
-// Funkcja generująca HTML zamówienia
-function generateTransportOrderHTML({ spedycja, producerAddress, delivery, responseData, user, additionalData }) {
-  const { towar, terminPlatnosci, waga, dataZaladunku, dataRozladunku, additionalPlaces = [] } = additionalData;
+// ZAKTUALIZOWANA FUNKCJA generująca HTML zamówienia
+function generateTransportOrderHTML({ spedycja, producerAddress, delivery, responseData, mergedTransports, user, orderData }) {
+  const { towar, terminPlatnosci, waga, dataZaladunku, dataRozladunku } = orderData;
   
   const formatDate = (dateString) => {
     if (!dateString) return '';
@@ -273,100 +233,67 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     return `${price} PLN Netto`;
   };
   
-  // Generowanie sekcji dla dodatkowych miejsc
-  const generateAdditionalPlacesHTML = () => {
-    if (!additionalPlaces || additionalPlaces.length === 0) {
+  // NOWA FUNKCJA: Generowanie sekcji dla połączonych transportów
+  const generateMergedTransportsHTML = () => {
+    if (!mergedTransports || !mergedTransports.originalTransports || mergedTransports.originalTransports.length === 0) {
       return '';
     }
     
-    // Pogrupuj miejsca według typu
-    const loadingPlaces = additionalPlaces.filter(place => place.type === 'załadunek');
-    const unloadingPlaces = additionalPlaces.filter(place => place.type === 'rozładunek');
-    
     let html = '';
     
-    // Generuj sekcje dla dodatkowych miejsc załadunku
-    if (loadingPlaces.length > 0) {
-      loadingPlaces.forEach((place, index) => {
-        html += `
-        <div class="section">
-          <h2>Dodatkowe miejsce załadunku ${index + 1}</h2>
-          <table class="info-table">
-            <tr>
-              <th>Nr zlecenia:</th>
-              <td>${place.orderNumber || ''} (${place.route || ''})</td>
-            </tr>
-        `;
-        
-        let address = 'Brak danych';
-        
-        if (place.location === 'Odbiory własne' && place.producerAddress) {
-          address = formatAddress(place.producerAddress);
-        } else if (place.location === 'Magazyn Białystok') {
-          address = 'Magazyn Białystok';
-        } else if (place.location === 'Magazyn Zielonka') {
-          address = 'Magazyn Zielonka';
-        } else if (typeof place.address === 'object') {
-          address = formatAddress(place.address);
-        } else if (typeof place.address === 'string') {
-          address = place.address;
-        }
-        
-        html += `
-            <tr>
-              <th>Miejsce załadunku:</th>
-              <td>${address}</td>
-            </tr>
-            <tr>
-              <th>Kontakt do załadunku:</th>
-              <td>${place.loadingContact || place.contact || 'Nie podano'}</td>
-            </tr>
-          </table>
-        </div>
-        `;
-      });
-    }
+    // Nagłówek dla połączonych transportów
+    html += `
+    <div class="section">
+      <h2>Transport połączony - dodatkowe trasy (${mergedTransports.originalTransports.length})</h2>
+      <div class="important-info">
+        <strong>Uwaga:</strong> To zlecenie obejmuje ${mergedTransports.originalTransports.length + 1} tras w ramach jednego transportu.
+        Koszt został odpowiednio podzielony między poszczególne MPK.
+      </div>
+    `;
     
-    // Generuj sekcje dla dodatkowych miejsc rozładunku
-    if (unloadingPlaces.length > 0) {
-      unloadingPlaces.forEach((place, index) => {
-        html += `
-        <div class="section">
-          <h2>Drugie miejsce rozładunku${index > 0 ? ' ' + (index + 1) : ''}</h2>
-          <table class="info-table">
-            <tr>
-              <th>Nr zlecenia:</th>
-              <td>${place.orderNumber || ''} (${place.route || ''})</td>
-            </tr>
-        `;
-        
-        let address = 'Brak danych';
-        
-        if (place.delivery) {
-          address = formatAddress(place.delivery);
-        } else if (typeof place.address === 'object') {
-          address = formatAddress(place.address);
-        } else if (typeof place.address === 'string') {
-          address = place.address;
-        }
-        
-        html += `
-            <tr>
-              <th>Miejsce rozładunku:</th>
-              <td>${address}</td>
-            </tr>
-            <tr>
-              <th>Kontakt do rozładunku:</th>
-              <td>${place.unloadingContact || place.contact || 'Nie podano'}</td>
-            </tr>
-          </table>
-        </div>
-        `;
-      });
-    }
+    // Dodaj informacje o każdej dodatkowej trasie
+    mergedTransports.originalTransports.forEach((transport, index) => {
+      html += `
+      <div style="margin: 15px 0; padding: 10px; border-left: 3px solid #1a71b5; background-color: #f9f9f9;">
+        <h3 style="margin-top: 0; color: #1a71b5;">Dodatkowa trasa ${index + 1}</h3>
+        <table class="info-table">
+          <tr>
+            <th>Numer zlecenia:</th>
+            <td>${transport.orderNumber}</td>
+          </tr>
+          <tr>
+            <th>MPK:</th>
+            <td>${transport.mpk}</td>
+          </tr>
+          <tr>
+            <th>Trasa:</th>
+            <td>${transport.route}</td>
+          </tr>
+          <tr>
+            <th>Osoba odpowiedzialna:</th>
+            <td>${transport.responsiblePerson || 'Nie podano'}</td>
+          </tr>
+          <tr>
+            <th>Przydzielony koszt:</th>
+            <td>${formatPrice(transport.costAssigned)}</td>
+          </tr>
+          <tr>
+            <th>Dokumenty:</th>
+            <td>${transport.documents || 'Nie podano'}</td>
+          </tr>
+        </table>
+      </div>
+      `;
+    });
+    
+    html += `</div>`;
     
     return html;
   };
+  
+  // Ustal czy to transport połączony
+  const isMerged = mergedTransports && mergedTransports.originalTransports && mergedTransports.originalTransports.length > 0;
+  const totalTransports = isMerged ? mergedTransports.originalTransports.length + 1 : 1;
   
   // Tworzenie HTML-a
   return `
@@ -375,7 +302,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Zlecenie Transportowe</title>
+      <title>Zlecenie Transportowe${isMerged ? ' - Transport Połączony' : ''}</title>
       <style>
         body {
           font-family: Arial, sans-serif;
@@ -445,6 +372,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
           padding: 12px;
           border-radius: 5px;
           border-left: 4px solid #1a71b5;
+          margin: 10px 0;
         }
         .important-warning {
           background-color: #fff2f2;
@@ -455,28 +383,41 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
           font-weight: bold;
           color: #c0392b;
         }
+        .merged-transport-badge {
+          background-color: #9b59b6;
+          color: white;
+          padding: 5px 10px;
+          border-radius: 15px;
+          font-size: 12px;
+          font-weight: bold;
+          display: inline-block;
+          margin-left: 10px;
+        }
       </style>
     </head>
     <body>
       <div class="header">
-        <h1>ZLECENIE TRANSPORTOWE</h1>
+        <h1>ZLECENIE TRANSPORTOWE${isMerged ? ` - POŁĄCZONE (${totalTransports} TRAS)` : ''}</h1>
         <p>Nr zlecenia: ${spedycja.order_number || spedycja.id} | Data utworzenia: ${formatDate(new Date().toISOString())}</p>
+        ${isMerged ? '<span class="merged-transport-badge">TRANSPORT POŁĄCZONY</span>' : ''}
       </div>
       
       <div class="important-note">
         Proszę o dopisanie na fakturze zamieszczonego poniżej numeru MPK oraz numeru zlecenia: ${spedycja.order_number || spedycja.id}.
+        ${isMerged ? ` Transport obejmuje ${totalTransports} tras z różnymi numerami MPK.` : ''}
       </div>
       
       <div class="important-warning">
         <strong>UWAGA!</strong> Na fakturze musi być podany numer zlecenia: ${spedycja.order_number || spedycja.id}. 
         Faktury bez numeru zlecenia nie będą opłacane.
+        ${isMerged ? ' W przypadku transportu połączonego prosimy o wyszczególnienie kosztów według podanych MPK.' : ''}
       </div>
       
       <div class="section">
         <h2>Dane podstawowe</h2>
         <table class="info-table">
           <tr>
-            <th>Numer MPK:</th>
+            <th>Numer MPK główny:</th>
             <td>${spedycja.mpk || 'Nie podano'}</td>
           </tr>
           <tr>
@@ -491,11 +432,17 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
             <th>Waga towaru:</th>
             <td>${waga || 'Nie podano'}</td>
           </tr>
+          ${isMerged ? `
+          <tr>
+            <th>Liczba tras:</th>
+            <td>${totalTransports} (główna + ${mergedTransports.originalTransports.length} dodatkowych)</td>
+          </tr>
+          ` : ''}
         </table>
       </div>
       
       <div class="section">
-        <h2>${additionalPlaces.some(p => p.type === 'załadunek') ? 'Pierwsze miejsce załadunku' : 'Dane załadunku'}</h2>
+        <h2>${isMerged ? 'Główne miejsce załadunku' : 'Dane załadunku'}</h2>
         <table class="info-table">
           <tr>
             <th>Miejsce załadunku:</th>
@@ -513,7 +460,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       </div>
       
       <div class="section">
-        <h2>${additionalPlaces.some(p => p.type === 'rozładunek') ? 'Pierwsze miejsce rozładunku' : 'Dane rozładunku'}</h2>
+        <h2>${isMerged ? 'Główne miejsce rozładunku' : 'Dane rozładunku'}</h2>
         <table class="info-table">
           <tr>
             <th>Miejsce rozładunku:</th>
@@ -530,7 +477,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
         </table>
       </div>
       
-      ${generateAdditionalPlacesHTML()}
+      ${generateMergedTransportsHTML()}
       
       <div class="section">
         <h2>Dane przewoźnika</h2>
@@ -554,9 +501,20 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
         <h2>Płatność</h2>
         <table class="info-table">
           <tr>
-            <th>Cena transportu:</th>
+            <th>Cena transportu całkowita:</th>
             <td>${responseData.deliveryPrice ? formatPrice(responseData.deliveryPrice) : 'Nie podano'}</td>
           </tr>
+          ${isMerged && responseData.costBreakdown ? `
+          <tr>
+            <th>Podział kosztów:</th>
+            <td>
+              <div>Główny transport (MPK: ${spedycja.mpk}): ${formatPrice(responseData.costBreakdown.mainTransport?.cost || 0)}</div>
+              ${responseData.costBreakdown.mergedTransports?.map(mt => 
+                `<div>MPK: ${mt.mpk}: ${formatPrice(mt.cost)}</div>`
+              ).join('') || ''}
+            </td>
+          </tr>
+          ` : ''}
           <tr>
             <th>Termin płatności:</th>
             <td>${terminPlatnosci || 'Nie podano'}</td>
@@ -568,6 +526,14 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
         <h2>Uwagi</h2>
         <p>${spedycja.notes || 'Brak uwag'}</p>
         ${responseData.adminNotes ? `<p><strong>Uwagi przewoźnika:</strong> ${responseData.adminNotes}</p>` : ''}
+        ${isMerged ? `
+        <div class="important-info">
+          <strong>Uwaga dotycząca transportu połączonego:</strong><br>
+          To zlecenie obejmuje ${totalTransports} tras realizowanych w ramach jednego transportu. 
+          Koszty zostały podzielone zgodnie z powyższym zestawieniem. 
+          Prosimy o wystawienie faktury z wyszczególnieniem kosztów według numerów MPK.
+        </div>
+        ` : ''}
       </div>
       
       <div class="section">
@@ -583,7 +549,8 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       </div>
       
       <div class="footer">
-        <p>Zlecenie wygenerowane automatycznie.</p>
+        <p>Zlecenie wygenerowane automatycznie${isMerged ? ' - Transport połączony' : ''}.</p>
+        ${isMerged ? `<p><strong>Łączna liczba tras: ${totalTransports}</strong></p>` : ''}
       </div>
     </body>
     </html>
