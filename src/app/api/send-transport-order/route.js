@@ -134,7 +134,7 @@ export async function POST(request) {
     });
     
     // Konfiguracja transportera mailowego
-    const transporter = nodemailer.createTransport({
+    const transporter = nodemailer.createTransporter({
       host: process.env.SMTP_HOST,
       port: parseInt(process.env.SMTP_PORT || '465'),
       secure: process.env.SMTP_SECURE === 'true',
@@ -145,9 +145,7 @@ export async function POST(request) {
     });
     
     // Przygotuj tytuł e-maila
-    const emailTitle = isMerged 
-      ? `Zlecenie transportowe nr ${spedycja.order_number} (${mergedTransports?.originalTransports?.length + 1 || 1} tras)`
-      : `Zlecenie transportowe nr ${spedycja.order_number}`;
+    const emailTitle = `Zlecenie transportowe nr ${spedycja.order_number}`;
     
     // Wysyłanie maila
     const mailOptions = {
@@ -211,9 +209,28 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     });
   };
   
-  const formatAddress = (address) => {
+  // Funkcja do formatowania adresu w ładnych linijkach
+  const formatAddressNice = (address, pinLocation = null) => {
     if (!address) return 'Brak danych';
-    return `${address.city || ''}, ${address.postalCode || ''}, ${address.street || ''}`;
+    
+    let formattedLines = [];
+    
+    // Linia 1: Miejscowość, kod pocztowy
+    if (address.city || address.postalCode) {
+      formattedLines.push(`${address.city || ''}, ${address.postalCode || ''}`.replace(/^,\s*|,\s*$/, ''));
+    }
+    
+    // Linia 2: Ulica i numer budynku
+    if (address.street) {
+      formattedLines.push(address.street);
+    }
+    
+    // Linia 3: Pineska (jeśli jest)
+    if (pinLocation) {
+      formattedLines.push(`Pineska: ${pinLocation}`);
+    }
+    
+    return formattedLines.join('<br>');
   };
   
   // Funkcja do zbierania wszystkich MPK
@@ -259,50 +276,57 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     // Główne miejsce załadunku
     if (spedycja.location === 'Odbiory własne' && producerAddress) {
       places.push({
-        address: formatAddress(producerAddress),
-        contact: spedycja.loading_contact
+        address: formatAddressNice(producerAddress, producerAddress.pinLocation),
+        contact: spedycja.loading_contact,
+        date: dataZaladunku
       });
     } else if (spedycja.location === 'Magazyn Białystok') {
       places.push({
-        address: 'Grupa Eltron Sp z o.o, ul. Wysockiego 69B, 15-169 Białystok',
-        contact: spedycja.loading_contact
+        address: 'Białystok, 15-169<br>ul. Wysockiego 69B<br>Grupa Eltron Sp z o.o',
+        contact: spedycja.loading_contact,
+        date: dataZaladunku
       });
     } else if (spedycja.location === 'Magazyn Zielonka') {
       places.push({
-        address: 'Grupa Eltron Sp z o.o, ul. Krótka 2, 05-220 Zielonka',
-        contact: spedycja.loading_contact
+        address: 'Zielonka, 05-220<br>ul. Krótka 2<br>Grupa Eltron Sp z o.o',
+        contact: spedycja.loading_contact,
+        date: dataZaladunku
       });
     } else {
       places.push({
         address: spedycja.location || 'Brak danych',
-        contact: spedycja.loading_contact
+        contact: spedycja.loading_contact,
+        date: dataZaladunku
       });
     }
     
     // Dodatkowe miejsca załadunku z połączonych transportów
-    // Sprawdzamy konfigurację trasy i dodajemy tylko te oznaczone jako załadunek
     if (mergedTransports && mergedTransports.originalTransports && responseData.routeConfiguration) {
       mergedTransports.originalTransports.forEach(transport => {
         const config = responseData.routeConfiguration[transport.id];
         
-        // Dodaj tylko jeśli w konfiguracji jest oznaczone jako załadunek
         if (config && config.useLoading === true) {
           let address = '';
           if (transport.location === 'Odbiory własne') {
             try {
               const locationData = typeof transport.location_data === 'string' ? 
                 JSON.parse(transport.location_data) : transport.location_data;
-              address = formatAddress(locationData);
+              address = formatAddressNice(locationData, locationData.pinLocation);
             } catch (error) {
               address = 'Odbiory własne';
             }
+          } else if (transport.location === 'Magazyn Białystok') {
+            address = 'Białystok, 15-169<br>ul. Wysockiego 69B<br>Grupa Eltron Sp z o.o';
+          } else if (transport.location === 'Magazyn Zielonka') {
+            address = 'Zielonka, 05-220<br>ul. Krótka 2<br>Grupa Eltron Sp z o.o';
           } else {
             address = transport.location;
           }
           
           places.push({
             address: address,
-            contact: transport.loading_contact
+            contact: transport.loading_contact,
+            date: dataZaladunku
           });
         }
       });
@@ -317,30 +341,31 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     
     // Główne miejsce rozładunku
     places.push({
-      address: formatAddress(delivery),
-      contact: spedycja.unloading_contact
+      address: formatAddressNice(delivery, delivery.pinLocation),
+      contact: spedycja.unloading_contact,
+      date: dataRozladunku
     });
     
     // Dodatkowe miejsca rozładunku z połączonych transportów
-    // Sprawdzamy konfigurację trasy i dodajemy tylko te oznaczone jako rozładunek
     if (mergedTransports && mergedTransports.originalTransports && responseData.routeConfiguration) {
       mergedTransports.originalTransports.forEach(transport => {
         const config = responseData.routeConfiguration[transport.id];
         
-        // Dodaj tylko jeśli w konfiguracji jest oznaczone jako rozładunek
         if (config && config.useUnloading === true) {
           try {
             const deliveryData = typeof transport.delivery_data === 'string' ? 
               JSON.parse(transport.delivery_data) : transport.delivery_data;
             
             places.push({
-              address: formatAddress(deliveryData),
-              contact: transport.unloading_contact
+              address: formatAddressNice(deliveryData, deliveryData.pinLocation),
+              contact: transport.unloading_contact,
+              date: dataRozladunku
             });
           } catch (error) {
             places.push({
               address: 'Brak danych',
-              contact: transport.unloading_contact || ''
+              contact: transport.unloading_contact || '',
+              date: dataRozladunku
             });
           }
         }
@@ -443,10 +468,23 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
           color: #c0392b;
         }
         .place-item {
-          margin-bottom: 10px;
-          padding: 8px;
+          margin-bottom: 15px;
+          padding: 12px;
           background-color: white;
-          border-radius: 3px;
+          border-radius: 5px;
+          border: 1px solid #ddd;
+        }
+        .place-address {
+          font-weight: bold;
+          margin-bottom: 8px;
+          line-height: 1.4;
+        }
+        .place-details {
+          font-size: 14px;
+          color: #555;
+        }
+        .place-details div {
+          margin-bottom: 4px;
         }
       </style>
     </head>
@@ -491,9 +529,11 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
         <h2>${loadingPlaces.length === 1 ? 'Miejsce załadunku' : 'Miejsca załadunku'}</h2>
         ${loadingPlaces.map((place, index) => `
           <div class="place-item">
-            <strong>${loadingPlaces.length === 1 ? '' : `${index + 1}. `}Adres:</strong> ${place.address}<br>
-            <strong>Data załadunku:</strong> ${formatDate(dataZaladunku) || 'Nie podano'}<br>
-            <strong>Kontakt:</strong> ${place.contact || 'Nie podano'}
+            <div class="place-address">${loadingPlaces.length === 1 ? '' : `${index + 1}. `}${place.address}</div>
+            <div class="place-details">
+              <div><strong>Data załadunku:</strong> ${formatDate(place.date) || 'Nie podano'}</div>
+              <div><strong>Kontakt:</strong> ${place.contact || 'Nie podano'}</div>
+            </div>
           </div>
         `).join('')}
       </div>
@@ -502,9 +542,11 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
         <h2>${unloadingPlaces.length === 1 ? 'Miejsce rozładunku' : 'Miejsca rozładunku'}</h2>
         ${unloadingPlaces.map((place, index) => `
           <div class="place-item">
-            <strong>${unloadingPlaces.length === 1 ? '' : `${index + 1}. `}Adres:</strong> ${place.address}<br>
-            <strong>Data rozładunku:</strong> ${formatDate(dataRozladunku) || 'Nie podano'}<br>
-            <strong>Kontakt:</strong> ${place.contact || 'Nie podano'}
+            <div class="place-address">${unloadingPlaces.length === 1 ? '' : `${index + 1}. `}${place.address}</div>
+            <div class="place-details">
+              <div><strong>Data rozładunku:</strong> ${formatDate(place.date) || 'Nie podano'}</div>
+              <div><strong>Kontakt:</strong> ${place.contact || 'Nie podano'}</div>
+            </div>
           </div>
         `).join('')}
       </div>
@@ -549,7 +591,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       
       <div class="section">
         <h2>Adres do wysyłki faktur i dokumentów</h2>
-        <p class="important-info">
+        <p>
           Grupa Eltron Sp. z o.o.<br>
           ul. Główna 7<br>
           18-100 Łapy<br>
