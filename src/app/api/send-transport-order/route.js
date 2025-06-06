@@ -280,25 +280,31 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     }
     
     // Dodatkowe miejsca załadunku z połączonych transportów
-    if (mergedTransports && mergedTransports.originalTransports) {
+    // Sprawdzamy konfigurację trasy i dodajemy tylko te oznaczone jako załadunek
+    if (mergedTransports && mergedTransports.originalTransports && responseData.routeConfiguration) {
       mergedTransports.originalTransports.forEach(transport => {
-        let address = '';
-        if (transport.location === 'Odbiory własne') {
-          try {
-            const locationData = typeof transport.location_data === 'string' ? 
-              JSON.parse(transport.location_data) : transport.location_data;
-            address = formatAddress(locationData);
-          } catch (error) {
-            address = 'Odbiory własne';
-          }
-        } else {
-          address = transport.location;
-        }
+        const config = responseData.routeConfiguration[transport.id];
         
-        places.push({
-          address: address,
-          contact: transport.loading_contact
-        });
+        // Dodaj tylko jeśli w konfiguracji jest oznaczone jako załadunek
+        if (config && config.useLoading === true) {
+          let address = '';
+          if (transport.location === 'Odbiory własne') {
+            try {
+              const locationData = typeof transport.location_data === 'string' ? 
+                JSON.parse(transport.location_data) : transport.location_data;
+              address = formatAddress(locationData);
+            } catch (error) {
+              address = 'Odbiory własne';
+            }
+          } else {
+            address = transport.location;
+          }
+          
+          places.push({
+            address: address,
+            contact: transport.loading_contact
+          });
+        }
       });
     }
     
@@ -316,20 +322,27 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     });
     
     // Dodatkowe miejsca rozładunku z połączonych transportów
-    if (mergedTransports && mergedTransports.originalTransports) {
+    // Sprawdzamy konfigurację trasy i dodajemy tylko te oznaczone jako rozładunek
+    if (mergedTransports && mergedTransports.originalTransports && responseData.routeConfiguration) {
       mergedTransports.originalTransports.forEach(transport => {
-        try {
-          const deliveryData = typeof transport.delivery_data === 'string' ? 
-            JSON.parse(transport.delivery_data) : transport.delivery_data;
-          places.push({
-            address: formatAddress(deliveryData),
-            contact: transport.unloading_contact
-          });
-        } catch (error) {
-          places.push({
-            address: 'Brak danych',
-            contact: transport.unloading_contact || ''
-          });
+        const config = responseData.routeConfiguration[transport.id];
+        
+        // Dodaj tylko jeśli w konfiguracji jest oznaczone jako rozładunek
+        if (config && config.useUnloading === true) {
+          try {
+            const deliveryData = typeof transport.delivery_data === 'string' ? 
+              JSON.parse(transport.delivery_data) : transport.delivery_data;
+            
+            places.push({
+              address: formatAddress(deliveryData),
+              contact: transport.unloading_contact
+            });
+          } catch (error) {
+            places.push({
+              address: 'Brak danych',
+              contact: transport.unloading_contact || ''
+            });
+          }
         }
       });
     }
