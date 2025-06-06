@@ -34,7 +34,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     weight: initialData?.goodsDescription?.weight || ''
   })
   
-  // NOWE STANY DLA UPROSZCZONEGO SYSTEMU ŁĄCZENIA
+  // NOWE STANY DLA ZAAWANSOWANEGO SYSTEMU ŁĄCZENIA TRANSPORTÓW
   const [transportsToMerge, setTransportsToMerge] = useState([])
   const [costDistribution, setCostDistribution] = useState({})
   const [availableTransports, setAvailableTransports] = useState([])
@@ -82,166 +82,9 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     return `${start} → ${end}`
   }
 
-  // Pobierz listę użytkowników, budów i dane bieżącego użytkownika
-  useEffect(() => {
-    // Pobierz dane bieżącego użytkownika
-    const fetchCurrentUser = async () => {
-      try {
-        const response = await fetch('/api/user');
-        const data = await response.json();
-        
-        if (data.isAuthenticated && data.user) {
-          setCurrentUser({
-            email: data.user.email || '',
-            name: data.user.name || '',
-            mpk: data.user.mpk || ''
-          });
-          
-          // Pre-select the current user
-          if (!isEditing && !initialData) {
-            setSelectedUser({
-              email: data.user.email,
-              name: data.user.name,
-              mpk: data.user.mpk || ''
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Błąd pobierania danych użytkownika:', error);
-      }
-    };
+  // NOWE FUNKCJE DLA ZAAWANSOWANEGO ŁĄCZENIA TRANSPORTÓW
 
-    // Pobierz listę wszystkich użytkowników
-    const fetchUsers = async () => {
-      try {
-        const response = await fetch('/api/users/list');
-        const data = await response.json();
-        
-        // Map the data to a consistent format
-        const formattedUsers = data.map(user => ({
-          email: user.email,
-          name: user.name,
-          mpk: user.mpk || '',
-          type: 'user'
-        }));
-        
-        setUsers(formattedUsers);
-      } catch (error) {
-        console.error('Błąd pobierania listy użytkowników:', error);
-      }
-    };
-    
-    // Pobierz listę budów
-    const fetchConstructions = async () => {
-      try {
-        const response = await fetch('/api/constructions');
-        const data = await response.json();
-        
-        if (data.constructions) {
-          const formattedConstructions = data.constructions.map(construction => ({
-            id: construction.id,
-            name: construction.name,
-            mpk: construction.mpk || '',
-            type: 'construction'
-          }));
-          
-          setConstructions(formattedConstructions);
-        }
-      } catch (error) {
-        console.error('Błąd pobierania listy budów:', error);
-      }
-    };
-    
-    // NOWE: Pobierz dostępne transporty do łączenia (dla isResponse)
-    const fetchAvailableTransports = async () => {
-      if (!isResponse) return;
-      
-      try {
-        const response = await fetch('/api/spedycje?status=new');
-        if (response.ok) {
-          const data = await response.json();
-          
-          if (data.success && data.spedycje) {
-            // Filtruj, żeby nie pokazywać bieżącego transportu i już połączonych
-            const filteredTransports = data.spedycje.filter(t => 
-              t.id !== (initialData?.id || 0) && 
-              t.status === 'new' &&
-              !t.merged_transports && // nie pokazuj już połączonych
-              (!t.response || Object.keys(t.response).length === 0) // nie pokazuj z odpowiedziami
-            );
-            setAvailableTransports(filteredTransports);
-          }
-        }
-      } catch (error) {
-        console.error('Błąd pobierania dostępnych transportów:', error);
-      }
-    };
-
-    fetchCurrentUser();
-    fetchUsers();
-    fetchConstructions();
-    fetchAvailableTransports();
-  }, [isEditing, initialData, isResponse]);
-
-  // Click outside to close dropdown
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsDropdownOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
-  // Ustawianie początkowych danych formularza
-  useEffect(() => {
-    if (initialData) {
-      setSelectedLocation(initialData.location || '');
-      setDistance(initialData.distanceKm || 0);
-      
-      // Ustaw cenę całkowitą
-      if (initialData.response?.deliveryPrice) {
-        setTotalPrice(initialData.response.deliveryPrice);
-      }
-      
-      // Ustaw opis towaru, jeśli istnieje
-      if (initialData.goodsDescription) {
-        setGoodsDescription({
-          description: initialData.goodsDescription.description || '',
-          weight: initialData.goodsDescription.weight || ''
-        });
-        setShowGoodsDescription(true);
-      }
-      
-      if (isResponse) {
-        // Dla formularza odpowiedzi
-        if (initialData.deliveryDate) {
-          setOriginalDeliveryDate(initialData.deliveryDate);
-          setNewDeliveryDate(initialData.deliveryDate);
-        }
-      } else if (isEditing) {
-        // Dla trybu edycji
-        if (initialData.responsibleEmail) {
-          const responsibleUser = users.find(u => u.email === initialData.responsibleEmail);
-          if (responsibleUser) {
-            setSelectedUser(responsibleUser);
-            setSearchTerm(responsibleUser.name);
-          }
-        }
-        
-        // Ustaw budowy, jeśli są powiązane
-        if (initialData.responsibleConstructions && initialData.responsibleConstructions.length > 0) {
-          setSelectedConstructions(initialData.responsibleConstructions);
-        }
-      }
-    }
-  }, [initialData, isResponse, isEditing, users, constructions]);
-
-  // NOWA FUNKCJA: Dodawanie transportu z konfiguracją trasy
+  // Dodawanie transportu z domyślną konfiguracją trasy
   const handleAddTransportToMerge = (transportId) => {
     const transport = availableTransports.find(t => t.id === parseInt(transportId));
     if (transport && !transportsToMerge.find(t => t.id === transport.id)) {
@@ -268,8 +111,21 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       });
     }
   };
-  
-  // NOWA FUNKCJA: Aktualizacja konfiguracji trasy
+
+  // Usuwanie transportu z połączenia
+  const handleRemoveTransportFromMerge = (transportId) => {
+    setTransportsToMerge(transportsToMerge.filter(t => t.id !== transportId));
+    const newCostDistribution = { ...costDistribution };
+    delete newCostDistribution[transportId];
+    setCostDistribution(newCostDistribution);
+    
+    // Usuń też konfigurację trasy
+    const newRouteConfiguration = { ...routeConfiguration };
+    delete newRouteConfiguration[transportId];
+    setRouteConfiguration(newRouteConfiguration);
+  };
+
+  // Aktualizacja konfiguracji trasy
   const handleRouteConfigurationChange = (transportId, field, value) => {
     setRouteConfiguration({
       ...routeConfiguration,
@@ -286,8 +142,16 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         : t
     ));
   };
-  
-  // NOWA FUNKCJA: Obliczanie rzeczywistej trasy
+
+  // Zmiana podziału kosztów
+  const handleCostDistributionChange = (transportId, cost) => {
+    setCostDistribution({
+      ...costDistribution,
+      [transportId]: cost
+    });
+  };
+
+  // Obliczanie rzeczywistej trasy z konfiguracji
   const calculateMergedRoute = () => {
     if (transportsToMerge.length === 0) return { distance: distance, points: [] };
     
@@ -305,7 +169,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     const mainUnloading = {
       type: 'unloading', 
       transportId: 'main',
-      order: 1,
+      order: 999, // zawsze na końcu
       location: null, // będzie uzupełnione z formularza
       description: 'Rozładunek główny'
     };
@@ -352,8 +216,8 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     
     return { points: sortedPoints, estimatedDistance: calculateRouteDistance(sortedPoints) };
   };
-  
-  // FUNKCJE POMOCNICZE
+
+  // FUNKCJE POMOCNICZE dla konfiguracji trasy
   const getLocationCoords = (transport) => {
     // Pobierz współrzędne miejsca załadunku
     if (transport.location === 'Odbiory własne' && transport.producerAddress) {
@@ -365,11 +229,11 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     }
     return null;
   };
-  
+
   const getDeliveryCoords = (transport) => {
     return transport.delivery;
   };
-  
+
   const calculateRouteDistance = (points) => {
     // Uproszczone obliczenie - w rzeczywistości należałoby użyć Google Maps API
     let totalDistance = 0;
@@ -381,20 +245,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       }
     }
     return Math.round(totalDistance * 1.3); // Przybliżenie trasy drogowej
-  };
-
-  const handleRemoveTransportFromMerge = (transportId) => {
-    setTransportsToMerge(transportsToMerge.filter(t => t.id !== transportId));
-    const newCostDistribution = { ...costDistribution };
-    delete newCostDistribution[transportId];
-    setCostDistribution(newCostDistribution);
-  };
-
-  const handleCostDistributionChange = (transportId, cost) => {
-    setCostDistribution({
-      ...costDistribution,
-      [transportId]: cost
-    });
   };
 
   // Oblicz pozostałą kwotę dla głównego transportu
@@ -572,6 +422,165 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       [name]: value
     }));
   };
+
+  // Pobierz listę użytkowników, budów i dane bieżącego użytkownika
+  useEffect(() => {
+    // Pobierz dane bieżącego użytkownika
+    const fetchCurrentUser = async () => {
+      try {
+        const response = await fetch('/api/user');
+        const data = await response.json();
+        
+        if (data.isAuthenticated && data.user) {
+          setCurrentUser({
+            email: data.user.email || '',
+            name: data.user.name || '',
+            mpk: data.user.mpk || ''
+          });
+          
+          // Pre-select the current user
+          if (!isEditing && !initialData) {
+            setSelectedUser({
+              email: data.user.email,
+              name: data.user.name,
+              mpk: data.user.mpk || ''
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Błąd pobierania danych użytkownika:', error);
+      }
+    };
+
+    // Pobierz listę wszystkich użytkowników
+    const fetchUsers = async () => {
+      try {
+        const response = await fetch('/api/users/list');
+        const data = await response.json();
+        
+        // Map the data to a consistent format
+        const formattedUsers = data.map(user => ({
+          email: user.email,
+          name: user.name,
+          mpk: user.mpk || '',
+          type: 'user'
+        }));
+        
+        setUsers(formattedUsers);
+      } catch (error) {
+        console.error('Błąd pobierania listy użytkowników:', error);
+      }
+    };
+    
+    // Pobierz listę budów
+    const fetchConstructions = async () => {
+      try {
+        const response = await fetch('/api/constructions');
+        const data = await response.json();
+        
+        if (data.constructions) {
+          const formattedConstructions = data.constructions.map(construction => ({
+            id: construction.id,
+            name: construction.name,
+            mpk: construction.mpk || '',
+            type: 'construction'
+          }));
+          
+          setConstructions(formattedConstructions);
+        }
+      } catch (error) {
+        console.error('Błąd pobierania listy budów:', error);
+      }
+    };
+    
+    // NOWE: Pobierz dostępne transporty do łączenia (dla isResponse)
+    const fetchAvailableTransports = async () => {
+      if (!isResponse) return;
+      
+      try {
+        const response = await fetch('/api/spedycje?status=new');
+        if (response.ok) {
+          const data = await response.json();
+          
+          if (data.success && data.spedycje) {
+            // Filtruj, żeby nie pokazywać bieżącego transportu i już połączonych
+            const filteredTransports = data.spedycje.filter(t => 
+              t.id !== (initialData?.id || 0) && 
+              t.status === 'new' &&
+              !t.merged_transports && // nie pokazuj już połączonych
+              (!t.response || Object.keys(t.response).length === 0) // nie pokazuj z odpowiedziami
+            );
+            setAvailableTransports(filteredTransports);
+          }
+        }
+      } catch (error) {
+        console.error('Błąd pobierania dostępnych transportów:', error);
+      }
+    };
+
+    fetchCurrentUser();
+    fetchUsers();
+    fetchConstructions();
+    fetchAvailableTransports();
+  }, [isEditing, initialData, isResponse]);
+
+  // Click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Ustawianie początkowych danych formularza
+  useEffect(() => {
+    if (initialData) {
+      setSelectedLocation(initialData.location || '');
+      setDistance(initialData.distanceKm || 0);
+      
+      // Ustaw cenę całkowitą
+      if (initialData.response?.deliveryPrice) {
+        setTotalPrice(initialData.response.deliveryPrice);
+      }
+      
+      // Ustaw opis towaru, jeśli istnieje
+      if (initialData.goodsDescription) {
+        setGoodsDescription({
+          description: initialData.goodsDescription.description || '',
+          weight: initialData.goodsDescription.weight || ''
+        });
+        setShowGoodsDescription(true);
+      }
+      
+      if (isResponse) {
+        // Dla formularza odpowiedzi
+        if (initialData.deliveryDate) {
+          setOriginalDeliveryDate(initialData.deliveryDate);
+          setNewDeliveryDate(initialData.deliveryDate);
+        }
+      } else if (isEditing) {
+        // Dla trybu edycji
+        if (initialData.responsibleEmail) {
+          const responsibleUser = users.find(u => u.email === initialData.responsibleEmail);
+          if (responsibleUser) {
+            setSelectedUser(responsibleUser);
+            setSearchTerm(responsibleUser.name);
+          }
+        }
+        
+        // Ustaw budowy, jeśli są powiązane
+        if (initialData.responsibleConstructions && initialData.responsibleConstructions.length > 0) {
+          setSelectedConstructions(initialData.responsibleConstructions);
+        }
+      }
+    }
+  }, [initialData, isResponse, isEditing, users, constructions]);
   
   // Filter users and constructions based on search term
   const filteredItems = [...users, ...constructions].filter(item => 
@@ -647,10 +656,16 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         responseData.dateChanged = true;
       }
       
-      // NOWE: Dodaj dane o transportach do połączenia
+      // NOWE: Dodaj dane o transportach do połączenia z konfiguracją trasy
       if (transportsToMerge.length > 0) {
         responseData.transportsToMerge = transportsToMerge;
         responseData.costDistribution = costDistribution;
+        responseData.routeConfiguration = routeConfiguration;
+        
+        // Oblicz rzeczywistą odległość z konfiguracji trasy
+        const routeInfo = calculateMergedRoute();
+        responseData.realRouteDistance = routeInfo.estimatedDistance;
+        responseData.routePoints = routeInfo.points;
       }
       
       onSubmit(initialData.id, responseData);
