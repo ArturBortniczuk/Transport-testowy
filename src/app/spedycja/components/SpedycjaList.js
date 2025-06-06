@@ -13,6 +13,7 @@ export default function SpedycjaList({
   onCreateOrder, 
   canSendOrder,
   onEdit,
+  onCopy,  // <-- DODAJ TEN PROP
   currentUserEmail
 }) {
   const [expandedId, setExpandedId] = useState(null)
@@ -736,7 +737,18 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
                       <ChevronDown size={20} />
                     </button>
                   )}
-                  
+                  {/* Przycisk kopiowania - dla wszystkich użytkowników */}
+                  <button 
+                    type="button"
+                    className="px-3 py-2 bg-amber-500 text-white rounded-md hover:bg-amber-600 transition-colors flex items-center gap-2"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onCopy(zamowienie)
+                    }}
+                  >
+                    <Copy size={16} />
+                    Kopiuj
+                  </button>
                   {/* Przycisk edycji - widoczny dla twórcy lub admina (ale nie dla połączonych) */}
                   {canEdit && (
                     <button 
@@ -797,18 +809,6 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
                       >
                         <Truck size={16} />
                         Zrealizowane
-                      </button>
-                      {/* Przycisk kopiowania - dla wszystkich użytkowników */}
-                      <button 
-                        type="button"
-                        className="px-3 py-2 bg-amber-500 text-white rounded-md hover:bg-amber-600 transition-colors flex items-center gap-2"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onCopy(zamowienie)
-                        }}
-                      >
-                        <Copy size={16} />
-                        Kopiuj
                       </button>
                     </>
                   )}
