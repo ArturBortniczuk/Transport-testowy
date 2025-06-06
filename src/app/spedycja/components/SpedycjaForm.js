@@ -39,6 +39,9 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
   const [costDistribution, setCostDistribution] = useState({})
   const [availableTransports, setAvailableTransports] = useState([])
   const [showMergeSection, setShowMergeSection] = useState(false)
+  // NOWE STANY dla konfiguracji tras
+  const [routeConfiguration, setRouteConfiguration] = useState({})
+  const [routeOrder, setRouteOrder] = useState([])
   
   // Stałe dla magazynów
   const MAGAZYNY = {
@@ -238,12 +241,146 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     }
   }, [initialData, isResponse, isEditing, users, constructions]);
 
-  // NOWE FUNKCJE DLA ŁĄCZENIA TRANSPORTÓW
+  // NOWA FUNKCJA: Dodawanie transportu z konfiguracją trasy
   const handleAddTransportToMerge = (transportId) => {
     const transport = availableTransports.find(t => t.id === parseInt(transportId));
     if (transport && !transportsToMerge.find(t => t.id === transport.id)) {
-      setTransportsToMerge([...transportsToMerge, transport]);
+      const newTransport = {
+        ...transport,
+        // Domyślna konfiguracja
+        useLoading: true, // czy używać załadunku z tego transportu
+        useUnloading: true, // czy używać rozładunku z tego transportu
+        loadingOrder: transportsToMerge.length + 2, // kolejność załadunku (główny ma 1)
+        unloadingOrder: transportsToMerge.length + 2 // kolejność rozładunku
+      };
+      
+      setTransportsToMerge([...transportsToMerge, newTransport]);
+      
+      // Ustaw domyślną konfigurację trasy
+      setRouteConfiguration({
+        ...routeConfiguration,
+        [transport.id]: {
+          useLoading: true,
+          useUnloading: true,
+          loadingOrder: transportsToMerge.length + 2,
+          unloadingOrder: transportsToMerge.length + 2
+        }
+      });
     }
+  };
+  
+  // NOWA FUNKCJA: Aktualizacja konfiguracji trasy
+  const handleRouteConfigurationChange = (transportId, field, value) => {
+    setRouteConfiguration({
+      ...routeConfiguration,
+      [transportId]: {
+        ...routeConfiguration[transportId],
+        [field]: value
+      }
+    });
+    
+    // Aktualizuj też transport w liście
+    setTransportsToMerge(transportsToMerge.map(t => 
+      t.id === transportId 
+        ? { ...t, [field]: value }
+        : t
+    ));
+  };
+  
+  // NOWA FUNKCJA: Obliczanie rzeczywistej trasy
+  const calculateMergedRoute = () => {
+    if (transportsToMerge.length === 0) return { distance: distance, points: [] };
+    
+    const allPoints = [];
+    
+    // Dodaj główny transport
+    const mainLoading = {
+      type: 'loading',
+      transportId: 'main',
+      order: 1,
+      location: getLocationCoords(initialData || { location: selectedLocation, producerAddress: null }),
+      description: `Załadunek główny: ${selectedLocation}`
+    };
+    
+    const mainUnloading = {
+      type: 'unloading', 
+      transportId: 'main',
+      order: 1,
+      location: null, // będzie uzupełnione z formularza
+      description: 'Rozładunek główny'
+    };
+    
+    allPoints.push(mainLoading);
+    
+    // Dodaj punkty z dołączanych transportów
+    transportsToMerge.forEach(transport => {
+      const config = routeConfiguration[transport.id];
+      if (!config) return;
+      
+      if (config.useLoading) {
+        allPoints.push({
+          type: 'loading',
+          transportId: transport.id,
+          order: config.loadingOrder,
+          location: getLocationCoords(transport),
+          description: `Załadunek: ${transport.location}`
+        });
+      }
+      
+      if (config.useUnloading) {
+        allPoints.push({
+          type: 'unloading',
+          transportId: transport.id,
+          order: config.unloadingOrder,
+          location: getDeliveryCoords(transport),
+          description: `Rozładunek: ${transport.delivery?.city || 'Nie podano'}`
+        });
+      }
+    });
+    
+    // Dodaj główny rozładunek na końcu
+    allPoints.push(mainUnloading);
+    
+    // Sortuj punkty według kolejności i typu
+    const sortedPoints = allPoints.sort((a, b) => {
+      if (a.order !== b.order) return a.order - b.order;
+      // Przy tej samej kolejności, załadunek przed rozładunkiem
+      if (a.type === 'loading' && b.type === 'unloading') return -1;
+      if (a.type === 'unloading' && b.type === 'loading') return 1;
+      return 0;
+    });
+    
+    return { points: sortedPoints, estimatedDistance: calculateRouteDistance(sortedPoints) };
+  };
+  
+  // FUNKCJE POMOCNICZE
+  const getLocationCoords = (transport) => {
+    // Pobierz współrzędne miejsca załadunku
+    if (transport.location === 'Odbiory własne' && transport.producerAddress) {
+      return transport.producerAddress;
+    } else if (transport.location === 'Magazyn Białystok') {
+      return { city: 'Białystok', lat: 53.1325, lng: 23.1688 };
+    } else if (transport.location === 'Magazyn Zielonka') {
+      return { city: 'Zielonka', lat: 52.3125, lng: 21.1390 };
+    }
+    return null;
+  };
+  
+  const getDeliveryCoords = (transport) => {
+    return transport.delivery;
+  };
+  
+  const calculateRouteDistance = (points) => {
+    // Uproszczone obliczenie - w rzeczywistości należałoby użyć Google Maps API
+    let totalDistance = 0;
+    for (let i = 0; i < points.length - 1; i++) {
+      const point1 = points[i].location;
+      const point2 = points[i + 1].location;
+      if (point1 && point2 && point1.lat && point1.lng && point2.lat && point2.lng) {
+        totalDistance += calculateStraightLineDistance(point1.lat, point1.lng, point2.lat, point2.lng);
+      }
+    }
+    return Math.round(totalDistance * 1.3); // Przybliżenie trasy drogowej
   };
 
   const handleRemoveTransportFromMerge = (transportId) => {
