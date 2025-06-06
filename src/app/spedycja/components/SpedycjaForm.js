@@ -214,7 +214,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       return 0;
     });
     
-    return { points: sortedPoints, estimatedDistance: calculateRouteDistance(sortedPoints) };
+    return { points: sortedPoints, estimatedDistance: calculatePointsDistance(sortedPoints) }; // <-- ZMIANA TUTAJ
   };
 
   // FUNKCJE POMOCNICZE dla konfiguracji trasy
@@ -234,7 +234,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     return transport.delivery;
   };
 
-  const calculateRouteDistance = (points) => {
+  const calculatePointsDistance = (points) => {
     // Uproszczone obliczenie - w rzeczywistości należałoby użyć Google Maps API
     let totalDistance = 0;
     for (let i = 0; i < points.length - 1; i++) {
