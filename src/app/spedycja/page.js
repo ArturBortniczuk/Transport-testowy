@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import SpedycjaForm from './components/SpedycjaForm'
 import SpedycjaList from './components/SpedycjaList'
 import Link from 'next/link'
-import { Clipboard, Archive, Edit, CheckCircle, AlertCircle } from 'lucide-react'
+import { Clipboard, Archive, Edit, CheckCircle, AlertCircle, Copy } from 'lucide-react'
 import TransportOrderForm from './components/TransportOrderForm'
 
 export default function SpedycjaPage() {
@@ -19,6 +19,7 @@ export default function SpedycjaPage() {
   const [selectedOrderZamowienie, setSelectedOrderZamowienie] = useState(null);
   const [currentUserEmail, setCurrentUserEmail] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [isCopying, setIsCopying] = useState(false); // NOWY STAN dla kopiowania
   
   // NOWY STAN: Komunikaty o operacjach
   const [operationMessage, setOperationMessage] = useState(null);
@@ -113,7 +114,7 @@ export default function SpedycjaPage() {
 
   const handleDodajZamowienie = async (noweZamowienie) => {
     try {
-      console.log('Dodawanie nowego zamówienia:', noweZamowienie);
+      console.log(isCopying ? 'Zapisywanie skopiowanego zamówienia:' : 'Dodawanie nowego zamówienia:', noweZamowienie);
       
       // Najpierw spróbuj zapisać do API
       try {
@@ -131,7 +132,13 @@ export default function SpedycjaPage() {
           // Odświeżamy listę po dodaniu
           fetchSpedycje();
           setShowForm(false);
-          showOperationMessage('Zamówienie spedycji zostało pomyślnie dodane', 'success');
+          setIsCopying(false); // Resetuj stan kopiowania
+          showOperationMessage(
+            isCopying 
+              ? 'Skopiowane zamówienie zostało pomyślnie zapisane jako nowe' 
+              : 'Zamówienie spedycji zostało pomyślnie dodane', 
+            'success'
+          );
           return;
         }
       } catch (apiError) {
@@ -153,11 +160,59 @@ export default function SpedycjaPage() {
       
       fetchSpedycje();
       setShowForm(false);
-      showOperationMessage('Zamówienie spedycji zostało dodane (lokalnie)', 'success');
+      setIsCopying(false); // Resetuj stan kopiowania
+      showOperationMessage(
+        isCopying 
+          ? 'Skopiowane zamówienie zostało dodane (lokalnie)' 
+          : 'Zamówienie spedycji zostało dodane (lokalnie)', 
+        'success'
+      );
     } catch (error) {
       console.error('Błąd dodawania zlecenia:', error);
       showOperationMessage('Wystąpił błąd podczas dodawania zlecenia', 'error');
     }
+  };
+
+  // NOWA FUNKCJA: Obsługa kopiowania zamówienia
+  const handleCopy = (zamowienie) => {
+    console.log('Kopiowanie zamówienia:', zamowienie);
+    
+    // Przygotuj dane do skopiowania (bez ID, statusu, dat systemowych)
+    const copiedData = {
+      location: zamowienie.location,
+      documents: '', // Wyczyść dokumenty - użytkownik wprowadzi nowe
+      clientName: zamowienie.clientName || '',
+      producerAddress: zamowienie.producerAddress,
+      delivery: {
+        // Zachowaj tylko miasto, wyczyść resztę do edycji
+        city: '',
+        postalCode: '',
+        street: '',
+        pinLocation: zamowienie.delivery?.pinLocation || ''
+      },
+      loadingContact: zamowienie.loadingContact,
+      unloadingContact: '', // Wyczyść kontakt rozładunku
+      deliveryDate: '', // Wyczyść datę - użytkownik ustawi nową
+      notes: zamowienie.notes || '',
+      responsiblePerson: zamowienie.responsiblePerson,
+      responsibleEmail: zamowienie.responsibleEmail,
+      mpk: zamowienie.mpk,
+      responsibleConstructions: zamowienie.responsibleConstructions || [],
+      goodsDescription: zamowienie.goodsDescription || null,
+      // Dodaj flagę że to kopia
+      isCopy: true,
+      originalOrderNumber: zamowienie.orderNumber
+    };
+    
+    console.log('Dane do skopiowania:', copiedData);
+    
+    // Ustaw tryb kopiowania
+    setSelectedZamowienie(copiedData);
+    setIsEditing(false);
+    setIsCopying(true);
+    setShowForm(true);
+    
+    showOperationMessage(`Skopiowano zamówienie ${zamowienie.orderNumber}. Zmodyfikuj dane i zapisz jako nowe zamówienie.`, 'success');
   };
 
   // Nowa funkcja do obsługi edycji zamówienia
@@ -165,6 +220,7 @@ export default function SpedycjaPage() {
     console.log('Edycja zamówienia:', zamowienie);
     setSelectedZamowienie(zamowienie);
     setIsEditing(true);
+    setIsCopying(false);
     setShowForm(true);
   };
   
@@ -191,6 +247,7 @@ export default function SpedycjaPage() {
         fetchSpedycje(); // Odświeżamy listę
         setShowForm(false);
         setIsEditing(false);
+        setIsCopying(false);
         setSelectedZamowienie(null);
         showOperationMessage('Zamówienie zostało pomyślnie zaktualizowane', 'success');
       } else {
@@ -296,6 +353,7 @@ export default function SpedycjaPage() {
       console.log('Zamówienie już ma dane o odległości:', zamowienie.distanceKm || zamowienie.distance_km);
       setSelectedZamowienie(zamowienie);
       setIsEditing(false);
+      setIsCopying(false);
       setShowForm(true);
       return;
     }
@@ -324,6 +382,7 @@ export default function SpedycjaPage() {
     }
     
     setIsEditing(false);
+    setIsCopying(false);
     setShowForm(true);
   };
 
@@ -484,6 +543,7 @@ export default function SpedycjaPage() {
               onClick={() => {
                 setSelectedZamowienie(null);
                 setIsEditing(false);
+                setIsCopying(false);
                 setShowForm(true);
               }}
             >
@@ -506,6 +566,7 @@ export default function SpedycjaPage() {
               onCreateOrder={handleCreateOrder}
               canSendOrder={canSendOrder}
               onEdit={handleEdit}
+              onCopy={handleCopy}
               currentUserEmail={currentUserEmail}
             />
           ) : (
@@ -530,10 +591,12 @@ export default function SpedycjaPage() {
                 setShowForm(false);
                 setSelectedZamowienie(null);
                 setIsEditing(false);
+                setIsCopying(false);
               }}
               initialData={selectedZamowienie}
-              isResponse={!!selectedZamowienie && !isEditing}
+              isResponse={!!selectedZamowienie && !isEditing && !isCopying}
               isEditing={isEditing}
+              isCopying={isCopying}
             />
           </div>
         </div>
