@@ -1291,5 +1291,3 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
     </div>
   )
 }
-
-export default SpedycjaList
