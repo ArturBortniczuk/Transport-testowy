@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { format } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { generateCMR } from '@/lib/utils/generateCMR'
-import { Truck, Package, MapPin, Phone, FileText, Calendar, DollarSign, User, Clipboard, ArrowRight, ChevronDown, ChevronUp, AlertCircle, Edit, Pencil, Building, ShoppingBag, Weight, Bot, Link as LinkIcon, Unlink } from 'lucide-react'
+import { Truck, Package, MapPin, Phone, FileText, Calendar, DollarSign, User, Clipboard, ArrowRight, ChevronDown, ChevronUp, AlertCircle, Edit, Pencil, Building, ShoppingBag, Weight, Bot, Link as LinkIcon, Unlink, Copy } from 'lucide-react'
 
 export default function SpedycjaList({ 
   zamowienia, 
@@ -797,6 +797,18 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
                       >
                         <Truck size={16} />
                         Zrealizowane
+                      </button>
+                      {/* Przycisk kopiowania - dla wszystkich użytkowników */}
+                      <button 
+                        type="button"
+                        className="px-3 py-2 bg-amber-500 text-white rounded-md hover:bg-amber-600 transition-colors flex items-center gap-2"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onCopy(zamowienie)
+                        }}
+                      >
+                        <Copy size={16} />
+                        Kopiuj
                       </button>
                     </>
                   )}
