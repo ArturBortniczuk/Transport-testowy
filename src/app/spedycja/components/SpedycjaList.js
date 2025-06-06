@@ -805,321 +805,484 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
 
               {expandedId === zamowienie.id && (
                 <div className="mt-6 pl-4 border-l-4 border-blue-200 animate-fadeIn">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
-                    {/* Sekcja 1: Dane zamówienia i zamawiającego */}
-                    <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-                      <h4 className="font-medium mb-3 pb-2 border-b flex items-center text-blue-700">
-                        <FileText size={18} className="mr-2" />
-                        Dane zamówienia
-                      </h4>
-                      <p className="text-sm mb-2"><span className="font-medium">Numer zamówienia:</span> {zamowienie.orderNumber || '-'}</p>
-                      <p className="text-sm mb-2"><span className="font-medium">MPK:</span> {zamowienie.mpk}</p>
-                      <p className="text-sm mb-2"><span className="font-medium">Osoba dodająca:</span> {zamowienie.createdBy || zamowienie.requestedBy}</p>
-                      <p className="text-sm mb-2"><span className="font-medium">Osoba odpowiedzialna:</span> {zamowienie.responsiblePerson || zamowienie.createdBy || zamowienie.requestedBy}</p>
-                      <p className="text-sm mb-2"><span className="font-medium">Dokumenty:</span> {zamowienie.documents}</p>
-                      
-                      {/* Dodana informacja o nazwie klienta/odbiorcy */}
-                      {zamowienie.clientName && (
-                        <p className="text-sm mb-2"><span className="font-medium">Nazwa klienta/odbiorcy:</span> {zamowienie.clientName}</p>
-                      )}
-                      
-                      {/* Informacje o budowach */}
-                      {renderResponsibleConstructions(zamowienie)}
-                      
-                      {/* Informacja o towarze */}
-                      {renderGoodsInfo(zamowienie)}
-                    </div>
+                  {/* WARUNEK: Sprawdź czy to transport połączony */}
+                  {(() => {
+                    const isMerged = isMergedTransport(zamowienie);
+                    
+                    if (isMerged) {
+                      // DLA POŁĄCZONYCH TRANSPORTÓW - pokaż tylko sekcję połączonych tras
+                      return (
+                        <div>
+                          {/* Informacja o transporcie połączonym */}
+                          <div className="mb-6 bg-purple-50 border border-purple-200 rounded-lg p-4">
+                            <h4 className="font-medium text-purple-700 mb-2 flex items-center">
+                              <LinkIcon size={18} className="mr-2" />
+                              Transport połączony - szczegóły tras
+                            </h4>
+                            <p className="text-sm text-purple-600">
+                              Ten transport zawiera {getMergedTransportsData(zamowienie)?.originalTransports.length + 1} tras realizowanych w jednym kursie.
+                              Szczegółowe informacje o wszystkich trasach znajdują się poniżej.
+                            </p>
+                          </div>
 
-                    {/* Sekcja 2: Szczegóły załadunku/dostawy */}
-                    <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-                      <h4 className="font-medium mb-3 pb-2 border-b flex items-center text-green-700">
-                        <MapPin size={18} className="mr-2" />
-                        Szczegóły załadunku
-                      </h4>
-                      <div className="mb-2">
-                        <div className="font-medium text-sm text-gray-700">Firma:</div>
-                        <div className="text-sm">{getLoadingCompanyName(zamowienie)}</div>
-                      </div>
-                      <div className="mb-2">
-                        <div className="font-medium text-sm text-gray-700">Adres:</div>
-                        <div className="text-sm">
-                          {zamowienie.location === 'Odbiory własne' ? (
-                            formatAddress(zamowienie.producerAddress)
-                          ) : (
-                            zamowienie.location
+                          {/* Sekcja informacji o połączonych transportach */}
+                          {renderMergedTransportsInfo(zamowienie)}
+
+                          {/* Sekcja z uwagami - jeśli są */}
+                          {(zamowienie.notes || zamowienie.response?.adminNotes) && (
+                            <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                              <h4 className="font-bold text-gray-700 mb-3 flex items-center">
+                                <FileText size={18} className="mr-2" />
+                                Uwagi
+                              </h4>
+                              {zamowienie.notes && (
+                                <div className="mb-2">
+                                  <span className="font-medium text-gray-700">Uwagi zlecenia:</span>
+                                  <p className="text-gray-900 mt-1">{zamowienie.notes}</p>
+                                </div>
+                              )}
+                              {zamowienie.response?.adminNotes && (
+                                <div>
+                                  <span className="font-medium text-gray-700">Uwagi przewoźnika:</span>
+                                  <p className="text-gray-900 mt-1">{zamowienie.response.adminNotes}</p>
+                                </div>
+                              )}
+                            </div>
                           )}
-                        </div>
-                      </div>
-                      <p className="text-sm text-gray-600 mb-3 flex items-center">
-                        <Phone size={14} className="mr-1" />
-                        Kontakt: {zamowienie.loadingContact}
-                      </p>
-                      
-                      <h4 className="font-medium mt-5 mb-3 pb-2 border-b flex items-center text-orange-700">
-                        <MapPin size={18} className="mr-2" />
-                        Szczegóły dostawy
-                      </h4>
-                      <div className="mb-2">
-                        <div className="font-medium text-sm text-gray-700">Firma:</div>
-                        <div className="text-sm">{getUnloadingCompanyName(zamowienie)}</div>
-                      </div>
-                      <div className="mb-2">
-                        <div className="font-medium text-sm text-gray-700">Adres:</div>
-                        <div className="text-sm">{formatAddress(zamowienie.delivery)}</div>
-                      </div>
-                      <p className="text-sm text-gray-600 mb-3 flex items-center">
-                        <Phone size={14} className="mr-1" />
-                        Kontakt: {zamowienie.unloadingContact}
-                      </p>
-                      
-                      {/* Link do Google Maps */}
-                      {generateGoogleMapsLink(zamowienie) && (
-                        <div className="mt-4">
-                          <a 
-                            href={generateGoogleMapsLink(zamowienie)} 
-                            target="_blank" 
-                            rel="noopener noreferrer" 
-                            className="bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-2 rounded-md flex items-center w-fit transition-colors"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <MapPin size={16} className="mr-2" />
-                            Zobacz trasę na Google Maps
-                          </a>
-                        </div>
-                      )}
-                    </div>
 
-                    {/* Sekcja 3: Informacje o transporcie */}
-                    <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-                      <h4 className="font-medium mb-3 pb-2 border-b flex items-center text-purple-700">
-                        <Truck size={18} className="mr-2" />
-                        Informacje o transporcie
-                      </h4>
-                      
-                      {/* Data dostawy z wyróżnieniem, jeśli zmieniona */}
-                      <div className="text-sm mb-2">
-                        <div className="flex items-center">
-                          <Calendar size={14} className="mr-2 text-gray-500" />
-                          <span className="font-medium">Data dostawy:</span>
-                        </div>
-                        
-                        {dateChanged ? (
-                          <div className="ml-7 mt-1 p-2 bg-yellow-50 rounded-md border border-yellow-200">
-                            <div className="flex items-center text-yellow-800">
-                              <AlertCircle size={14} className="mr-1" />
-                              <span className="font-medium">Uwaga: Data została zmieniona!</span>
-                            </div>
-                            <div className="mt-1 flex items-center">
-                              <span className="text-gray-500">Data pierwotna:</span>
-                              <span className="ml-1 line-through text-gray-500">{formatDate(zamowienie.deliveryDate)}</span>
-                            </div>
-                            <div className="mt-1 flex items-center">
-                              <span className="text-gray-800 font-medium">Data aktualna:</span>
-                              <span className="ml-1 font-medium text-green-700">{formatDate(zamowienie.response.newDeliveryDate)}</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="ml-7 mt-1">
-                            {formatDate(zamowienie.deliveryDate)}
-                          </div>
-                        )}
-                      </div>
-                      
-                      <p className="text-sm mb-2 flex items-center">
-                        <Calendar size={14} className="mr-2 text-gray-500" />
-                        <span className="font-medium">Data dodania:</span> {formatDate(zamowienie.createdAt)}
-                      </p>
-                      
-                      <p className="text-sm mb-2 flex items-center">
-                        <MapPin size={14} className="mr-2 text-gray-500" />
-                        <span className="font-medium">Odległość:</span> 
-                        <span className="bg-blue-50 px-2 py-0.5 rounded ml-1 font-medium">
-                          {displayRoute.isMerged 
-                            ? `${displayRoute.distance} km (trasa połączona)`
-                            : `${displayRoute.distance} km`}
-                        </span>
-                      </p>
-                      
-                      {zamowienie.response && zamowienie.response.deliveryPrice && (
-                        <>
-                          <p className="text-sm mb-2 flex items-center">
-                            <DollarSign size={14} className="mr-2 text-gray-500" />
-                            <span className="font-medium">Cena transportu:</span> 
-                            <span className="bg-green-50 px-2 py-0.5 rounded ml-1 font-medium">
-                              {zamowienie.response.deliveryPrice} PLN
-                            </span>
-                          </p>
-                          <p className="text-sm mb-2 flex items-center">
-                            <DollarSign size={14} className="mr-2 text-gray-500" />
-                            <span className="font-medium">Cena za km:</span> 
-                            <span className="bg-green-50 px-2 py-0.5 rounded ml-1 font-medium">
-                              {(() => {
-                                const totalDistance = displayRoute.distance;
-                                return totalDistance > 0 
-                                  ? (zamowienie.response.deliveryPrice / totalDistance).toFixed(2)
-                                  : '0.00';
-                              })()} PLN/km
-                            </span>
-                          </p>
-                        </>
-                      )}
-                      
-                      {zamowienie.notes && (
-                        <div className="mt-3 bg-gray-50 p-2 rounded-md">
-                          <p className="text-sm"><span className="font-medium">Uwagi:</span> {zamowienie.notes}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {canEdit && (
-                    <div className="mt-4 flex justify-end">
-                      <button 
-                        type="button"
-                        className={buttonClasses.primary}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onEdit(zamowienie)
-                        }}
-                      >
-                        <Pencil size={16} />
-                        Edytuj zamówienie
-                      </button>
-                    </div>
-                  )}
-
-                  {/* NOWE: Sekcja informacji o połączonych transportach */}
-                  {isMerged && renderMergedTransportsInfo(zamowienie)}
-
-                  {zamowienie.response && (
-                    <div className={`mt-4 p-5 rounded-lg border shadow-sm ${
-                      isMerged 
-                        ? 'bg-purple-50 border-purple-200' 
-                        : 'bg-gray-50 border-gray-200'
-                    }`}>
-                      <h4 className="font-medium mb-3 pb-2 border-b border-gray-200 flex items-center text-gray-800">
-                        {isMerged ? <LinkIcon size={18} className="mr-2" /> : <Truck size={18} className="mr-2" />}
-                        {isMerged ? 'Szczegóły realizacji (transport połączony)' : 'Szczegóły realizacji'}
-                      </h4>
-                      
-                      {zamowienie.response.completedManually ? (
-                        <div className="bg-blue-50 text-blue-800 p-3 rounded-md border border-blue-100 flex items-center">
-                          <Clipboard size={18} className="mr-2" />
-                          Zamówienie zostało ręcznie oznaczone jako zrealizowane.
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          {/* Informacje o przewoźniku */}
-                          <div className="bg-white p-3 rounded-md shadow-sm border border-gray-100">
-                            <h5 className="text-sm font-medium mb-2 pb-1 border-b flex items-center text-blue-600">
-                              <User size={14} className="mr-1" />
-                              Dane przewoźnika
-                            </h5>
-                            <p className="text-sm mb-1.5"><span className="font-medium">Kierowca:</span> {zamowienie.response.driverName} {zamowienie.response.driverSurname}</p>
-                            <p className="text-sm mb-1.5"><span className="font-medium">Telefon:</span> {zamowienie.response.driverPhone}</p>
-                            <p className="text-sm mb-1.5"><span className="font-medium">Numery auta:</span> {zamowienie.response.vehicleNumber}</p>
-                          </div>
-                          
-                          {/* Informacje o kosztach */}
-                          <div className="bg-white p-3 rounded-md shadow-sm border border-gray-100">
-                            <h5 className="text-sm font-medium mb-2 pb-1 border-b flex items-center text-green-600">
-                              <DollarSign size={14} className="mr-1" />
-                              Dane finansowe
-                            </h5>
-                            <p className="text-sm mb-1.5"><span className="font-medium">Cena całkowita:</span> 
-                              <span className="bg-green-50 px-2 py-0.5 rounded ml-1">
-                                {zamowienie.response.deliveryPrice} PLN
-                              </span>
-                            </p>
-                            <p className="text-sm mb-1.5"><span className="font-medium">Odległość całkowita:</span> 
-                              {`${displayRoute.distance} km${displayRoute.isMerged ? ' (łącznie)' : ''}`}
-                            </p>
-                            {(() => {
-                              const totalDistance = displayRoute.distance;
+                          {/* Szczegóły realizacji dla połączonych transportów */}
+                          {zamowienie.response && (
+                            <div className="mt-4 p-5 rounded-lg border shadow-sm bg-purple-50 border-purple-200">
+                              <h4 className="font-medium mb-3 pb-2 border-b border-purple-300 flex items-center text-purple-800">
+                                <LinkIcon size={18} className="mr-2" />
+                                Szczegóły realizacji (transport połączony)
+                              </h4>
                               
-                              if (totalDistance > 0 && zamowienie.response.deliveryPrice > 0) {
-                                return (
-                                  <p className="text-sm mb-1.5"><span className="font-medium">Koszt za km:</span> 
-                                    <span className="bg-green-50 px-2 py-0.5 rounded ml-1">
-                                      {(zamowienie.response.deliveryPrice / totalDistance).toFixed(2)} PLN/km
+                              {zamowienie.response.completedManually ? (
+                                <div className="bg-blue-50 text-blue-800 p-3 rounded-md border border-blue-100 flex items-center">
+                                  <Clipboard size={18} className="mr-2" />
+                                  Zamówienie zostało ręcznie oznaczone jako zrealizowane.
+                                </div>
+                              ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                  {/* Informacje o przewoźniku */}
+                                  <div className="bg-white p-3 rounded-md shadow-sm border border-gray-100">
+                                    <h5 className="text-sm font-medium mb-2 pb-1 border-b flex items-center text-blue-600">
+                                      <User size={14} className="mr-1" />
+                                      Dane przewoźnika
+                                    </h5>
+                                    <p className="text-sm mb-1.5"><span className="font-medium">Kierowca:</span> {zamowienie.response.driverName} {zamowienie.response.driverSurname}</p>
+                                    <p className="text-sm mb-1.5"><span className="font-medium">Telefon:</span> {zamowienie.response.driverPhone}</p>
+                                    <p className="text-sm mb-1.5"><span className="font-medium">Numery auta:</span> {zamowienie.response.vehicleNumber}</p>
+                                  </div>
+                                  
+                                  {/* Informacje o kosztach */}
+                                  <div className="bg-white p-3 rounded-md shadow-sm border border-gray-100">
+                                    <h5 className="text-sm font-medium mb-2 pb-1 border-b flex items-center text-green-600">
+                                      <DollarSign size={14} className="mr-1" />
+                                      Dane finansowe (łącznie)
+                                    </h5>
+                                    <p className="text-sm mb-1.5"><span className="font-medium">Cena całkowita:</span> 
+                                      <span className="bg-green-50 px-2 py-0.5 rounded ml-1">
+                                        {zamowienie.response.deliveryPrice} PLN
+                                      </span>
+                                    </p>
+                                    <p className="text-sm mb-1.5"><span className="font-medium">Odległość łączna:</span> 
+                                      <span className="bg-blue-50 px-2 py-0.5 rounded ml-1">
+                                        {displayRoute.distance} km (trasa połączona)
+                                      </span>
+                                    </p>
+                                    {(() => {
+                                      const totalDistance = displayRoute.distance;
+                                      if (totalDistance > 0 && zamowienie.response.deliveryPrice > 0) {
+                                        return (
+                                          <p className="text-sm mb-1.5"><span className="font-medium">Koszt za km:</span> 
+                                            <span className="bg-green-50 px-2 py-0.5 rounded ml-1">
+                                              {(zamowienie.response.deliveryPrice / totalDistance).toFixed(2)} PLN/km
+                                            </span>
+                                          </p>
+                                        );
+                                      }
+                                      return null;
+                                    })()}
+                                    
+                                    <div className="mt-2 pt-2 border-t border-gray-100">
+                                      <p className="text-xs text-purple-600">
+                                        Koszt podzielony między {getMergedTransportsData(zamowienie)?.originalTransports.length + 1} transporty
+                                      </p>
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Informacje o realizacji */}
+                                  <div className="bg-white p-3 rounded-md shadow-sm border border-gray-100">
+                                    <h5 className="text-sm font-medium mb-2 pb-1 border-b flex items-center text-purple-600">
+                                      <Calendar size={14} className="mr-1" />
+                                      Informacje o realizacji
+                                    </h5>
+                                    <p className="text-sm mb-1.5"><span className="font-medium">Data odpowiedzi:</span> {formatDate(zamowienie.completedAt || zamowienie.createdAt)}</p>
+                                    
+                                    <div className="bg-purple-50 p-2 rounded-md border border-purple-100 mt-2 mb-1.5">
+                                      <p className="text-xs font-medium text-purple-800 flex items-center">
+                                        <LinkIcon size={12} className="mr-1" />
+                                        Transport połączony
+                                      </p>
+                                      <p className="text-xs text-purple-600 mt-1">
+                                        {getMergedTransportsData(zamowienie)?.originalTransports.length} transportów dodatkowo
+                                      </p>
+                                    </div>
+                                    
+                                    {zamowienie.response.dateChanged && (
+                                      <div className="bg-yellow-50 p-2 rounded-md border border-yellow-100 mt-2 mb-1.5">
+                                        <p className="text-sm font-medium text-yellow-800">Zmieniono datę dostawy:</p>
+                                        <p className="text-xs flex justify-between mt-1">
+                                          <span>Z: <span className="line-through">{formatDate(zamowienie.response.originalDeliveryDate)}</span></span>
+                                          <span>→</span>
+                                          <span>Na: <span className="font-medium">{formatDate(zamowienie.response.newDeliveryDate)}</span></span>
+                                        </p>
+                                      </div>
+                                    )}
+                                    
+                                    {zamowienie.response.adminNotes && (
+                                      <p className="text-sm"><span className="font-medium">Uwagi:</span> {zamowienie.response.adminNotes}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          
+                          {/* Przyciski akcji */}
+                          <div className="mt-5 flex justify-center space-x-4">
+                            {/* Link do Google Maps */}
+                            {generateGoogleMapsLink(zamowienie) && (
+                              <a 
+                                href={generateGoogleMapsLink(zamowienie)} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center transition-colors font-medium text-base"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <MapPin size={18} className="mr-2" />
+                                Zobacz trasę na Google Maps
+                              </a>
+                            )}
+                            
+                            {/* Przycisk CMR */}
+                            <button 
+                              type="button"
+                              className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg flex items-center transition-colors font-medium text-base"
+                              onClick={() => generateCMR(zamowienie)}
+                            >
+                              <FileText size={18} className="mr-2" />
+                              Generuj list przewozowy CMR
+                            </button>
+                            
+                            {/* Przycisk zlecenia transportowego */}
+                            {zamowienie.response && !showArchive && canSendOrder && (
+                              <button 
+                                type="button"
+                                className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg flex items-center transition-colors font-medium text-base"
+                                onClick={() => onCreateOrder(zamowienie)}
+                              >
+                                <Truck size={18} className="mr-2" />
+                                Stwórz zlecenie transportowe
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    } else {
+                      // DLA NORMALNYCH TRANSPORTÓW - pokaż standardowe szczegóły
+                      return (
+                        <div>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
+                            {/* Sekcja 1: Dane zamówienia i zamawiającego */}
+                            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                              <h4 className="font-medium mb-3 pb-2 border-b flex items-center text-blue-700">
+                                <FileText size={18} className="mr-2" />
+                                Dane zamówienia
+                              </h4>
+                              <p className="text-sm mb-2"><span className="font-medium">Numer zamówienia:</span> {zamowienie.orderNumber || '-'}</p>
+                              <p className="text-sm mb-2"><span className="font-medium">MPK:</span> {zamowienie.mpk}</p>
+                              <p className="text-sm mb-2"><span className="font-medium">Osoba dodająca:</span> {zamowienie.createdBy || zamowienie.requestedBy}</p>
+                              <p className="text-sm mb-2"><span className="font-medium">Osoba odpowiedzialna:</span> {zamowienie.responsiblePerson || zamowienie.createdBy || zamowienie.requestedBy}</p>
+                              <p className="text-sm mb-2"><span className="font-medium">Dokumenty:</span> {zamowienie.documents}</p>
+                              
+                              {/* Dodana informacja o nazwie klienta/odbiorcy */}
+                              {zamowienie.clientName && (
+                                <p className="text-sm mb-2"><span className="font-medium">Nazwa klienta/odbiorcy:</span> {zamowienie.clientName}</p>
+                              )}
+                              
+                              {/* Informacje o budowach */}
+                              {renderResponsibleConstructions(zamowienie)}
+                              
+                              {/* Informacja o towarze */}
+                              {renderGoodsInfo(zamowienie)}
+                            </div>
+
+                            {/* Sekcja 2: Szczegóły załadunku/dostawy */}
+                            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                              <h4 className="font-medium mb-3 pb-2 border-b flex items-center text-green-700">
+                                <MapPin size={18} className="mr-2" />
+                                Szczegóły załadunku
+                              </h4>
+                              <div className="mb-2">
+                                <div className="font-medium text-sm text-gray-700">Firma:</div>
+                                <div className="text-sm">{getLoadingCompanyName(zamowienie)}</div>
+                              </div>
+                              <div className="mb-2">
+                                <div className="font-medium text-sm text-gray-700">Adres:</div>
+                                <div className="text-sm">
+                                  {zamowienie.location === 'Odbiory własne' ? (
+                                    formatAddress(zamowienie.producerAddress)
+                                  ) : (
+                                    zamowienie.location
+                                  )}
+                                </div>
+                              </div>
+                              <p className="text-sm text-gray-600 mb-3 flex items-center">
+                                <Phone size={14} className="mr-1" />
+                                Kontakt: {zamowienie.loadingContact}
+                              </p>
+                              
+                              <h4 className="font-medium mt-5 mb-3 pb-2 border-b flex items-center text-orange-700">
+                                <MapPin size={18} className="mr-2" />
+                                Szczegóły dostawy
+                              </h4>
+                              <div className="mb-2">
+                                <div className="font-medium text-sm text-gray-700">Firma:</div>
+                                <div className="text-sm">{getUnloadingCompanyName(zamowienie)}</div>
+                              </div>
+                              <div className="mb-2">
+                                <div className="font-medium text-sm text-gray-700">Adres:</div>
+                                <div className="text-sm">{formatAddress(zamowienie.delivery)}</div>
+                              </div>
+                              <p className="text-sm text-gray-600 mb-3 flex items-center">
+                                <Phone size={14} className="mr-1" />
+                                Kontakt: {zamowienie.unloadingContact}
+                              </p>
+                              
+                              {/* Link do Google Maps */}
+                              {generateGoogleMapsLink(zamowienie) && (
+                                <div className="mt-4">
+                                  <a 
+                                    href={generateGoogleMapsLink(zamowienie)} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    className="bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-2 rounded-md flex items-center w-fit transition-colors"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <MapPin size={16} className="mr-2" />
+                                    Zobacz trasę na Google Maps
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Sekcja 3: Informacje o transporcie */}
+                            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                              <h4 className="font-medium mb-3 pb-2 border-b flex items-center text-purple-700">
+                                <Truck size={18} className="mr-2" />
+                                Informacje o transporcie
+                              </h4>
+                              
+                              {/* Data dostawy z wyróżnieniem, jeśli zmieniona */}
+                              <div className="text-sm mb-2">
+                                <div className="flex items-center">
+                                  <Calendar size={14} className="mr-2 text-gray-500" />
+                                  <span className="font-medium">Data dostawy:</span>
+                                </div>
+                                
+                                {dateChanged ? (
+                                  <div className="ml-7 mt-1 p-2 bg-yellow-50 rounded-md border border-yellow-200">
+                                    <div className="flex items-center text-yellow-800">
+                                      <AlertCircle size={14} className="mr-1" />
+                                      <span className="font-medium">Uwaga: Data została zmieniona!</span>
+                                    </div>
+                                    <div className="mt-1 flex items-center">
+                                      <span className="text-gray-500">Data pierwotna:</span>
+                                      <span className="ml-1 line-through text-gray-500">{formatDate(zamowienie.deliveryDate)}</span>
+                                    </div>
+                                    <div className="mt-1 flex items-center">
+                                      <span className="text-gray-800 font-medium">Data aktualna:</span>
+                                      <span className="ml-1 font-medium text-green-700">{formatDate(zamowienie.response.newDeliveryDate)}</span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="ml-7 mt-1">
+                                    {formatDate(zamowienie.deliveryDate)}
+                                  </div>
+                                )}
+                              </div>
+                              
+                              <p className="text-sm mb-2 flex items-center">
+                                <Calendar size={14} className="mr-2 text-gray-500" />
+                                <span className="font-medium">Data dodania:</span> {formatDate(zamowienie.createdAt)}
+                              </p>
+                              
+                              <p className="text-sm mb-2 flex items-center">
+                                <MapPin size={14} className="mr-2 text-gray-500" />
+                                <span className="font-medium">Odległość:</span> 
+                                <span className="bg-blue-50 px-2 py-0.5 rounded ml-1 font-medium">
+                                  {displayRoute.distance} km
+                                </span>
+                              </p>
+                              
+                              {zamowienie.response && zamowienie.response.deliveryPrice && (
+                                <>
+                                  <p className="text-sm mb-2 flex items-center">
+                                    <DollarSign size={14} className="mr-2 text-gray-500" />
+                                    <span className="font-medium">Cena transportu:</span> 
+                                    <span className="bg-green-50 px-2 py-0.5 rounded ml-1 font-medium">
+                                      {zamowienie.response.deliveryPrice} PLN
                                     </span>
                                   </p>
-                                );
-                              }
-                              return null;
-                            })()}
-                            
-                            {/* Informacja o podziale kosztów dla połączonych transportów */}
-                            {isMerged && (
-                              <div className="mt-2 pt-2 border-t border-gray-100">
-                                <p className="text-xs text-purple-600">
-                                  Koszt podzielony między {getMergedTransportsData(zamowienie)?.originalTransports.length + 1} transporty
-                                </p>
-                              </div>
-                            )}
+                                  <p className="text-sm mb-2 flex items-center">
+                                    <DollarSign size={14} className="mr-2 text-gray-500" />
+                                    <span className="font-medium">Cena za km:</span> 
+                                    <span className="bg-green-50 px-2 py-0.5 rounded ml-1 font-medium">
+                                      {(() => {
+                                        const totalDistance = displayRoute.distance;
+                                        return totalDistance > 0 
+                                          ? (zamowienie.response.deliveryPrice / totalDistance).toFixed(2)
+                                          : '0.00';
+                                      })()} PLN/km
+                                    </span>
+                                  </p>
+                                </>
+                              )}
+                              
+                              {zamowienie.notes && (
+                                <div className="mt-3 bg-gray-50 p-2 rounded-md">
+                                  <p className="text-sm"><span className="font-medium">Uwagi:</span> {zamowienie.notes}</p>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          
-                          {/* Informacje o realizacji */}
-                          <div className="bg-white p-3 rounded-md shadow-sm border border-gray-100">
-                            <h5 className="text-sm font-medium mb-2 pb-1 border-b flex items-center text-purple-600">
-                              <Calendar size={14} className="mr-1" />
-                              Informacje o realizacji
-                            </h5>
-                            <p className="text-sm mb-1.5"><span className="font-medium">Data odpowiedzi:</span> {formatDate(zamowienie.completedAt || zamowienie.createdAt)}</p>
-                            
-                            {/* Wyświetl informację o połączeniu */}
-                            {isMerged && (
-                              <div className="bg-purple-50 p-2 rounded-md border border-purple-100 mt-2 mb-1.5">
-                                <p className="text-xs font-medium text-purple-800 flex items-center">
-                                  <LinkIcon size={12} className="mr-1" />
-                                  Transport połączony
-                                </p>
-                                <p className="text-xs text-purple-600 mt-1">
-                                  {getMergedTransportsData(zamowienie)?.originalTransports.length} transportów dodatkowo
-                                </p>
+
+                          {canEdit && (
+                            <div className="mt-4 flex justify-end">
+                              <button 
+                                type="button"
+                                className={buttonClasses.primary}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  onEdit(zamowienie)
+                                }}
+                              >
+                                <Pencil size={16} />
+                                Edytuj zamówienie
+                              </button>
+                            </div>
+                          )}
+
+                          {zamowienie.response && (
+                            <div className="mt-4 p-5 rounded-lg border shadow-sm bg-gray-50 border-gray-200">
+                              <h4 className="font-medium mb-3 pb-2 border-b border-gray-200 flex items-center text-gray-800">
+                                <Truck size={18} className="mr-2" />
+                                Szczegóły realizacji
+                              </h4>
+                              
+                              {zamowienie.response.completedManually ? (
+                                <div className="bg-blue-50 text-blue-800 p-3 rounded-md border border-blue-100 flex items-center">
+                                  <Clipboard size={18} className="mr-2" />
+                                  Zamówienie zostało ręcznie oznaczone jako zrealizowane.
+                                </div>
+                              ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                  {/* Informacje o przewoźniku */}
+                                  <div className="bg-white p-3 rounded-md shadow-sm border border-gray-100">
+                                    <h5 className="text-sm font-medium mb-2 pb-1 border-b flex items-center text-blue-600">
+                                      <User size={14} className="mr-1" />
+                                      Dane przewoźnika
+                                    </h5>
+                                    <p className="text-sm mb-1.5"><span className="font-medium">Kierowca:</span> {zamowienie.response.driverName} {zamowienie.response.driverSurname}</p>
+                                    <p className="text-sm mb-1.5"><span className="font-medium">Telefon:</span> {zamowienie.response.driverPhone}</p>
+                                    <p className="text-sm mb-1.5"><span className="font-medium">Numery auta:</span> {zamowienie.response.vehicleNumber}</p>
+                                  </div>
+                                  
+                                  {/* Informacje o kosztach */}
+                                  <div className="bg-white p-3 rounded-md shadow-sm border border-gray-100">
+                                    <h5 className="text-sm font-medium mb-2 pb-1 border-b flex items-center text-green-600">
+                                      <DollarSign size={14} className="mr-1" />
+                                      Dane finansowe
+                                    </h5>
+                                    <p className="text-sm mb-1.5"><span className="font-medium">Cena całkowita:</span> 
+                                      <span className="bg-green-50 px-2 py-0.5 rounded ml-1">
+                                        {zamowienie.response.deliveryPrice} PLN
+                                      </span>
+                                    </p>
+                                    <p className="text-sm mb-1.5"><span className="font-medium">Odległość całkowita:</span> 
+                                      {`${displayRoute.distance} km`}
+                                    </p>
+                                    {(() => {
+                                      const totalDistance = displayRoute.distance;
+                                      
+                                      if (totalDistance > 0 && zamowienie.response.deliveryPrice > 0) {
+                                        return (
+                                          <p className="text-sm mb-1.5"><span className="font-medium">Koszt za km:</span> 
+                                            <span className="bg-green-50 px-2 py-0.5 rounded ml-1">
+                                              {(zamowienie.response.deliveryPrice / totalDistance).toFixed(2)} PLN/km
+                                            </span>
+                                          </p>
+                                        );
+                                      }
+                                      return null;
+                                    })()}
+                                  </div>
+                                  
+                                  {/* Informacje o realizacji */}
+                                  <div className="bg-white p-3 rounded-md shadow-sm border border-gray-100">
+                                    <h5 className="text-sm font-medium mb-2 pb-1 border-b flex items-center text-purple-600">
+                                      <Calendar size={14} className="mr-1" />
+                                      Informacje o realizacji
+                                    </h5>
+                                    <p className="text-sm mb-1.5"><span className="font-medium">Data odpowiedzi:</span> {formatDate(zamowienie.completedAt || zamowienie.createdAt)}</p>
+                                    
+                                    {zamowienie.response.dateChanged && (
+                                      <div className="bg-yellow-50 p-2 rounded-md border border-yellow-100 mt-2 mb-1.5">
+                                        <p className="text-sm font-medium text-yellow-800">Zmieniono datę dostawy:</p>
+                                        <p className="text-xs flex justify-between mt-1">
+                                          <span>Z: <span className="line-through">{formatDate(zamowienie.response.originalDeliveryDate)}</span></span>
+                                          <span>→</span>
+                                          <span>Na: <span className="font-medium">{formatDate(zamowienie.response.newDeliveryDate)}</span></span>
+                                        </p>
+                                      </div>
+                                    )}
+                                    
+                                    {zamowienie.response.adminNotes && (
+                                      <p className="text-sm"><span className="font-medium">Uwagi:</span> {zamowienie.response.adminNotes}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              <div className="mt-5 flex space-x-3">
+                                <button 
+                                  type="button"
+                                  className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors flex items-center gap-2"
+                                  onClick={() => generateCMR(zamowienie)}
+                                >
+                                  <FileText size={16} />
+                                  Generuj CMR
+                                </button>
+                                {zamowienie.response && !showArchive && canSendOrder && (
+                                  <button 
+                                    type="button"
+                                    className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors flex items-center gap-2"
+                                    onClick={() => onCreateOrder(zamowienie)}
+                                  >
+                                    <Truck size={16} />
+                                    Stwórz zlecenie transportowe
+                                  </button>
+                                )}
                               </div>
-                            )}
-                            
-                            {zamowienie.response.dateChanged && (
-                              <div className="bg-yellow-50 p-2 rounded-md border border-yellow-100 mt-2 mb-1.5">
-                                <p className="text-sm font-medium text-yellow-800">Zmieniono datę dostawy:</p>
-                                <p className="text-xs flex justify-between mt-1">
-                                  <span>Z: <span className="line-through">{formatDate(zamowienie.response.originalDeliveryDate)}</span></span>
-                                  <span>→</span>
-                                  <span>Na: <span className="font-medium">{formatDate(zamowienie.response.newDeliveryDate)}</span></span>
-                                </p>
-                              </div>
-                            )}
-                            
-                            {zamowienie.response.adminNotes && (
-                              <p className="text-sm"><span className="font-medium">Uwagi:</span> {zamowienie.response.adminNotes}</p>
-                            )}
-                          </div>
+                            </div>
+                          )}
                         </div>
-                      )}
-                      
-                      <div className="mt-5 flex space-x-3">
-                        <button 
-                          type="button"
-                          className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors flex items-center gap-2"
-                          onClick={() => generateCMR(zamowienie)}
-                        >
-                          <FileText size={16} />
-                          Generuj CMR
-                        </button>
-                        {zamowienie.response && !showArchive && canSendOrder && (
-                          <button 
-                            type="button"
-                            className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors flex items-center gap-2"
-                            onClick={() => onCreateOrder(zamowienie)}
-                          >
-                            <Truck size={16} />
-                            Stwórz zlecenie transportowe
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                      );
+                    }
+                  })()}
                 </div>
               )}
             </div>
@@ -1127,4 +1290,3 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
         })}
     </div>
   )
-}
