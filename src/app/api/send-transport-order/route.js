@@ -1,6 +1,6 @@
 // src/app/api/send-transport-order/route.js
 import { NextResponse } from 'next/server';
-import nodemailer from 'nodemailer';
+import * as nodemailer from 'nodemailer';
 import db from '@/database/db';
 
 export async function POST(request) {
@@ -134,7 +134,7 @@ export async function POST(request) {
     });
     
     // Konfiguracja transportera mailowego
-    const transporter = nodemailer.createTransporter({
+    const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: parseInt(process.env.SMTP_PORT || '465'),
       secure: process.env.SMTP_SECURE === 'true',
