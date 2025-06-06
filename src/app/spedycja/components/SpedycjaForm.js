@@ -1394,179 +1394,179 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
             </div>
           </div>
 
-          {/* Nowy komponent wyboru użytkownika lub budowy z autouzupełnianiem */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-1">
-              Osoba odpowiedzialna / budowa / numer MPK
-            </label>
-            <div className="relative" ref={dropdownRef}>
-              <div className="flex items-center relative">
-                <div className="relative flex-grow">
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={handleSearchChange}
-                    onClick={() => setIsDropdownOpen(true)}
-                    placeholder="Wyszukaj osobę odpowiedzialną lub budowę..."
-                    className="w-full p-2 pl-10 border rounded-md"
-                    required
-                  />
-                  <div className="absolute left-3 top-2.5 text-gray-400">
-                    <Search size={18} />
-                  </div>
-                </div>
-                {searchTerm && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSearchTerm('');
-                      setSelectedUser(null);
-                      setSelectedConstructions([]);
-                    }}
-                    className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
-                  >
-                    <X size={18} />
-                  </button>
-                )}
-              </div>
-              
-              {isDropdownOpen && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                  {filteredItems.length > 0 ? (
-                    <>
-                      {/* Osoby */}
-                      {filteredItems.filter(item => item.type === 'user').length > 0 && (
-                        <div className="px-3 py-1 bg-gray-100 text-gray-700 text-xs font-semibold">
-                          Osoby
-                        </div>
-                      )}
-                      {filteredItems
-                        .filter(item => item.type === 'user')
-                        .map((user) => (
-                          <div
-                            key={user.email}
-                            onClick={() => handleSelectItem(user)}
-                            className="p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100"
-                          >
-                            <div className="font-medium">{user.name}</div>
-                            <div className="text-sm text-gray-600 flex justify-between">
-                              <span>{user.email}</span>
-                              {user.mpk && <span className="text-blue-600">MPK: {user.mpk}</span>}
-                            </div>
-                          </div>
-                        ))
-                      }
-                      
-                      {/* Budowy */}
-                      {filteredItems.filter(item => item.type === 'construction').length > 0 && (
-                        <div className="px-3 py-1 bg-gray-100 text-gray-700 text-xs font-semibold">
-                          Budowy
-                        </div>
-                      )}
-                      {filteredItems
-                        .filter(item => item.type === 'construction')
-                        .map((construction) => (
-                          <div
-                            key={construction.id}
-                            onClick={() => handleSelectItem(construction)}
-                            className="p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
-                          >
-                            <div className="font-medium">{construction.name}</div>
-                            <div className="text-sm text-gray-600">
-                              MPK: <span className="text-blue-600">{construction.mpk}</span>
-                            </div>
-                          </div>
-                        ))
-                      }
-                    </>
-                  ) : (
-                    <div className="p-2 text-gray-500">Brak wyników</div>
-                  )}
-                </div>
-              )}
-            </div>
-            
-            {/* Wyświetlanie wybranej osoby/budowy */}
-            {selectedUser && (
-              <div className="mt-2 p-2 bg-blue-50 rounded-md border border-blue-100">
-                <div className="flex justify-between">
-                  <div>
-                    <span className="font-medium">Wybrana osoba:</span> {selectedUser.name}
-                  </div>
-                  {selectedUser.mpk && (
-                    <div>
-                      <span className="font-medium">MPK:</span> {selectedUser.mpk}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-            
-            {/* Wyświetlanie wybranych budów */}
-            {selectedConstructions.length > 0 && (
-              <div className="mt-2 p-2 bg-green-50 rounded-md border border-green-100">
-                <h4 className="font-medium text-sm mb-2">Wybrane budowy:</h4>
-                <div className="space-y-2">
-                  {selectedConstructions.map(construction => (
-                    <div key={construction.id} className="flex justify-between items-center text-sm">
-                      <div>
-                        <span className="font-medium">{construction.name}</span>
-                        <span className="ml-2 text-gray-600">MPK: {construction.mpk}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveConstruction(construction.id)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+{/* Nowy komponent wyboru użytkownika lub budowy z autouzupełnianiem */}
+         <div className="mb-4">
+           <label className="block text-sm font-medium mb-1">
+             Osoba odpowiedzialna / budowa / numer MPK
+           </label>
+           <div className="relative" ref={dropdownRef}>
+             <div className="flex items-center relative">
+               <div className="relative flex-grow">
+                 <input
+                   type="text"
+                   value={searchTerm}
+                   onChange={handleSearchChange}
+                   onClick={() => setIsDropdownOpen(true)}
+                   placeholder="Wyszukaj osobę odpowiedzialną lub budowę..."
+                   className="w-full p-2 pl-10 border rounded-md"
+                   required
+                 />
+                 <div className="absolute left-3 top-2.5 text-gray-400">
+                   <Search size={18} />
+                 </div>
+               </div>
+               {searchTerm && (
+                 <button
+                   type="button"
+                   onClick={() => {
+                     setSearchTerm('');
+                     setSelectedUser(null);
+                     setSelectedConstructions([]);
+                   }}
+                   className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+                 >
+                   <X size={18} />
+                 </button>
+               )}
+             </div>
+             
+             {isDropdownOpen && (
+               <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                 {filteredItems.length > 0 ? (
+                   <>
+                     {/* Osoby */}
+                     {filteredItems.filter(item => item.type === 'user').length > 0 && (
+                       <div className="px-3 py-1 bg-gray-100 text-gray-700 text-xs font-semibold">
+                         Osoby
+                       </div>
+                     )}
+                     {filteredItems
+                       .filter(item => item.type === 'user')
+                       .map((user) => (
+                         <div
+                           key={user.email}
+                           onClick={() => handleSelectItem(user)}
+                           className="p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100"
+                         >
+                           <div className="font-medium">{user.name}</div>
+                           <div className="text-sm text-gray-600 flex justify-between">
+                             <span>{user.email}</span>
+                             {user.mpk && <span className="text-blue-600">MPK: {user.mpk}</span>}
+                           </div>
+                         </div>
+                       ))
+                     }
+                     
+                     {/* Budowy */}
+                     {filteredItems.filter(item => item.type === 'construction').length > 0 && (
+                       <div className="px-3 py-1 bg-gray-100 text-gray-700 text-xs font-semibold">
+                         Budowy
+                       </div>
+                     )}
+                     {filteredItems
+                       .filter(item => item.type === 'construction')
+                       .map((construction) => (
+                         <div
+                           key={construction.id}
+                           onClick={() => handleSelectItem(construction)}
+                           className="p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+                         >
+                           <div className="font-medium">{construction.name}</div>
+                           <div className="text-sm text-gray-600">
+                             MPK: <span className="text-blue-600">{construction.mpk}</span>
+                           </div>
+                         </div>
+                       ))
+                     }
+                   </>
+                 ) : (
+                   <div className="p-2 text-gray-500">Brak wyników</div>
+                 )}
+               </div>
+             )}
+           </div>
+           
+           {/* Wyświetlanie wybranej osoby/budowy */}
+           {selectedUser && (
+             <div className="mt-2 p-2 bg-blue-50 rounded-md border border-blue-100">
+               <div className="flex justify-between">
+                 <div>
+                   <span className="font-medium">Wybrana osoba:</span> {selectedUser.name}
+                 </div>
+                 {selectedUser.mpk && (
+                   <div>
+                     <span className="font-medium">MPK:</span> {selectedUser.mpk}
+                   </div>
+                 )}
+               </div>
+             </div>
+           )}
+           
+           {/* Wyświetlanie wybranych budów */}
+           {selectedConstructions.length > 0 && (
+             <div className="mt-2 p-2 bg-green-50 rounded-md border border-green-100">
+               <h4 className="font-medium text-sm mb-2">Wybrane budowy:</h4>
+               <div className="space-y-2">
+                 {selectedConstructions.map(construction => (
+                   <div key={construction.id} className="flex justify-between items-center text-sm">
+                     <div>
+                       <span className="font-medium">{construction.name}</span>
+                       <span className="ml-2 text-gray-600">MPK: {construction.mpk}</span>
+                     </div>
+                     <button
+                       type="button"
+                       onClick={() => handleRemoveConstruction(construction.id)}
+                       className="text-red-600 hover:text-red-800"
+                     >
+                       <X size={16} />
+                     </button>
+                   </div>
+                 ))}
+               </div>
+             </div>
+           )}
+         </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Uwagi</label>
-            <textarea
-              name="notes"
-              className="w-full p-2 border rounded-md"
-              rows={3}
-              defaultValue={initialData?.notes || ''}
-              placeholder="Dodatkowe informacje..."
-            />
-          </div>
+         <div>
+           <label className="block text-sm font-medium mb-1">Uwagi</label>
+           <textarea
+             name="notes"
+             className="w-full p-2 border rounded-md"
+             rows={3}
+             defaultValue={initialData?.notes || ''}
+             placeholder="Dodatkowe informacje..."
+           />
+         </div>
 
-          <div>
-            <button
-              type="button"
-              onClick={() => calculateRouteDistance(selectedLocation, 'destination')}
-              className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 mb-2"
-              disabled={isCalculatingDistance}
-            >
-              {isCalculatingDistance ? 'Obliczanie...' : 'Oblicz odległość trasy'}
-            </button>
-            
-            {distance > 0 && (
-              <div className="text-center text-green-700 bg-green-50 p-2 rounded-md">
-                Odległość trasy: <strong>{distance} km</strong>
-              </div>
-            )}
-          </div>
-        </>
-      )}
+         <div>
+           <button
+             type="button"
+             onClick={() => calculateRouteDistance(selectedLocation, 'destination')}
+             className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 mb-2"
+             disabled={isCalculatingDistance}
+           >
+             {isCalculatingDistance ? 'Obliczanie...' : 'Oblicz odległość trasy'}
+           </button>
+           
+           {distance > 0 && (
+             <div className="text-center text-green-700 bg-green-50 p-2 rounded-md">
+               Odległość trasy: <strong>{distance} km</strong>
+             </div>
+           )}
+         </div>
+       </>
+     )}
 
-      <div className="flex justify-end gap-2">
-        <button
-          type="submit"
-          className={buttonClasses.primary}
-        >
-          {isResponse ? 'Zapisz odpowiedź' : 
-           isEditing ? 'Zapisz zmiany' : 
-           'Dodaj zamówienie'}
-        </button>
-      </div>
-    </form>
-  )
+     <div className="flex justify-end gap-2">
+       <button
+         type="submit"
+         className={buttonClasses.primary}
+       >
+         {isResponse ? 'Zapisz odpowiedź' : 
+          isEditing ? 'Zapisz zmiany' : 
+          'Dodaj zamówienie'}
+       </button>
+     </div>
+   </form>
+ )
 }
