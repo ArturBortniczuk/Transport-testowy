@@ -1,9 +1,9 @@
 // src/app/spedycja/components/SpedycjaForm.js
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { Calendar, Search, X, Info, Truck, PlusCircle, LinkIcon, DollarSign } from 'lucide-react'
+import { Calendar, Search, X, Info, Truck, PlusCircle, LinkIcon, DollarSign, Copy } from 'lucide-react'
 
-export default function SpedycjaForm({ onSubmit, onCancel, initialData, isResponse, isEditing }) {
+export default function SpedycjaForm({ onSubmit, onCancel, initialData, isResponse, isEditing, isCopying }) {
   const [selectedLocation, setSelectedLocation] = useState(initialData?.location || '')
   const [users, setUsers] = useState([])
   const [constructions, setConstructions] = useState([])
@@ -841,7 +841,62 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
   const handleSubmit = async (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
-    
+
+    // Na początku funkcji handleSubmit, dodaj:
+    if (isCopying) {
+      // Tryb kopiowania - traktuj jak nowe zamówienie
+      if (!selectedUser && selectedConstructions.length === 0) {
+        alert('Wybierz osobę lub budowę odpowiedzialną za zlecenie');
+        return;
+      }
+      
+      // Oblicz odległość dla skopiowanego zamówienia
+      let routeDistance = distance;
+      if (routeDistance === 0) {
+        try {
+          routeDistance = await calculateRouteDistance(selectedLocation, 'destination');
+          console.log('Obliczona odległość dla kopii:', routeDistance);
+        } catch (error) {
+          console.error('Błąd obliczania odległości:', error);
+        }
+      }
+      
+      const data = {
+        location: selectedLocation,
+        documents: formData.get('documents'),
+        clientName: formData.get('clientName') || '',
+        producerAddress: selectedLocation === 'Odbiory własne' ? {
+          city: formData.get('producerCity'),
+          postalCode: formData.get('producerPostalCode'),
+          street: formData.get('producerStreet'),
+          pinLocation: formData.get('producerPinLocation')
+        } : null,
+        delivery: {
+          city: formData.get('deliveryCity'),
+          postalCode: formData.get('deliveryPostalCode'),
+          street: formData.get('deliveryStreet'),
+          pinLocation: formData.get('deliveryPinLocation')
+        },
+        loadingContact: formData.get('loadingContact'),
+        unloadingContact: formData.get('unloadingContact'),
+        deliveryDate: formData.get('deliveryDate'),
+        distanceKm: routeDistance,
+        notes: formData.get('notes'),
+        createdBy: currentUser.name,
+        createdByEmail: currentUser.email,
+        responsiblePerson: selectedUser ? selectedUser.name : null,
+        responsibleEmail: selectedUser ? selectedUser.email : null,
+        mpk: selectedUser ? selectedUser.mpk || '' : '',
+        responsibleConstructions: selectedConstructions.length > 0 ? selectedConstructions : null,
+        goodsDescription: showGoodsDescription ? goodsDescription : null
+      };
+      
+      console.log('Zapisywanie skopiowanego zamówienia:', data);
+      onSubmit(data);
+      onCancel();
+      return;
+    }
+
     if (isResponse) {
       console.log('Odpowiedź na zamówienie, dane początkowe:', initialData);
       // Wykorzystaj odległość z oryginalnego zamówienia lub obliczoną dla połączonych
@@ -1029,6 +1084,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         <h2 className="text-xl font-semibold">
           {isResponse ? 'Odpowiedź na zamówienie spedycji' : 
            isEditing ? 'Edycja zamówienia spedycji' : 
+           isCopying ? 'Nowe zamówienie (skopiowane)' :
            'Nowe zamówienie spedycji'}
         </h2>
         <button
@@ -1039,6 +1095,21 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
           Anuluj
         </button>
       </div>
+
+      {isCopying && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center text-amber-700">
+            <Copy size={18} className="mr-2" />
+            <div>
+              <div className="font-medium">Kopiowanie zamówienia</div>
+              <div className="text-sm text-amber-600 mt-1">
+                Skopiowano dane z zamówienia {initialData?.originalOrderNumber}. 
+                Zmodyfikuj potrzebne pola i zapisz jako nowe zamówienie.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isResponse ? (
         // Formularz odpowiedzi
@@ -1836,6 +1907,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         >
           {isResponse ? 'Zapisz odpowiedź' : 
            isEditing ? 'Zapisz zmiany' : 
+           isCopying ? 'Zapisz jako nowe zamówienie' :
            'Dodaj zamówienie'}
         </button>
       </div>
