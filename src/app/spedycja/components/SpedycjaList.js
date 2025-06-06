@@ -100,94 +100,161 @@ export default function SpedycjaList({
   };
 
   // Funkcja do generowania linku do Google Maps - ZAKTUALIZOWANA
-  const generateGoogleMapsLink = (transport) => {
-    const isMerged = isMergedTransport(transport);
+const generateGoogleMapsLink = (transport) => {
+  const isMerged = isMergedTransport(transport);
+  
+  if (!isMerged) {
+    // Dla normalnego transportu - stara logika
+    let origin = '';
+    let destination = '';
     
-    if (!isMerged) {
-      // Dla normalnego transportu - stara logika
-      let origin = '';
-      let destination = '';
-      
-      if (transport.location === 'Odbiory własne' && transport.producerAddress) {
-        const addr = transport.producerAddress;
-        origin = `${addr.city},${addr.postalCode},${addr.street || ''}`;
-      } else if (transport.location === 'Magazyn Białystok') {
-        origin = 'Białystok';
-      } else if (transport.location === 'Magazyn Zielonka') {
-        origin = 'Zielonka';
-      }
-      
-      if (transport.delivery) {
-        const addr = transport.delivery;
-        destination = `${addr.city},${addr.postalCode},${addr.street || ''}`;
-      }
-      
-      if (!origin || !destination) return '';
-      
-      origin = encodeURIComponent(origin);
-      destination = encodeURIComponent(destination);
-      
-      return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
-    }
-    
-    // Dla transportu połączonego - wszystkie punkty
-    const mergedData = getMergedTransportsData(transport);
-    if (!mergedData) return '';
-    
-    const waypoints = [];
-    
-    // Dodaj punkt startowy głównego transportu
-    let mainOrigin = '';
     if (transport.location === 'Odbiory własne' && transport.producerAddress) {
       const addr = transport.producerAddress;
-      mainOrigin = `${addr.city},${addr.postalCode},${addr.street || ''}`;
+      origin = `${addr.city},${addr.postalCode},${addr.street || ''}`;
     } else if (transport.location === 'Magazyn Białystok') {
-      mainOrigin = 'Białystok';
+      origin = 'Białystok';
     } else if (transport.location === 'Magazyn Zielonka') {
-      mainOrigin = 'Zielonka';
+      origin = 'Zielonka';
     }
     
-    // Dodaj punkt końcowy głównego transportu jako waypoint
     if (transport.delivery) {
       const addr = transport.delivery;
-      waypoints.push(`${addr.city},${addr.postalCode},${addr.street || ''}`);
+      destination = `${addr.city},${addr.postalCode},${addr.street || ''}`;
     }
     
-    // Dodaj wszystkie punkty z połączonych transportów
-    mergedData.originalTransports.forEach(originalTransport => {
-      try {
-        let locationData = originalTransport.location_data;
-        if (typeof locationData === 'string') {
-          locationData = JSON.parse(locationData);
-        }
-        
-        let deliveryData = originalTransport.delivery_data;
-        if (typeof deliveryData === 'string') {
-          deliveryData = JSON.parse(deliveryData);
-        }
-        
-        // Dodaj punkt załadunku jeśli to odbiory własne
-        if (originalTransport.location === 'Odbiory własne' && locationData) {
-          waypoints.push(`${locationData.city},${locationData.postalCode},${locationData.street || ''}`);
-        }
-        
-        // Dodaj punkt dostawy
-        if (deliveryData) {
-          waypoints.push(`${deliveryData.city},${deliveryData.postalCode},${deliveryData.street || ''}`);
-        }
-      } catch (error) {
-        console.error('Błąd parsowania danych trasy:', error);
+    if (!origin || !destination) return '';
+    
+    origin = encodeURIComponent(origin);
+    destination = encodeURIComponent(destination);
+    
+    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
+  }
+  
+  // NOWA LOGIKA: Dla transportu połączonego - sekwencyjna trasa
+  const mergedData = getMergedTransportsData(transport);
+  if (!mergedData) return '';
+  
+  try {
+    // Rekonstrukcja trasy z danych response
+    const routePoints = transport.response?.routePoints;
+    
+    if (routePoints && routePoints.length > 1) {
+      // Użyj zapisanych punktów trasy
+      return generateMapsLinkFromRoutePoints(routePoints);
+    }
+    
+    // Fallback - rekonstruuj trasę z danych transportów
+    return reconstructRouteFromMergedData(transport, mergedData);
+    
+  } catch (error) {
+    console.error('Błąd generowania linku Maps dla połączonego transportu:', error);
+    return '';
+  }
+};
+
+// NOWA FUNKCJA: Generowanie linku z zapisanych punktów trasy
+const generateMapsLinkFromRoutePoints = (routePoints) => {
+  if (routePoints.length < 2) return '';
+  
+  let origin = '';
+  let destination = '';
+  const waypoints = [];
+  
+  // Pierwszy punkt to origin
+  const firstPoint = routePoints[0];
+  origin = getAddressFromRoutePoint(firstPoint);
+  
+  // Ostatni punkt to destination  
+  const lastPoint = routePoints[routePoints.length - 1];
+  destination = getAddressFromRoutePoint(lastPoint);
+  
+  // Środkowe punkty to waypoints
+  for (let i = 1; i < routePoints.length - 1; i++) {
+    const waypointAddress = getAddressFromRoutePoint(routePoints[i]);
+    if (waypointAddress) {
+      waypoints.push(waypointAddress);
+    }
+  }
+  
+  if (!origin || !destination) return '';
+  
+  const waypointsParam = waypoints.length > 0 ? `&waypoints=${encodeURIComponent(waypoints.join('|'))}` : '';
+  
+  return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}${waypointsParam}&travelmode=driving`;
+};
+
+// NOWA FUNKCJA: Pobieranie adresu z punktu trasy
+const getAddressFromRoutePoint = (routePoint) => {
+  if (!routePoint || !routePoint.location) return '';
+  
+  // Jeśli to magazyn
+  if (routePoint.description.includes('Magazyn Białystok') || routePoint.address === 'Magazyn Białystok') {
+    return 'Białystok';
+  }
+  if (routePoint.description.includes('Magazyn Zielonka') || routePoint.address === 'Magazyn Zielonka') {
+    return 'Zielonka';
+  }
+  
+  // Jeśli mamy współrzędne w location
+  const loc = routePoint.location;
+  if (loc.city) {
+    return `${loc.city}, ${loc.postalCode || ''}, ${loc.street || ''}`;
+  }
+  
+  // Fallback - użyj description
+  return routePoint.description.replace('Załadunek: ', '').replace('Rozładunek: ', '');
+};
+
+// NOWA FUNKCJA: Rekonstrukcja trasy z danych połączonych transportów (fallback)
+const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
+  const points = [];
+  
+  // Główny załadunek
+  if (mainTransport.location === 'Magazyn Białystok') {
+    points.push('Białystok');
+  } else if (mainTransport.location === 'Magazyn Zielonka') {
+    points.push('Zielonka');
+  } else if (mainTransport.location === 'Odbiory własne' && mainTransport.producerAddress) {
+    const addr = mainTransport.producerAddress;
+    points.push(`${addr.city}, ${addr.postalCode}, ${addr.street || ''}`);
+  }
+  
+  // Dodatkowe załadunki z połączonych transportów
+  mergedData.originalTransports.forEach(transport => {
+    try {
+      let locationData = transport.location_data;
+      if (typeof locationData === 'string') {
+        locationData = JSON.parse(locationData);
       }
-    });
-    
-    if (!mainOrigin || waypoints.length === 0) return '';
-    
-    // Ostatni waypoint staje się destination
-    const destination = waypoints.pop();
-    const waypointsParam = waypoints.length > 0 ? `&waypoints=${encodeURIComponent(waypoints.join('|'))}` : '';
-    
-    return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(mainOrigin)}&destination=${encodeURIComponent(destination)}${waypointsParam}&travelmode=driving`;
-  };
+      
+      if (transport.location === 'Magazyn Białystok') {
+        points.push('Białystok');
+      } else if (transport.location === 'Magazyn Zielonka') {
+        points.push('Zielonka');
+      } else if (transport.location === 'Odbiory własne' && locationData) {
+        points.push(`${locationData.city}, ${locationData.postalCode}, ${locationData.street || ''}`);
+      }
+    } catch (error) {
+      console.error('Błąd parsowania danych lokalizacji:', error);
+    }
+  });
+  
+  // Główny rozładunek (zawsze ostatni)
+  if (mainTransport.delivery) {
+    const addr = mainTransport.delivery;
+    points.push(`${addr.city}, ${addr.postalCode}, ${addr.street || ''}`);
+  }
+  
+  if (points.length < 2) return '';
+  
+  const origin = points[0];
+  const destination = points[points.length - 1];
+  const waypoints = points.slice(1, -1);
+  
+  const waypointsParam = waypoints.length > 0 ? `&waypoints=${encodeURIComponent(waypoints.join('|'))}` : '';
+  
+  return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}${waypointsParam}&travelmode=driving`;
+};
 
   // NOWA FUNKCJA: Generuje wyświetlaną trasę dla połączonych transportów
   const getDisplayRoute = (zamowienie) => {
