@@ -910,12 +910,12 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
             </div>
           </div>
           
-          {/* NOWA SEKCJA: Łączenie transportów */}
+          {/* NOWA SEKCJA: Zaawansowane łączenie transportów z konfiguracją tras */}
           <div className="mt-6 border-t pt-6">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-medium flex items-center">
                 <LinkIcon size={20} className="mr-2 text-blue-600" />
-                Połącz z innymi transportami
+                Połącz z innymi transportami (zaawansowane)
               </h3>
               <button
                 type="button"
@@ -956,54 +956,34 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                 </div>
 
                 {transportsToMerge.length > 0 && (
-                  <div className="space-y-3">
-                    <h4 className="font-medium text-blue-700">Transporty do połączenia:</h4>
+                  <div className="space-y-4">
+                    <h4 className="font-medium text-blue-700">Konfiguracja trasy:</h4>
                     
                     {/* Główny transport */}
                     <div className="p-3 bg-white rounded border border-blue-200">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <div className="font-semibold text-blue-800">
-                            GŁÓWNY: {initialData.orderNumber || initialData.id}
-                          </div>
-                          <div className="text-sm text-gray-600">
-                            {getTransportRoute(initialData)} (MPK: {initialData.mpk})
-                          </div>
-                        </div>
-                        <div className="flex items-center">
-                          <DollarSign size={16} className="mr-1 text-green-600" />
-                          <span className="font-medium text-green-700">
-                            {getMainTransportCost().toFixed(2)} PLN
-                          </span>
-                        </div>
+                      <div className="font-semibold text-blue-800 mb-2">
+                        GŁÓWNY: {initialData?.orderNumber || 'Nowy'} (MPK: {initialData?.mpk || 'Brak'})
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        🟢 Załadunek: {selectedLocation} (kolejność: 1)
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        🔴 Rozładunek: Miejsce dostawy (kolejność: ostatnia)
+                      </div>
+                      <div className="text-sm font-medium text-green-700 mt-2">
+                        Koszt: {getMainTransportCost().toFixed(2)} PLN
                       </div>
                     </div>
                     
-                    {/* Transporty do połączenia */}
-                    {transportsToMerge.map(transport => (
-                      <div key={transport.id} className="p-3 bg-white rounded border border-gray-200">
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <div className="font-medium">
-                              {transport.orderNumber || transport.id}
-                            </div>
-                            <div className="text-sm text-gray-600">
-                              {getTransportRoute(transport)} (MPK: {transport.mpk})
-                            </div>
-                            <div className="text-xs text-gray-500 mt-1">
-                              Odp: {transport.responsiblePerson || 'Brak'}
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-2 ml-4">
-                            <div className="flex items-center">
-                              <DollarSign size={14} className="mr-1 text-gray-500" />
-                              <input
-                                type="number"
-                                placeholder="Koszt PLN"
-                                className="w-20 p-1 border rounded text-sm"
-                                value={costDistribution[transport.id] || ''}
-                                onChange={(e) => handleCostDistributionChange(transport.id, e.target.value)}
-                              />
+                    {/* Transporty do połączenia z konfiguracją */}
+                    {transportsToMerge.map((transport, index) => {
+                      const config = routeConfiguration[transport.id] || {};
+                      return (
+                        <div key={transport.id} className="p-3 bg-white rounded border border-gray-200">
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <div className="font-medium">{transport.orderNumber || transport.id}</div>
+                              <div className="text-sm text-gray-600">{getTransportRoute(transport)} (MPK: {transport.mpk})</div>
                             </div>
                             <button
                               type="button"
@@ -1013,9 +993,116 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                               <X size={16} />
                             </button>
                           </div>
+                          
+                          {/* Konfiguracja miejsc */}
+                          <div className="grid grid-cols-2 gap-4 mb-3">
+                            <div className="bg-green-50 p-2 rounded">
+                              <div className="flex items-center mb-2">
+                                <input
+                                  type="checkbox"
+                                  checked={config.useLoading !== false} // domyślnie true
+                                  onChange={(e) => handleRouteConfigurationChange(transport.id, 'useLoading', e.target.checked)}
+                                  className="mr-2"
+                                />
+                                <label className="text-sm font-medium text-green-700">Użyj załadunek</label>
+                              </div>
+                              {config.useLoading !== false && (
+                                <div>
+                                  <label className="text-xs text-gray-600">Kolejność załadunku:</label>
+                                  <input
+                                    type="number"
+                                    min="2"
+                                    max="10"
+                                    value={config.loadingOrder || index + 2}
+                                    onChange={(e) => handleRouteConfigurationChange(transport.id, 'loadingOrder', parseInt(e.target.value))}
+                                    className="w-full p-1 border rounded text-sm mt-1"
+                                  />
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    📍 {transport.location}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            
+                            <div className="bg-red-50 p-2 rounded">
+                              <div className="flex items-center mb-2">
+                                <input
+                                  type="checkbox"
+                                  checked={config.useUnloading !== false} // domyślnie true
+                                  onChange={(e) => handleRouteConfigurationChange(transport.id, 'useUnloading', e.target.checked)}
+                                  className="mr-2"
+                                />
+                                <label className="text-sm font-medium text-red-700">Użyj rozładunek</label>
+                              </div>
+                              {config.useUnloading !== false && (
+                                <div>
+                                  <label className="text-xs text-gray-600">Kolejność rozładunku:</label>
+                                  <input
+                                    type="number"
+                                    min="2"
+                                    max="10"
+                                    value={config.unloadingOrder || index + 2}
+                                    onChange={(e) => handleRouteConfigurationChange(transport.id, 'unloadingOrder', parseInt(e.target.value))}
+                                    className="w-full p-1 border rounded text-sm mt-1"
+                                  />
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    📍 {transport.delivery?.city || 'Brak danych'}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          
+                          {/* Koszt */}
+                          <div className="flex items-center space-x-2">
+                            <DollarSign size={14} className="text-gray-500" />
+                            <input
+                              type="number"
+                              placeholder="Koszt PLN"
+                              className="w-24 p-1 border rounded text-sm"
+                              value={costDistribution[transport.id] || ''}
+                              onChange={(e) => handleCostDistributionChange(transport.id, e.target.value)}
+                            />
+                            <span className="text-sm text-gray-600">PLN</span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
+                    
+                    {/* Podgląd trasy */}
+                    <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded">
+                      <h5 className="font-medium text-blue-700 mb-2">Podgląd trasy:</h5>
+                      {(() => {
+                        const routeInfo = calculateMergedRoute();
+                        return (
+                          <div>
+                            <div className="text-sm space-y-1">
+                              {routeInfo.points.map((point, index) => (
+                                <div key={index} className="flex items-center">
+                                  <span className="mr-2 font-mono text-xs bg-gray-200 px-1 rounded">{index + 1}</span>
+                                  <span className={`px-2 py-1 rounded text-xs ${
+                                    point.type === 'loading' 
+                                      ? 'bg-green-100 text-green-700' 
+                                      : 'bg-red-100 text-red-700'
+                                  }`}>
+                                    {point.type === 'loading' ? '🟢 Załadunek' : '🔴 Rozładunek'}
+                                  </span>
+                                  <span className="ml-2 text-gray-600">{point.description}</span>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="mt-3 p-2 bg-blue-100 rounded">
+                              <div className="text-sm font-medium text-blue-700">
+                                Szacowana odległość rzeczywistej trasy: {routeInfo.estimatedDistance} km
+                              </div>
+                              <div className="text-xs text-blue-600 mt-1">
+                                (obliczona na podstawie kolejności załadunków i rozładunków)
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
                     
                     {/* Podsumowanie kosztów */}
                     <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
@@ -1043,7 +1130,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                       )}
                       
                       <div className="mt-2 text-xs text-yellow-800">
-                        <strong>Uwaga:</strong> Po zapisaniu odpowiedzi transporty zostaną połączone w jeden. 
+                        <strong>Uwaga:</strong> Po zapisaniu odpowiedzi transporty zostaną połączone według skonfigurowanej trasy. 
                         Oryginalne transporty z listy zostaną usunięte.
                       </div>
                     </div>
@@ -1064,7 +1151,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         </>
       ) : (
         <>
-          {/* Reszta formularza (dla nowych zamówień i edycji) pozostaje bez zmian */}
+          {/* Reszta formularza (dla nowych zamówień i edycji) */}
           <div>
             <label className="block text-sm font-medium mb-1">Miejsce załadunku</label>
             <div className="grid grid-cols-3 gap-2">
