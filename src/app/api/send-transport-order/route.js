@@ -216,15 +216,125 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     return `${address.city || ''}, ${address.postalCode || ''}, ${address.street || ''}`;
   };
   
-  const getLoadingLocation = () => {
-    if (spedycja.location === 'Odbiory własne' && producerAddress) {
-      return formatAddress(producerAddress);
-    } else if (spedycja.location === 'Magazyn Białystok') {
-      return 'Grupa Eltron Sp z o.o, ul. Wysockiego 69B, 15-169 Białystok';
-    } else if (spedycja.location === 'Magazyn Zielonka') {
-      return 'Grupa Eltron Sp z o.o, ul. Krótka 2, 05-220 Zielonka';
+  // Funkcja do zbierania wszystkich MPK
+  const getAllMPKs = () => {
+    const mpks = [spedycja.mpk]; // Główny MPK
+    
+    if (mergedTransports && mergedTransports.originalTransports) {
+      mergedTransports.originalTransports.forEach(transport => {
+        if (transport.mpk && !mpks.includes(transport.mpk)) {
+          mpks.push(transport.mpk);
+        }
+      });
     }
-    return spedycja.location || 'Brak danych';
+    
+    return mpks.filter(Boolean); // Usuń puste wartości
+  };
+  
+  // Funkcja do zbierania wszystkich dokumentów
+  const getAllDocuments = () => {
+    const documents = [];
+    
+    // Główny transport
+    if (spedycja.documents) {
+      documents.push(spedycja.documents);
+    }
+    
+    // Połączone transporty
+    if (mergedTransports && mergedTransports.originalTransports) {
+      mergedTransports.originalTransports.forEach(transport => {
+        if (transport.documents && !documents.includes(transport.documents)) {
+          documents.push(transport.documents);
+        }
+      });
+    }
+    
+    return documents;
+  };
+  
+  // Funkcja do zbierania wszystkich miejsc załadunku
+  const getAllLoadingPlaces = () => {
+    const places = [];
+    
+    // Główne miejsce załadunku
+    if (spedycja.location === 'Odbiory własne' && producerAddress) {
+      places.push({
+        address: formatAddress(producerAddress),
+        contact: spedycja.loading_contact
+      });
+    } else if (spedycja.location === 'Magazyn Białystok') {
+      places.push({
+        address: 'Grupa Eltron Sp z o.o, ul. Wysockiego 69B, 15-169 Białystok',
+        contact: spedycja.loading_contact
+      });
+    } else if (spedycja.location === 'Magazyn Zielonka') {
+      places.push({
+        address: 'Grupa Eltron Sp z o.o, ul. Krótka 2, 05-220 Zielonka',
+        contact: spedycja.loading_contact
+      });
+    } else {
+      places.push({
+        address: spedycja.location || 'Brak danych',
+        contact: spedycja.loading_contact
+      });
+    }
+    
+    // Dodatkowe miejsca załadunku z połączonych transportów
+    if (mergedTransports && mergedTransports.originalTransports) {
+      mergedTransports.originalTransports.forEach(transport => {
+        let address = '';
+        if (transport.location === 'Odbiory własne') {
+          try {
+            const locationData = typeof transport.location_data === 'string' ? 
+              JSON.parse(transport.location_data) : transport.location_data;
+            address = formatAddress(locationData);
+          } catch (error) {
+            address = 'Odbiory własne';
+          }
+        } else {
+          address = transport.location;
+        }
+        
+        places.push({
+          address: address,
+          contact: transport.loading_contact
+        });
+      });
+    }
+    
+    return places;
+  };
+  
+  // Funkcja do zbierania wszystkich miejsc rozładunku
+  const getAllUnloadingPlaces = () => {
+    const places = [];
+    
+    // Główne miejsce rozładunku
+    places.push({
+      address: formatAddress(delivery),
+      contact: spedycja.unloading_contact
+    });
+    
+    // Dodatkowe miejsca rozładunku z połączonych transportów
+    if (mergedTransports && mergedTransports.originalTransports) {
+      mergedTransports.originalTransports.forEach(transport => {
+        try {
+          const deliveryData = typeof transport.delivery_data === 'string' ? 
+            JSON.parse(transport.delivery_data) : transport.delivery_data;
+          places.push({
+            address: formatAddress(deliveryData),
+            contact: transport.unloading_contact
+          });
+        } catch (error) {
+          places.push({
+            address: 'Brak danych',
+            contact: transport.unloading_contact || ''
+          });
+        }
+      });
+    }
+    
+    return places;
   };
   
   // Formatowanie ceny z dopiskiem "Netto"
@@ -233,67 +343,10 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     return `${price} PLN Netto`;
   };
   
-  // NOWA FUNKCJA: Generowanie sekcji dla połączonych transportów
-  const generateMergedTransportsHTML = () => {
-    if (!mergedTransports || !mergedTransports.originalTransports || mergedTransports.originalTransports.length === 0) {
-      return '';
-    }
-    
-    let html = '';
-    
-    // Nagłówek dla połączonych transportów
-    html += `
-    <div class="section">
-      <h2>Transport połączony - dodatkowe trasy (${mergedTransports.originalTransports.length})</h2>
-      <div class="important-info">
-        <strong>Uwaga:</strong> To zlecenie obejmuje ${mergedTransports.originalTransports.length + 1} tras w ramach jednego transportu.
-        Koszt został odpowiednio podzielony między poszczególne MPK.
-      </div>
-    `;
-    
-    // Dodaj informacje o każdej dodatkowej trasie
-    mergedTransports.originalTransports.forEach((transport, index) => {
-      html += `
-      <div style="margin: 15px 0; padding: 10px; border-left: 3px solid #1a71b5; background-color: #f9f9f9;">
-        <h3 style="margin-top: 0; color: #1a71b5;">Dodatkowa trasa ${index + 1}</h3>
-        <table class="info-table">
-          <tr>
-            <th>Numer zlecenia:</th>
-            <td>${transport.orderNumber}</td>
-          </tr>
-          <tr>
-            <th>MPK:</th>
-            <td>${transport.mpk}</td>
-          </tr>
-          <tr>
-            <th>Trasa:</th>
-            <td>${transport.route}</td>
-          </tr>
-          <tr>
-            <th>Osoba odpowiedzialna:</th>
-            <td>${transport.responsiblePerson || 'Nie podano'}</td>
-          </tr>
-          <tr>
-            <th>Przydzielony koszt:</th>
-            <td>${formatPrice(transport.costAssigned)}</td>
-          </tr>
-          <tr>
-            <th>Dokumenty:</th>
-            <td>${transport.documents || 'Nie podano'}</td>
-          </tr>
-        </table>
-      </div>
-      `;
-    });
-    
-    html += `</div>`;
-    
-    return html;
-  };
-  
-  // Ustal czy to transport połączony
-  const isMerged = mergedTransports && mergedTransports.originalTransports && mergedTransports.originalTransports.length > 0;
-  const totalTransports = isMerged ? mergedTransports.originalTransports.length + 1 : 1;
+  const allMPKs = getAllMPKs();
+  const allDocuments = getAllDocuments();
+  const loadingPlaces = getAllLoadingPlaces();
+  const unloadingPlaces = getAllUnloadingPlaces();
   
   // Tworzenie HTML-a
   return `
@@ -302,7 +355,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Zlecenie Transportowe${isMerged ? ' - Transport Połączony' : ''}</title>
+      <title>Zlecenie Transportowe</title>
       <style>
         body {
           font-family: Arial, sans-serif;
@@ -367,13 +420,6 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
           margin-bottom: 20px;
           font-weight: bold;
         }
-        .important-info {
-          background-color: #f9f9f9;
-          padding: 12px;
-          border-radius: 5px;
-          border-left: 4px solid #1a71b5;
-          margin: 10px 0;
-        }
         .important-warning {
           background-color: #fff2f2;
           border-left: 4px solid #e74c3c;
@@ -383,46 +429,39 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
           font-weight: bold;
           color: #c0392b;
         }
-        .merged-transport-badge {
-          background-color: #9b59b6;
-          color: white;
-          padding: 5px 10px;
-          border-radius: 15px;
-          font-size: 12px;
-          font-weight: bold;
-          display: inline-block;
-          margin-left: 10px;
+        .place-item {
+          margin-bottom: 10px;
+          padding: 8px;
+          background-color: white;
+          border-radius: 3px;
         }
       </style>
     </head>
     <body>
       <div class="header">
-        <h1>ZLECENIE TRANSPORTOWE${isMerged ? ` - POŁĄCZONE (${totalTransports} TRAS)` : ''}</h1>
+        <h1>ZLECENIE TRANSPORTOWE</h1>
         <p>Nr zlecenia: ${spedycja.order_number || spedycja.id} | Data utworzenia: ${formatDate(new Date().toISOString())}</p>
-        ${isMerged ? '<span class="merged-transport-badge">TRANSPORT POŁĄCZONY</span>' : ''}
       </div>
       
       <div class="important-note">
-        Proszę o dopisanie na fakturze zamieszczonego poniżej numeru MPK oraz numeru zlecenia: ${spedycja.order_number || spedycja.id}.
-        ${isMerged ? ` Transport obejmuje ${totalTransports} tras z różnymi numerami MPK.` : ''}
+        Proszę o dopisanie na fakturze zamieszczonego poniżej numeru zlecenia: ${spedycja.order_number || spedycja.id}.
       </div>
       
       <div class="important-warning">
         <strong>UWAGA!</strong> Na fakturze musi być podany numer zlecenia: ${spedycja.order_number || spedycja.id}. 
         Faktury bez numeru zlecenia nie będą opłacane.
-        ${isMerged ? ' W przypadku transportu połączonego prosimy o wyszczególnienie kosztów według podanych MPK.' : ''}
       </div>
       
       <div class="section">
         <h2>Dane podstawowe</h2>
         <table class="info-table">
           <tr>
-            <th>Numer MPK główny:</th>
-            <td>${spedycja.mpk || 'Nie podano'}</td>
+            <th>Numery MPK:</th>
+            <td>${allMPKs.join(', ')}</td>
           </tr>
           <tr>
             <th>Dokumenty:</th>
-            <td>${spedycja.documents || 'Nie podano'}</td>
+            <td>${allDocuments.join(', ')}</td>
           </tr>
           <tr>
             <th>Rodzaj towaru:</th>
@@ -432,52 +471,30 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
             <th>Waga towaru:</th>
             <td>${waga || 'Nie podano'}</td>
           </tr>
-          ${isMerged ? `
-          <tr>
-            <th>Liczba tras:</th>
-            <td>${totalTransports} (główna + ${mergedTransports.originalTransports.length} dodatkowych)</td>
-          </tr>
-          ` : ''}
         </table>
       </div>
       
       <div class="section">
-        <h2>${isMerged ? 'Główne miejsce załadunku' : 'Dane załadunku'}</h2>
-        <table class="info-table">
-          <tr>
-            <th>Miejsce załadunku:</th>
-            <td>${getLoadingLocation()}</td>
-          </tr>
-          <tr>
-            <th>Data załadunku:</th>
-            <td>${formatDate(dataZaladunku) || 'Nie podano'}</td>
-          </tr>
-          <tr>
-            <th>Kontakt do załadunku:</th>
-            <td>${spedycja.loading_contact || 'Nie podano'}</td>
-          </tr>
-        </table>
+        <h2>${loadingPlaces.length === 1 ? 'Miejsce załadunku' : 'Miejsca załadunku'}</h2>
+        ${loadingPlaces.map((place, index) => `
+          <div class="place-item">
+            <strong>${loadingPlaces.length === 1 ? '' : `${index + 1}. `}Adres:</strong> ${place.address}<br>
+            <strong>Data załadunku:</strong> ${formatDate(dataZaladunku) || 'Nie podano'}<br>
+            <strong>Kontakt:</strong> ${place.contact || 'Nie podano'}
+          </div>
+        `).join('')}
       </div>
       
       <div class="section">
-        <h2>${isMerged ? 'Główne miejsce rozładunku' : 'Dane rozładunku'}</h2>
-        <table class="info-table">
-          <tr>
-            <th>Miejsce rozładunku:</th>
-            <td>${formatAddress(delivery)}</td>
-          </tr>
-          <tr>
-            <th>Data rozładunku:</th>
-            <td>${formatDate(dataRozladunku) || 'Nie podano'}</td>
-          </tr>
-          <tr>
-            <th>Kontakt do rozładunku:</th>
-            <td>${spedycja.unloading_contact || 'Nie podano'}</td>
-          </tr>
-        </table>
+        <h2>${unloadingPlaces.length === 1 ? 'Miejsce rozładunku' : 'Miejsca rozładunku'}</h2>
+        ${unloadingPlaces.map((place, index) => `
+          <div class="place-item">
+            <strong>${unloadingPlaces.length === 1 ? '' : `${index + 1}. `}Adres:</strong> ${place.address}<br>
+            <strong>Data rozładunku:</strong> ${formatDate(dataRozladunku) || 'Nie podano'}<br>
+            <strong>Kontakt:</strong> ${place.contact || 'Nie podano'}
+          </div>
+        `).join('')}
       </div>
-      
-      ${generateMergedTransportsHTML()}
       
       <div class="section">
         <h2>Dane przewoźnika</h2>
@@ -501,20 +518,9 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
         <h2>Płatność</h2>
         <table class="info-table">
           <tr>
-            <th>Cena transportu całkowita:</th>
+            <th>Cena transportu:</th>
             <td>${responseData.deliveryPrice ? formatPrice(responseData.deliveryPrice) : 'Nie podano'}</td>
           </tr>
-          ${isMerged && responseData.costBreakdown ? `
-          <tr>
-            <th>Podział kosztów:</th>
-            <td>
-              <div>Główny transport (MPK: ${spedycja.mpk}): ${formatPrice(responseData.costBreakdown.mainTransport?.cost || 0)}</div>
-              ${responseData.costBreakdown.mergedTransports?.map(mt => 
-                `<div>MPK: ${mt.mpk}: ${formatPrice(mt.cost)}</div>`
-              ).join('') || ''}
-            </td>
-          </tr>
-          ` : ''}
           <tr>
             <th>Termin płatności:</th>
             <td>${terminPlatnosci || 'Nie podano'}</td>
@@ -526,14 +532,6 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
         <h2>Uwagi</h2>
         <p>${spedycja.notes || 'Brak uwag'}</p>
         ${responseData.adminNotes ? `<p><strong>Uwagi przewoźnika:</strong> ${responseData.adminNotes}</p>` : ''}
-        ${isMerged ? `
-        <div class="important-info">
-          <strong>Uwaga dotycząca transportu połączonego:</strong><br>
-          To zlecenie obejmuje ${totalTransports} tras realizowanych w ramach jednego transportu. 
-          Koszty zostały podzielone zgodnie z powyższym zestawieniem. 
-          Prosimy o wystawienie faktury z wyszczególnieniem kosztów według numerów MPK.
-        </div>
-        ` : ''}
       </div>
       
       <div class="section">
@@ -549,8 +547,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       </div>
       
       <div class="footer">
-        <p>Zlecenie wygenerowane automatycznie${isMerged ? ' - Transport połączony' : ''}.</p>
-        ${isMerged ? `<p><strong>Łączna liczba tras: ${totalTransports}</strong></p>` : ''}
+        <p>Zlecenie wygenerowane automatycznie.</p>
       </div>
     </body>
     </html>
