@@ -180,7 +180,7 @@ export default function SpedycjaPage() {
     // Przygotuj dane do skopiowania (bez ID, statusu, dat systemowych)
     const copiedData = {
       location: zamowienie.location,
-      documents: '', // Wyczyść dokumenty - użytkownik wprowadzi nowe
+      documents: zamowienie.documents || '', // POPRAWKA: Skopiuj numery zamówień zamiast czyścić
       clientName: zamowienie.clientName || '',
       producerAddress: zamowienie.producerAddress,
       delivery: {
