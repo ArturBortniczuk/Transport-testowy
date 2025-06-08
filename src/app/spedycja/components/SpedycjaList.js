@@ -375,13 +375,14 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
            (!zamowienie.response || Object.keys(zamowienie.response).length === 0);
   }
   
-  // ZAKTUALIZOWANA FUNKCJA: Renderuje szczegółowe info o połączonych transportach
   const renderMergedTransportsInfo = (transport) => {
     const mergedData = getMergedTransportsData(transport);
     if (!mergedData) return null;
     
     // Funkcja pomocnicza do formatowania nazwy firmy z danych transportu
     const getTransportLoadingCompany = (transportData) => {
+      if (!transportData) return 'Nie podano';
+      
       if (transportData.location === 'Odbiory własne') {
         return transportData.sourceClientName || transportData.client_name || 'Odbiory własne';
       } else if (transportData.location === 'Magazyn Białystok') {
@@ -393,6 +394,7 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
     };
     
     const getTransportUnloadingCompany = (transportData) => {
+      if (!transportData) return 'Nie podano';
       return transportData.client_name || 'Nie podano';
     };
     
@@ -406,7 +408,7 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
           parsed = JSON.parse(addressData);
         }
         
-        if (parsed.city || parsed.postalCode || parsed.street) {
+        if (parsed && (parsed.city || parsed.postalCode || parsed.street)) {
           return `${parsed.city || ''}, ${parsed.postalCode || ''}, ${parsed.street || ''}`.replace(/^,\s*|,\s*$/g, '');
         }
       } catch (error) {
@@ -415,6 +417,17 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
       
       return 'Brak danych';
     };
+    
+    // Sprawdź czy mergedData.originalTransports istnieje i jest tablicą
+    if (!mergedData.originalTransports || !Array.isArray(mergedData.originalTransports)) {
+      return (
+        <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="text-red-700">
+            Błąd: Nieprawidłowe dane połączonych transportów
+          </div>
+        </div>
+      );
+    }
     
     return (
       <div className="mt-4 p-4 bg-purple-50 border border-purple-200 rounded-lg">
@@ -432,13 +445,13 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
                   GŁÓWNY: {transport.orderNumber || transport.id}
                 </div>
                 <div className="text-sm text-gray-600">
-                  MPK: {transport.mpk}
+                  MPK: {transport.mpk || 'Brak'}
                 </div>
               </div>
               <div className="text-right">
                 <div className="flex items-center text-green-700 font-medium text-lg">
                   <DollarSign size={18} className="mr-1" />
-                  {mergedData.mainTransportCost.toFixed(2)} PLN
+                  {(mergedData.mainTransportCost || 0).toFixed(2)} PLN
                 </div>
                 <div className="text-xs text-gray-500">
                   {mergedData.costBreakdown?.mainTransport?.distance || 0} km
@@ -462,7 +475,7 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
                   </div>
                   <div className="text-gray-500 flex items-center mt-1">
                     <Phone size={12} className="mr-1" />
-                    {transport.loadingContact}
+                    {transport.loadingContact || 'Brak'}
                   </div>
                 </div>
               </div>
@@ -477,7 +490,7 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
                   <div className="text-gray-600">{formatAddress(transport.delivery)}</div>
                   <div className="text-gray-500 flex items-center mt-1">
                     <Phone size={12} className="mr-1" />
-                    {transport.unloadingContact}
+                    {transport.unloadingContact || 'Brak'}
                   </div>
                 </div>
               </div>
@@ -485,92 +498,103 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
           </div>
           
           {/* Połączone transporty */}
-          {mergedData.originalTransports.map((originalTransport, index) => (
-            <div key={originalTransport.id} className="p-4 bg-white rounded border-l-4 border-gray-300">
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <div className="font-medium text-gray-800">
-                    {index + 2}. {originalTransport.orderNumber}
-                  </div>
-                  <div className="text-sm text-gray-600">
-                    MPK: {originalTransport.mpk}
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    Odp: {originalTransport.responsiblePerson || 'Brak'}
-                  </div>
+          {mergedData.originalTransports.map((originalTransport, index) => {
+            // Sprawdź czy originalTransport nie jest null lub undefined
+            if (!originalTransport) {
+              return (
+                <div key={`error-${index}`} className="p-4 bg-red-50 rounded border border-red-200">
+                  <div className="text-red-700">Błąd: Brakujące dane transportu #{index + 1}</div>
                 </div>
-                <div className="text-right">
-                  <div className="flex items-center text-green-700 font-medium">
-                    <DollarSign size={16} className="mr-1" />
-                    {originalTransport.costAssigned.toFixed(2)} PLN
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {originalTransport.distance || 0} km
-                  </div>
-                </div>
-              </div>
-              
-              {/* Szczegóły połączonego transportu */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 pt-3 border-t border-gray-100">
-                <div>
-                  <h5 className="font-medium text-gray-700 mb-2 flex items-center">
-                    <MapPin size={14} className="mr-1" />
-                    Załadunek
-                  </h5>
-                  <div className="text-sm">
-                    <div className="font-medium">{getTransportLoadingCompany(originalTransport)}</div>
-                    <div className="text-gray-600">
-                      {originalTransport.location === 'Odbiory własne' 
-                        ? formatRawAddress(originalTransport.location_data)
-                        : originalTransport.location}
+              );
+            }
+            
+            return (
+              <div key={originalTransport.id || `transport-${index}`} className="p-4 bg-white rounded border-l-4 border-gray-300">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <div className="font-medium text-gray-800">
+                      {index + 2}. {originalTransport.orderNumber || `Transport ${originalTransport.id || index + 1}`}
                     </div>
-                    <div className="text-gray-500 flex items-center mt-1">
-                      <Phone size={12} className="mr-1" />
-                      {originalTransport.loading_contact}
+                    <div className="text-sm text-gray-600">
+                      MPK: {originalTransport.mpk || 'Brak'}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      Odp: {originalTransport.responsiblePerson || 'Brak'}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="flex items-center text-green-700 font-medium">
+                      <DollarSign size={16} className="mr-1" />
+                      {(originalTransport.costAssigned || 0).toFixed(2)} PLN
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {originalTransport.distance || 0} km
                     </div>
                   </div>
                 </div>
                 
-                <div>
-                  <h5 className="font-medium text-gray-700 mb-2 flex items-center">
-                    <MapPin size={14} className="mr-1" />
-                    Rozładunek
-                  </h5>
-                  <div className="text-sm">
-                    <div className="font-medium">{getTransportUnloadingCompany(originalTransport)}</div>
-                    <div className="text-gray-600">{formatRawAddress(originalTransport.delivery_data)}</div>
-                    <div className="text-gray-500 flex items-center mt-1">
-                      <Phone size={12} className="mr-1" />
-                      {originalTransport.unloading_contact}
+                {/* Szczegóły połączonego transportu */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 pt-3 border-t border-gray-100">
+                  <div>
+                    <h5 className="font-medium text-gray-700 mb-2 flex items-center">
+                      <MapPin size={14} className="mr-1" />
+                      Załadunek
+                    </h5>
+                    <div className="text-sm">
+                      <div className="font-medium">{getTransportLoadingCompany(originalTransport)}</div>
+                      <div className="text-gray-600">
+                        {originalTransport.location === 'Odbiory własne' 
+                          ? formatRawAddress(originalTransport.location_data)
+                          : originalTransport.location}
+                      </div>
+                      <div className="text-gray-500 flex items-center mt-1">
+                        <Phone size={12} className="mr-1" />
+                        {originalTransport.loading_contact || 'Brak'}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <h5 className="font-medium text-gray-700 mb-2 flex items-center">
+                      <MapPin size={14} className="mr-1" />
+                      Rozładunek
+                    </h5>
+                    <div className="text-sm">
+                      <div className="font-medium">{getTransportUnloadingCompany(originalTransport)}</div>
+                      <div className="text-gray-600">{formatRawAddress(originalTransport.delivery_data)}</div>
+                      <div className="text-gray-500 flex items-center mt-1">
+                        <Phone size={12} className="mr-1" />
+                        {originalTransport.unloading_contact || 'Brak'}
+                      </div>
                     </div>
                   </div>
                 </div>
+                
+                {/* Dodatkowe informacje */}
+                {originalTransport.documents && (
+                  <div className="mt-2 text-xs text-gray-600">
+                    <span className="font-medium">Dokumenty:</span> {originalTransport.documents}
+                  </div>
+                )}
               </div>
-              
-              {/* Dodatkowe informacje */}
-              {originalTransport.documents && (
-                <div className="mt-2 text-xs text-gray-600">
-                  <span className="font-medium">Dokumenty:</span> {originalTransport.documents}
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
           
           {/* Podsumowanie */}
           <div className="pt-3 border-t border-purple-200 bg-purple-25">
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <span className="font-medium text-purple-700">Łączna odległość:</span>
-                <span className="ml-2 text-purple-800 font-semibold">{mergedData.totalDistance} km</span>
+                <span className="ml-2 text-purple-800 font-semibold">{mergedData.totalDistance || 0} km</span>
               </div>
               <div>
                 <span className="font-medium text-purple-700">Łączny koszt:</span>
-                <span className="ml-2 text-purple-800 font-semibold">{transport.response?.deliveryPrice} PLN</span>
+                <span className="ml-2 text-purple-800 font-semibold">{transport.response?.deliveryPrice || 0} PLN</span>
               </div>
             </div>
             
             <div className="mt-2 text-xs text-purple-600">
-              Połączono {format(new Date(mergedData.mergedAt), 'dd.MM.yyyy HH:mm', { locale: pl })} przez {mergedData.mergedBy}
+              Połączono {mergedData.mergedAt ? format(new Date(mergedData.mergedAt), 'dd.MM.yyyy HH:mm', { locale: pl }) : 'brak daty'} przez {mergedData.mergedBy || 'Nieznany'}
             </div>
             
             {/* Przycisk rozłączania dla adminów */}
