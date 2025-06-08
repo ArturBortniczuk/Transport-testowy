@@ -22,8 +22,8 @@ const validateSession = async (authToken) => {
   }
 };
 
-// Funkcja do generowania nowego numeru zamówienia - PRZENOSZONA NA ZEWNĄTRZ
-const generateNewOrderNumber = async () => {
+// POPRAWIONA FUNKCJA: Generowanie sekwencyjnych numerów zamówień dla rozdzielanych transportów
+const generateOrderNumbersForUnmerge = async (count) => {
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
@@ -36,19 +36,32 @@ const generateNewOrderNumber = async () => {
       .orderBy('id', 'desc')
       .first();
     
-    let orderNumber = 1;
+    let startOrderNumber = 1;
     if (lastOrderQuery && lastOrderQuery.order_number) {
       const lastOrderMatch = lastOrderQuery.order_number.match(/^(\d+)\/\d+\/\d+$/);
       if (lastOrderMatch) {
-        orderNumber = parseInt(lastOrderMatch[1], 10) + 1;
+        startOrderNumber = parseInt(lastOrderMatch[1], 10) + 1;
       }
     }
     
-    return `${orderNumber.toString().padStart(4, '0')}/${month}/${year}`;
+    // Generuj tablicę numerów - każdy kolejny o 1 większy
+    const orderNumbers = [];
+    for (let i = 0; i < count; i++) {
+      const orderNumber = startOrderNumber + i;
+      const formattedNumber = `${orderNumber.toString().padStart(4, '0')}/${month}/${year}`;
+      orderNumbers.push(formattedNumber);
+    }
+    
+    return orderNumbers;
   } catch (error) {
-    console.error('Błąd generowania numeru zamówienia:', error);
-    // Fallback - użyj timestamp
-    return `${Date.now()}/${month}/${year}`;
+    console.error('Błąd generowania numerów zamówień:', error);
+    // Fallback - użyj timestamp z incremental
+    const baseTimestamp = Date.now();
+    const orderNumbers = [];
+    for (let i = 0; i < count; i++) {
+      orderNumbers.push(`${baseTimestamp + i}/${month}/${year}`);
+    }
+    return orderNumbers;
   }
 };
 
@@ -141,7 +154,9 @@ export async function POST(request) {
     
     let mergedData;
     try {
-      mergedData = JSON.parse(mergedTransport.merged_transports);
+      mergedData = typeof mergedTransport.merged_transports === 'string' 
+        ? JSON.parse(mergedTransport.merged_transports) 
+        : mergedTransport.merged_transports;
       console.log('Dane połączonych transportów:', mergedData);
     } catch (error) {
       console.error('Błąd parsowania danych merged_transports:', error);
@@ -161,6 +176,10 @@ export async function POST(request) {
     
     console.log('Liczba transportów do przywrócenia:', mergedData.originalTransports.length);
     
+    // POPRAWKA: Wygeneruj wszystkie numery zamówień naraz
+    const orderNumbers = await generateOrderNumbersForUnmerge(mergedData.originalTransports.length);
+    console.log('Wygenerowane numery zamówień:', orderNumbers);
+    
     // GŁÓWNA OPERACJA ROZŁĄCZANIA W TRANSAKCJI
     try {
       await db.transaction(async (trx) => {
@@ -168,101 +187,73 @@ export async function POST(request) {
         
         const restoredTransports = [];
         
-        // Przywróć oryginalne transporty - JEDEN PO DRUGIM
+        // Przywróć oryginalne transporty - JEDEN PO DRUGIM z unikalnym numerem
         for (let i = 0; i < mergedData.originalTransports.length; i++) {
           const originalTransport = mergedData.originalTransports[i];
-          console.log(`Przywracam transport ${i + 1}/${mergedData.originalTransports.length}:`, originalTransport.id);
+          const newOrderNumber = orderNumbers[i]; // Każdy transport dostaje unikalny numer
+          
+          console.log(`Przywracam transport ${i + 1}/${mergedData.originalTransports.length}:`, originalTransport.id, 'z numerem:', newOrderNumber);
+          
+          const restoredTransportData = {
+            order_number: newOrderNumber,
+            status: 'new',
+            created_by: originalTransport.createdBy || mergedTransport.created_by,
+            created_by_email: originalTransport.createdByEmail || mergedTransport.created_by_email,
+            responsible_person: originalTransport.responsiblePerson,
+            responsible_email: originalTransport.responsibleEmail || mergedTransport.responsible_email,
+            mpk: originalTransport.mpk || '',
+            location: originalTransport.location,
+            location_data: originalTransport.location_data,
+            delivery_data: originalTransport.delivery_data,
+            loading_contact: originalTransport.loading_contact,
+            unloading_contact: originalTransport.unloading_contact,
+            delivery_date: originalTransport.delivery_date,
+            documents: originalTransport.documents,
+            notes: (originalTransport.notes || '') + 
+                  `\n\n[ROZŁĄCZONO]: Transport był wcześniej połączony z ${mergedTransport.order_number}. ` +
+                  `Rozłączono przez ${user.name} w dniu ${new Date().toLocaleDateString('pl-PL')} o ${new Date().toLocaleTimeString('pl-PL')}.`,
+            distance_km: originalTransport.distance_km || 0,
+            client_name: originalTransport.clientName || '',
+            goods_description: originalTransport.goods_description,
+            responsible_constructions: originalTransport.responsible_constructions,
+            created_at: db.fn.now(),
+            merged_transports: null
+          };
+          
+          console.log('Dane przywracanego transportu:', restoredTransportData);
           
           try {
-            // Generuj nowy numer zamówienia
-            const newOrderNumber = await generateNewOrderNumber();
-            console.log('Wygenerowany numer zamówienia:', newOrderNumber);
-            
-            const restoredTransportData = {
-              order_number: newOrderNumber,
-              status: 'new',
-              created_by: originalTransport.createdBy || mergedTransport.created_by,
-              created_by_email: originalTransport.createdByEmail || mergedTransport.created_by_email,
-              responsible_person: originalTransport.responsiblePerson,
-              responsible_email: originalTransport.responsibleEmail || mergedTransport.responsible_email,
-              mpk: originalTransport.mpk || '',
-              location: originalTransport.location,
-              location_data: originalTransport.location_data,
-              delivery_data: originalTransport.delivery_data,
-              loading_contact: originalTransport.loading_contact,
-              unloading_contact: originalTransport.unloading_contact,
-              delivery_date: originalTransport.delivery_date,
-              documents: originalTransport.documents,
-              notes: (originalTransport.notes || '') + 
-                    `\n\n[ROZŁĄCZONO]: Transport był wcześniej połączony z ${mergedTransport.order_number}. ` +
-                    `Rozłączono przez ${user.name} w dniu ${new Date().toLocaleDateString('pl-PL')} o ${new Date().toLocaleTimeString('pl-PL')}.`,
-              distance_km: originalTransport.distance || 0,
-              client_name: originalTransport.client_name,
-              goods_description: originalTransport.goods_description,
-              responsible_constructions: originalTransport.responsible_constructions,
-              created_at: trx.fn.now(),
-              response_data: null,
-              completed_at: null,
-              completed_by: null,
-              merged_transports: null
-            };
-            
-            console.log('Dane do wstawienia:', {
-              order_number: restoredTransportData.order_number,
-              mpk: restoredTransportData.mpk,
-              location: restoredTransportData.location
-            });
-            
-            // Wstaw transport
-            const [newId] = await trx('spedycje').insert(restoredTransportData).returning('id');
-            console.log('Utworzono transport z ID:', newId);
+            // Wstaw przywrócony transport do bazy
+            const [insertedId] = await trx('spedycje')
+              .insert(restoredTransportData)
+              .returning('id');
             
             restoredTransports.push({
-              originalId: originalTransport.id,
-              newId: newId,
+              id: insertedId,
               orderNumber: newOrderNumber,
-              mpk: originalTransport.mpk
+              originalId: originalTransport.id
             });
             
-          } catch (transportError) {
-            console.error(`Błąd przywracania transportu ${i + 1}:`, transportError);
-            throw transportError; // Przerwij transakcję
+            console.log('Przywrócono transport z ID:', insertedId, 'i numerem zamówienia:', newOrderNumber);
+          } catch (insertError) {
+            console.error('Błąd wstawiania transportu:', insertError);
+            throw insertError;
           }
         }
         
-        console.log('Przywrócone transporty:', restoredTransports);
-        
-        // Zaktualizuj główny transport
+        // Zaktualizuj główny transport - zamiast usuwania, oznacz jako rozłączony
         try {
-          let originalResponseData = {};
+          await trx('spedycje')
+            .where('id', transportId)
+            .update({
+              status: 'unmerged',
+              notes: (mergedTransport.notes || '') + 
+                     `\n\n[ROZŁĄCZONO]: Transport został rozłączony na ${mergedData.originalTransports.length} osobnych zleceń. ` +
+                     `Wykonano przez ${user.name} w dniu ${new Date().toLocaleDateString('pl-PL')} o ${new Date().toLocaleTimeString('pl-PL')}.`,
+              merged_transports: null
+            });
           
-          if (mergedTransport.response_data) {
-            try {
-              originalResponseData = JSON.parse(mergedTransport.response_data);
-            } catch (parseError) {
-              console.error('Błąd parsowania response_data:', parseError);
-            }
-          }
-          
-          const updatedResponseData = {
-            ...originalResponseData,
-            isMerged: false,
-            unmergedAt: new Date().toISOString(),
-            unmergedBy: user.name,
-            deliveryPrice: mergedData.mainTransportCost || originalResponseData.deliveryPrice,
-            distanceKm: originalResponseData.costBreakdown?.mainTransport?.distance || mergedTransport.distance_km
-          };
-          
-          await trx('spedycje').where('id', transportId).update({
-            merged_transports: null,
-            response_data: JSON.stringify(updatedResponseData),
-            distance_km: originalResponseData.costBreakdown?.mainTransport?.distance || mergedTransport.distance_km,
-            notes: (mergedTransport.notes || '') + 
-                   `\n\n[ROZŁĄCZONO]: Rozłączono ${mergedData.originalTransports.length} transportów. ` +
-                   `Wykonano przez ${user.name} w dniu ${new Date().toLocaleDateString('pl-PL')} o ${new Date().toLocaleTimeString('pl-PL')}.`
-          });
-          
-          console.log('Zaktualizowano główny transport');
+          console.log('Zaktualizowano główny transport - oznaczono jako rozłączony');
           
         } catch (updateError) {
           console.error('Błąd aktualizacji głównego transportu:', updateError);
@@ -270,12 +261,14 @@ export async function POST(request) {
         }
         
         console.log('=== TRANSAKCJA ZAKOŃCZONA POMYŚLNIE ===');
+        console.log('Przywrócone transporty:', restoredTransports);
       });
       
       return NextResponse.json({ 
         success: true,
-        message: `Pomyślnie rozłączono transport. Przywrócono ${mergedData.originalTransports.length} transportów jako nowe zlecenia.`,
-        restoredCount: mergedData.originalTransports.length
+        message: `Pomyślnie rozłączono transport. Przywrócono ${mergedData.originalTransports.length} transportów jako nowe zlecenia z numerami: ${orderNumbers.join(', ')}.`,
+        restoredCount: mergedData.originalTransports.length,
+        orderNumbers: orderNumbers
       });
       
     } catch (transactionError) {
