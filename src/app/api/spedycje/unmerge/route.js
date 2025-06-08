@@ -8,13 +8,18 @@ const validateSession = async (authToken) => {
     return null;
   }
   
-  const session = await db('sessions')
-    .where('token', authToken)
-    .whereRaw('expires_at > NOW()')
-    .select('user_id')
-    .first();
-  
-  return session?.user_id;
+  try {
+    const session = await db('sessions')
+      .where('token', authToken)
+      .whereRaw('expires_at > NOW()')
+      .select('user_id')
+      .first();
+    
+    return session?.user_id;
+  } catch (error) {
+    console.error('Błąd weryfikacji sesji:', error);
+    return null;
+  }
 };
 
 export async function POST(request) {
@@ -36,6 +41,13 @@ export async function POST(request) {
       .select('role', 'permissions', 'is_admin', 'name')
       .first();
     
+    if (!user) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Użytkownik nie znaleziony' 
+      }, { status: 404 });
+    }
+    
     const isAdmin = user.is_admin === 1 || user.is_admin === true || user.role === 'admin';
     
     if (!isAdmin) {
@@ -45,7 +57,8 @@ export async function POST(request) {
       }, { status: 403 });
     }
     
-    const { transportId } = await request.json();
+    const body = await request.json();
+    const { transportId } = body;
     
     if (!transportId) {
       return NextResponse.json({ 
@@ -171,14 +184,23 @@ export async function POST(request) {
       }
       
       // Zaktualizuj główny transport - usuń dane merge i zaktualizuj odpowiedź
-      const originalResponseData = JSON.parse(mergedTransport.response_data || '{}');
+      let originalResponseData = {};
+      
+      try {
+        if (mergedTransport.response_data) {
+          originalResponseData = JSON.parse(mergedTransport.response_data);
+        }
+      } catch (error) {
+        console.error('Błąd parsowania response_data:', error);
+      }
+      
       const updatedResponseData = {
         ...originalResponseData,
         isMerged: false,
         unmergedAt: new Date().toISOString(),
         unmergedBy: user.name,
         // Przywróć oryginalną cenę głównego transportu
-        deliveryPrice: mergedData.mainTransportCost,
+        deliveryPrice: mergedData.mainTransportCost || originalResponseData.deliveryPrice,
         // Przywróć oryginalną odległość głównego transportu (jeśli dostępna)
         distanceKm: originalResponseData.costBreakdown?.mainTransport?.distance || mergedTransport.distance_km
       };
@@ -207,7 +229,7 @@ export async function POST(request) {
     console.error('Error unmerging transports:', error);
     return NextResponse.json({ 
       success: false, 
-      error: error.message 
+      error: error.message || 'Wystąpił błąd podczas rozłączania transportów'
     }, { status: 500 });
   }
 }
