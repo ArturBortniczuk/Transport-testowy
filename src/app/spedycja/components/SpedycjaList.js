@@ -740,7 +740,7 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
                   {/* Przycisk kopiowania - dla wszystkich użytkowników */}
                   <button 
                     type="button"
-                    className="px-3 py-2 bg-amber-500 text-white rounded-md hover:bg-amber-600 transition-colors flex items-center gap-2"
+                    className={buttonClasses.outline}
                     onClick={(e) => {
                       e.stopPropagation()
                       onCopy(zamowienie)
