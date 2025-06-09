@@ -1,7 +1,7 @@
 // src/app/spedycja/components/SpedycjaForm.js
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { Calendar, Search, X, Info, Truck, PlusCircle, LinkIcon, DollarSign, Copy } from 'lucide-react'
+import { Calendar, Search, X, Info, Truck, PlusCircle, LinkIcon, DollarSign, Copy, Route } from 'lucide-react'
 
 export default function SpedycjaForm({ onSubmit, onCancel, initialData, isResponse, isEditing, isCopying }) {
   const [selectedLocation, setSelectedLocation] = useState(initialData?.location || '')
