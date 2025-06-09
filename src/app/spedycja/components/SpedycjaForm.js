@@ -8,7 +8,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
   const [users, setUsers] = useState([])
   const [constructions, setConstructions] = useState([])
   const [selectedUser, setSelectedUser] = useState(null)
-  const [mainUnloadingOrder, setMainUnloadingOrder] = useState(999) // Domyślnie wysoka kolejność
   const [selectedConstructions, setSelectedConstructions] = useState([])
   const [totalPrice, setTotalPrice] = useState(initialData?.response?.deliveryPrice || 0)
   const [currentUser, setCurrentUser] = useState({
@@ -41,7 +40,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
   const [availableTransports, setAvailableTransports] = useState([])
   const [showMergeSection, setShowMergeSection] = useState(false)
   const [routeConfiguration, setRouteConfiguration] = useState({})
-  const [routeOrder, setRouteOrder] = useState([])
   const [calculatedRouteDistance, setCalculatedRouteDistance] = useState(0)
   
   // Stałe dla magazynów
@@ -85,17 +83,15 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
 
   // FUNKCJE DLA ZAAWANSOWANEGO ŁĄCZENIA TRANSPORTÓW
 
-  // 1. POPRAWKA domyślnej konfiguracji - oba checkboxy domyślnie zaznaczone
   const handleAddTransportToMerge = (transportId) => {
     const transport = availableTransports.find(t => t.id === parseInt(transportId));
     if (transport && !transportsToMerge.find(t => t.id === transport.id)) {
       
-      // POPRAWIONA konfiguracja - oba checkboxy domyślnie TRUE
       const defaultConfig = {
-        useLoading: true,     // załadunek domyślnie TAK
-        useUnloading: true,   // POPRAWKA: rozładunek też domyślnie TAK
-        loadingOrder: transportsToMerge.length + 2, // kolejny załadunek po głównym
-        unloadingOrder: transportsToMerge.length + 2 // POPRAWKA: kolejny rozładunek
+        useLoading: false,
+        useUnloading: true,
+        loadingOrder: 2,
+        unloadingOrder: transportsToMerge.length + 2
       };
       
       const newTransport = {
@@ -105,7 +101,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       
       setTransportsToMerge([...transportsToMerge, newTransport]);
       
-      // Ustaw domyślną konfigurację trasy
       setRouteConfiguration({
         ...routeConfiguration,
         [transport.id]: defaultConfig
@@ -113,20 +108,17 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     }
   };
 
-  // Usuwanie transportu z połączenia
   const handleRemoveTransportFromMerge = (transportId) => {
     setTransportsToMerge(transportsToMerge.filter(t => t.id !== transportId));
     const newCostDistribution = { ...costDistribution };
     delete newCostDistribution[transportId];
     setCostDistribution(newCostDistribution);
     
-    // Usuń też konfigurację trasy
     const newRouteConfiguration = { ...routeConfiguration };
     delete newRouteConfiguration[transportId];
     setRouteConfiguration(newRouteConfiguration);
   };
 
-  // Aktualizacja konfiguracji trasy
   const handleRouteConfigurationChange = (transportId, field, value) => {
     setRouteConfiguration({
       ...routeConfiguration,
@@ -136,7 +128,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       }
     });
     
-    // Aktualizuj też transport w liście
     setTransportsToMerge(transportsToMerge.map(t => 
       t.id === transportId 
         ? { ...t, [field]: value }
@@ -144,7 +135,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     ));
   };
 
-  // Zmiana podziału kosztów
   const handleCostDistributionChange = (transportId, cost) => {
     setCostDistribution({
       ...costDistribution,
@@ -168,105 +158,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     return transport.delivery;
   };
 
-  // PRAWDZIWE OBLICZANIE ODLEGŁOŚCI Z GOOGLE MAPS API
-  const calculateRealRouteDistance = async (routePoints) => {
-    if (routePoints.length < 2) return 0;
-    
-    try {
-      setIsCalculatingDistance(true);
-      
-      // Przygotuj waypoints dla Google Maps
-      const origin = await getGoogleCoordinatesFromPoint(routePoints[0]);
-      const destination = await getGoogleCoordinatesFromPoint(routePoints[routePoints.length - 1]);
-      
-      const waypoints = [];
-      
-      // Dodaj środkowe punkty jako waypoints
-      for (let i = 1; i < routePoints.length - 1; i++) {
-        const waypointCoords = await getGoogleCoordinatesFromPoint(routePoints[i]);
-        if (waypointCoords) {
-          waypoints.push(`${waypointCoords.lat},${waypointCoords.lng}`);
-        }
-      }
-      
-      if (!origin || !destination) {
-        throw new Error('Nie można uzyskać współrzędnych punktów trasy');
-      }
-      
-      // Wywołanie Google Maps Distance Matrix API z waypoints
-      const waypointsParam = waypoints.length > 0 ? waypoints.join('|') : '';
-      
-      let totalDistance = 0;
-      
-      if (waypoints.length === 0) {
-        // Prosta trasa bez waypoints
-        const distance = await calculateDistanceSegment(
-          `${origin.lat},${origin.lng}`, 
-          `${destination.lat},${destination.lng}`
-        );
-        totalDistance = distance;
-      } else {
-        // Trasa z waypoints - oblicz segment po segmencie
-        let currentPoint = `${origin.lat},${origin.lng}`;
-        
-        // Origin do pierwszego waypoint
-        for (const waypoint of waypoints) {
-          const segmentDistance = await calculateDistanceSegment(currentPoint, waypoint);
-          totalDistance += segmentDistance;
-          currentPoint = waypoint;
-        }
-        
-        // Ostatni waypoint do destination
-        const finalDistance = await calculateDistanceSegment(
-          currentPoint, 
-          `${destination.lat},${destination.lng}`
-        );
-        totalDistance += finalDistance;
-      }
-      
-      console.log(`Rzeczywista odległość trasy (Google Maps): ${totalDistance} km`);
-      setCalculatedRouteDistance(totalDistance);
-      return totalDistance;
-      
-    } catch (error) {
-      console.error('Błąd obliczania rzeczywistej odległości:', error);
-      return 0;
-    } finally {
-      setIsCalculatingDistance(false);
-    }
-  };
-
-  // Obliczanie odległości między dwoma punktami przez Google Maps
-  const calculateDistanceSegment = async (origin, destination) => {
-    try {
-      const url = `/api/distance?origins=${encodeURIComponent(origin)}&destinations=${encodeURIComponent(destination)}`;
-      
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`Żądanie API nie powiodło się ze statusem: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (data.status === 'OK' && 
-          data.rows && 
-          data.rows[0] && 
-          data.rows[0].elements && 
-          data.rows[0].elements[0] && 
-          data.rows[0].elements[0].status === 'OK') {
-        
-        const distanceKm = Math.round(data.rows[0].elements[0].distance.value / 1000);
-        return distanceKm;
-      }
-      
-      throw new Error('Nieprawidłowa odpowiedź API');
-    } catch (error) {
-      console.error('Błąd obliczania segmentu odległości:', error);
-      return 0;
-    }
-  };
-
   // Pobieranie współrzędnych z punktu trasy
   const getGoogleCoordinatesFromPoint = async (routePoint) => {
     try {
@@ -277,7 +168,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         };
       }
       
-      // Jeśli nie ma współrzędnych, spróbuj geokodować
       let address = '';
       
       if (routePoint.address === 'Magazyn Białystok') {
@@ -304,19 +194,19 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     
     const allPoints = [];
     
-    // Dodaj główny transport - zawsze pierwszy załadunek
+    // Główny załadunek - zawsze pierwszy
     const mainLoading = {
       type: 'loading',
       transportId: 'main',
       order: 1,
       location: getLocationCoords(initialData || { location: selectedLocation, producerAddress: null }),
-      description: selectedLocation.replace('Magazyn ', ''), // POPRAWKA: Usuń "Magazyn"
+      description: selectedLocation.replace('Magazyn ', ''),
       address: selectedLocation
     };
     
     allPoints.push(mainLoading);
     
-    // Dodaj punkty z dołączanych transportów według konfiguracji
+    // Dodaj punkty z dołączanych transportów
     transportsToMerge.forEach(transport => {
       const config = routeConfiguration[transport.id] || {};
       
@@ -345,25 +235,24 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       }
     });
     
-    // NOWE: Główny rozładunek z edytowalną kolejnością
+    // Główny rozładunek
+    const deliveryCity = document.querySelector('input[name="deliveryCity"]')?.value || 'Miejsce dostawy';
     const mainUnloading = {
       type: 'unloading',
       transportId: 'main',
-      order: mainUnloadingOrder, // ZMIANA: Używa edytowalnej kolejności
+      order: transportsToMerge.length + 3,
       location: null,
-      description: 'Miejsce dostawy',
+      description: deliveryCity,
       address: 'Adres dostawy głównej'
     };
     
     allPoints.push(mainUnloading);
     
-    // Sortowanie pozostaje bez zmian
+    // Sortuj punkty według kolejności
     const sortedPoints = allPoints.sort((a, b) => {
       if (a.order !== b.order) return a.order - b.order;
       if (a.type === 'loading' && b.type === 'unloading') return -1;
       if (a.type === 'unloading' && b.type === 'loading') return 1;
-      if (a.transportId === 'main' && b.transportId !== 'main') return 1;
-      if (a.transportId !== 'main' && b.transportId === 'main') return -1;
       return 0;
     });
     
@@ -371,61 +260,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       points: sortedPoints, 
       estimatedDistance: calculatedRouteDistance || 0
     };
-  };
-
-  // Generowanie linku do Google Maps z sekwencyjną trasą
-  const generateGoogleMapsLinkForMerged = () => {
-    const routeInfo = calculateMergedRoute();
-    
-    if (routeInfo.points.length < 2) return '';
-    
-    const waypoints = [];
-    let origin = '';
-    let destination = '';
-    
-    // Pierwszy punkt to origin
-    const firstPoint = routeInfo.points[0];
-    if (firstPoint.address === 'Magazyn Białystok') {
-      origin = 'Białystok';
-    } else if (firstPoint.address === 'Magazyn Zielonka') {
-      origin = 'Zielonka';
-    } else if (firstPoint.location && firstPoint.location.city) {
-      origin = `${firstPoint.location.city}, ${firstPoint.location.postalCode || ''}, ${firstPoint.location.street || ''}`;
-    }
-    
-    // Środkowe punkty to waypoints
-    for (let i = 1; i < routeInfo.points.length - 1; i++) {
-      const point = routeInfo.points[i];
-      let waypointAddress = '';
-      
-      if (point.address === 'Magazyn Białystok') {
-        waypointAddress = 'Białystok';
-      } else if (point.address === 'Magazyn Zielonka') {
-        waypointAddress = 'Zielonka';
-      } else if (point.location && point.location.city) {
-        waypointAddress = `${point.location.city}, ${point.location.postalCode || ''}, ${point.location.street || ''}`;
-      }
-      
-      if (waypointAddress) {
-        waypoints.push(waypointAddress);
-      }
-    }
-    
-    // Destination z formularza
-    const deliveryCity = document.querySelector('input[name="deliveryCity"]')?.value || '';
-    const deliveryPostalCode = document.querySelector('input[name="deliveryPostalCode"]')?.value || '';
-    const deliveryStreet = document.querySelector('input[name="deliveryStreet"]')?.value || '';
-    
-    if (deliveryCity && deliveryPostalCode) {
-      destination = `${deliveryCity}, ${deliveryPostalCode}, ${deliveryStreet}`;
-    }
-    
-    if (!origin || !destination) return '';
-    
-    // Buduj URL
-    const waypointsParam = waypoints.length > 0 ? `&waypoints=${encodeURIComponent(waypoints.join('|'))}` : '';
-    
-    return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}${waypointsParam}&travelmode=driving`;
   };
 
   // Oblicz pozostałą kwotę dla głównego transportu
@@ -441,7 +275,9 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     selected: "px-4 py-2 bg-blue-500 text-white rounded-md",
     unselected: "px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50",
     toggle: "px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors",
-    toggleActive: "px-4 py-2 bg-blue-100 border border-blue-400 text-blue-700 rounded-md font-medium"
+    toggleActive: "px-4 py-2 bg-blue-100 border border-blue-400 text-blue-700 rounded-md font-medium",
+    orderButton: "px-2 py-1 text-sm border rounded hover:bg-gray-50",
+    orderButtonActive: "px-2 py-1 text-sm border rounded bg-blue-100 border-blue-400 text-blue-700"
   }
   
   // Funkcja do geokodowania adresu
@@ -449,7 +285,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     try {
       const query = encodeURIComponent(addressString + ', Poland');
       
-      // Użyj Google Maps Geocoding API
       const response = await fetch(
         `https://maps.googleapis.com/maps/api/geocode/json?address=${query}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`
       );
@@ -474,10 +309,8 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
   // Funkcja do obliczania odległości
   async function calculateDistance(originLat, originLng, destinationLat, destinationLng) {
     try {
-      // Używamy własnego endpointu proxy zamiast bezpośredniego wywołania API Google
       const url = `/api/distance?origins=${originLat},${originLng}&destinations=${destinationLat},${destinationLng}`;
       
-      console.log('Wywołuję endpoint proxy:', url);
       const response = await fetch(url);
       
       if (!response.ok) {
@@ -485,7 +318,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       }
       
       const data = await response.json();
-      console.log('Odpowiedź API:', data);
       
       if (data.status === 'OK' && 
           data.rows && 
@@ -495,7 +327,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
           data.rows[0].elements[0].status === 'OK') {
         
         const distance = Math.round(data.rows[0].elements[0].distance.value / 1000);
-        console.log(`Rzeczywista odległość drogowa: ${distance} km`);
         return distance;
       }
       
@@ -503,19 +334,17 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     } catch (error) {
       console.error('Błąd obliczania odległości:', error);
       
-      // Obliczanie dystansu w linii prostej z korektą
       const straightLineDistance = calculateStraightLineDistance(
         originLat, originLng, destinationLat, destinationLng
       );
       
-      // Dodaj 30% do odległości w linii prostej aby przybliżyć odległość drogową
       return Math.round(straightLineDistance * 1.3);
     }
   }
   
   // Pomocnicza funkcja do obliczania odległości w linii prostej
   function calculateStraightLineDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371; // Promień Ziemi w km
+    const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
     const a = 
@@ -523,7 +352,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
       Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c; // Odległość w km
+    return R * c;
   }
   
   // Funkcja do obliczania odległości trasy
@@ -532,7 +361,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       setIsCalculatingDistance(true);
       let originLat, originLng, destLat, destLng;
       
-      // Ustal współrzędne punktu początkowego
       if (fromLocation === 'Odbiory własne') {
         const producerCity = document.querySelector('input[name="producerCity"]').value;
         const producerPostalCode = document.querySelector('input[name="producerPostalCode"]').value;
@@ -548,13 +376,11 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         originLat = originCoords.lat;
         originLng = originCoords.lng;
       } else {
-        // Użyj współrzędnych magazynu
         const warehouseKey = fromLocation === 'Magazyn Białystok' ? 'bialystok' : 'zielonka';
         originLat = MAGAZYNY[warehouseKey].lat;
         originLng = MAGAZYNY[warehouseKey].lng;
       }
       
-      // Ustal współrzędne punktu docelowego
       const destCity = document.querySelector('input[name="deliveryCity"]').value;
       const destPostalCode = document.querySelector('input[name="deliveryPostalCode"]').value;
       const destStreet = document.querySelector('input[name="deliveryStreet"]').value;
@@ -569,7 +395,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       destLat = destCoords.lat;
       destLng = destCoords.lng;
       
-      // Oblicz odległość między punktami
       const distanceKm = await calculateDistance(originLat, originLng, destLat, destLng);
       setDistance(distanceKm);
       setIsCalculatingDistance(false);
@@ -594,7 +419,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     setIsDropdownOpen(true);
   };
   
-  // Funkcja obsługująca zmianę w opisie towaru
   const handleGoodsDescriptionChange = (e) => {
     const { name, value } = e.target;
     setGoodsDescription(prev => ({
@@ -605,7 +429,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
 
   // Pobierz listę użytkowników, budów i dane bieżącego użytkownika
   useEffect(() => {
-    // Pobierz dane bieżącego użytkownika
     const fetchCurrentUser = async () => {
       try {
         const response = await fetch('/api/user');
@@ -618,7 +441,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
             mpk: data.user.mpk || ''
           });
           
-          // Pre-select the current user
           if (!isEditing && !initialData) {
             setSelectedUser({
               email: data.user.email,
@@ -632,13 +454,11 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       }
     };
 
-    // Pobierz listę wszystkich użytkowników
     const fetchUsers = async () => {
       try {
         const response = await fetch('/api/users/list');
         const data = await response.json();
         
-        // Map the data to a consistent format
         const formattedUsers = data.map(user => ({
           email: user.email,
           name: user.name,
@@ -652,7 +472,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       }
     };
     
-    // Pobierz listę budów
     const fetchConstructions = async () => {
       try {
         const response = await fetch('/api/constructions');
@@ -673,7 +492,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       }
     };
     
-    // Pobierz dostępne transporty do łączenia (dla isResponse)
     const fetchAvailableTransports = async () => {
       if (!isResponse) return;
       
@@ -683,12 +501,11 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
           const data = await response.json();
           
           if (data.success && data.spedycje) {
-            // Filtruj, żeby nie pokazywać bieżącego transportu i już połączonych
             const filteredTransports = data.spedycje.filter(t => 
               t.id !== (initialData?.id || 0) && 
               t.status === 'new' &&
-              !t.merged_transports && // nie pokazuj już połączonych
-              (!t.response || Object.keys(t.response).length === 0) // nie pokazuj z odpowiedziami
+              !t.merged_transports && 
+              (!t.response || Object.keys(t.response).length === 0)
             );
             setAvailableTransports(filteredTransports);
           }
@@ -724,12 +541,10 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       setSelectedLocation(initialData.location || '');
       setDistance(initialData.distanceKm || 0);
       
-      // Ustaw cenę całkowitą
       if (initialData.response?.deliveryPrice) {
         setTotalPrice(initialData.response.deliveryPrice);
       }
       
-      // Ustaw opis towaru, jeśli istnieje
       if (initialData.goodsDescription) {
         setGoodsDescription({
           description: initialData.goodsDescription.description || '',
@@ -739,13 +554,11 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       }
       
       if (isResponse) {
-        // Dla formularza odpowiedzi
         if (initialData.deliveryDate) {
           setOriginalDeliveryDate(initialData.deliveryDate);
           setNewDeliveryDate(initialData.deliveryDate);
         }
       } else if (isEditing) {
-        // Dla trybu edycji
         if (initialData.responsibleEmail) {
           const responsibleUser = users.find(u => u.email === initialData.responsibleEmail);
           if (responsibleUser) {
@@ -754,7 +567,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
           }
         }
         
-        // Ustaw budowy, jeśli są powiązane
         if (initialData.responsibleConstructions && initialData.responsibleConstructions.length > 0) {
           setSelectedConstructions(initialData.responsibleConstructions);
         }
@@ -784,7 +596,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
   
   // Add a construction to selection
   const handleAddConstruction = (construction) => {
-    // Sprawdź czy budowa nie jest już wybrana
     if (selectedConstructions.some(c => c.id === construction.id)) {
       return;
     }
@@ -797,67 +608,21 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
   const handleRemoveConstruction = (constructionId) => {
     setSelectedConstructions(prev => prev.filter(c => c.id !== constructionId));
   };
-
-  // FUNKCJA OBLICZANIA RZECZYWISTEJ TRASY DLA POŁĄCZONYCH TRANSPORTÓW
-  const handleCalculateMergedRouteDistance = async () => {
-    if (transportsToMerge.length === 0) {
-      alert('Dodaj transporty do połączenia, aby obliczyć trasę');
-      return;
-    }
-
-    const routeInfo = calculateMergedRoute();
-    
-    if (routeInfo.points.length < 2) {
-      alert('Nie można obliczyć trasy - brak wystarczających punktów');
-      return;
-    }
-
-    try {
-      // Uzupełnij główny rozładunek z formularza
-      const lastPoint = routeInfo.points[routeInfo.points.length - 1];
-      const deliveryCity = document.querySelector('input[name="deliveryCity"]')?.value;
-      const deliveryPostalCode = document.querySelector('input[name="deliveryPostalCode"]')?.value;
-      const deliveryStreet = document.querySelector('input[name="deliveryStreet"]')?.value;
-      
-      if (!deliveryCity || !deliveryPostalCode) {
-        alert('Wypełnij adres dostawy, aby obliczyć trasę');
-        return;
-      }
-      
-      lastPoint.location = {
-        city: deliveryCity,
-        postalCode: deliveryPostalCode,
-        street: deliveryStreet
-      };
-      lastPoint.address = `${deliveryCity}, ${deliveryPostalCode}, ${deliveryStreet}`;
-      
-      const realDistance = await calculateRealRouteDistance(routeInfo.points);
-      console.log('Obliczona rzeczywista odległość trasy:', realDistance);
-      
-    } catch (error) {
-      console.error('Błąd obliczania trasy:', error);
-      alert('Wystąpił błąd podczas obliczania trasy');
-    }
-  };
   
   const handleSubmit = async (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
 
-    // Na początku funkcji handleSubmit, dodaj:
     if (isCopying) {
-      // Tryb kopiowania - traktuj jak nowe zamówienie
       if (!selectedUser && selectedConstructions.length === 0) {
         alert('Wybierz osobę lub budowę odpowiedzialną za zlecenie');
         return;
       }
       
-      // Oblicz odległość dla skopiowanego zamówienia
       let routeDistance = distance;
       if (routeDistance === 0) {
         try {
           routeDistance = await calculateRouteDistance(selectedLocation, 'destination');
-          console.log('Obliczona odległość dla kopii:', routeDistance);
         } catch (error) {
           console.error('Błąd obliczania odległości:', error);
         }
@@ -893,28 +658,17 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         goodsDescription: showGoodsDescription ? goodsDescription : null
       };
       
-      console.log('Zapisywanie skopiowanego zamówienia:', data);
       onSubmit(data);
       onCancel();
       return;
     }
 
     if (isResponse) {
-      console.log('Odpowiedź na zamówienie, dane początkowe:', initialData);
-      // Wykorzystaj odległość z oryginalnego zamówienia lub obliczoną dla połączonych
       const distanceKm = calculatedRouteDistance > 0 ? calculatedRouteDistance : (initialData.distanceKm || 0);
-      console.log('Odległość używana do obliczeń:', distanceKm);
                      
       const totalDeliveryPrice = Number(totalPrice);
       const pricePerKm = distanceKm > 0 ? (totalDeliveryPrice / distanceKm).toFixed(2) : 0;
       
-      console.log('Obliczenia:', {
-        totalDeliveryPrice,
-        distanceKm,
-        pricePerKm
-      });
-      
-      // Przygotuj dane odpowiedzi
       const responseData = {
         driverName: formData.get('driverName'),
         driverSurname: formData.get('driverSurname'),
@@ -926,23 +680,19 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         adminNotes: formData.get('adminNotes')
       };
       
-      // Jeśli data dostawy została zmieniona, dodaj ją do odpowiedzi
       if (changeDeliveryDate && newDeliveryDate !== originalDeliveryDate) {
         responseData.newDeliveryDate = newDeliveryDate;
         responseData.originalDeliveryDate = originalDeliveryDate;
         responseData.dateChanged = true;
       }
       
-      // Dodaj dane o transportach do połączenia z konfiguracją trasy
       if (transportsToMerge.length > 0) {
         responseData.transportsToMerge = transportsToMerge;
         responseData.costDistribution = costDistribution;
         responseData.routeConfiguration = routeConfiguration;
         
-        // Oblicz rzeczywistą odległość z konfiguracji trasy
         const routeInfo = calculateMergedRoute();
         
-        // Uzupełnij główny rozładunek z formularza
         const lastPoint = routeInfo.points[routeInfo.points.length - 1];
         const deliveryCity = formData.get('deliveryCity');
         const deliveryPostalCode = formData.get('deliveryPostalCode');
@@ -961,20 +711,15 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       
       onSubmit(initialData.id, responseData);
     } else if (isEditing) {
-      // Formularz edycji
       if (!selectedUser && selectedConstructions.length === 0) {
         alert('Wybierz osobę lub budowę odpowiedzialną za zlecenie');
         return;
       }
       
-      console.log('Edycja zamówienia, dane początkowe:', initialData);
-      
-      // Oblicz odległość, jeśli jeszcze nie obliczona
       let routeDistance = distance;
       if (routeDistance === 0) {
         try {
           routeDistance = await calculateRouteDistance(selectedLocation, 'destination');
-          console.log('Obliczona odległość:', routeDistance);
         } catch (error) {
           console.error('Błąd obliczania odległości:', error);
         }
@@ -1001,42 +746,30 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         deliveryDate: formData.get('deliveryDate'),
         distanceKm: routeDistance,
         notes: formData.get('notes'),
-        // Aktualizacja informacji o osobie odpowiedzialnej
         responsiblePerson: selectedUser ? selectedUser.name : null,
         responsibleEmail: selectedUser ? selectedUser.email : null,
         mpk: selectedUser ? selectedUser.mpk || '' : '',
-        // Jeśli wybrane budowy, dodaj je
         responsibleConstructions: selectedConstructions.length > 0 ? selectedConstructions : null,
-        // Jeśli jest opis towaru, dodaj go
         goodsDescription: showGoodsDescription ? goodsDescription : null,
-        // Zachowaj informacje o osobie tworzącej
         createdBy: initialData.createdBy,
         createdByEmail: initialData.createdByEmail
       };
       
-      console.log('Dane edycji do zapisania:', editedData);
       onSubmit(initialData.id, editedData);
     } else {
-      // Nowe zamówienie
       if (!selectedUser && selectedConstructions.length === 0) {
         alert('Wybierz osobę lub budowę odpowiedzialną za zlecenie');
         return;
       }
       
-      // Najpierw oblicz odległość, jeśli jeszcze nie obliczona
       let routeDistance = distance;
       if (routeDistance === 0) {
         try {
           routeDistance = await calculateRouteDistance(selectedLocation, 'destination');
-          console.log('Obliczona odległość:', routeDistance);
         } catch (error) {
           console.error('Błąd obliczania odległości:', error);
         }
       }
-      
-      // Dodaj logs do debugowania
-      console.log('Przygotowanie danych zamówienia do zapisania:');
-      console.log('Odległość:', routeDistance);
       
       const data = {
         location: selectedLocation,
@@ -1059,20 +792,14 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         deliveryDate: formData.get('deliveryDate'),
         distanceKm: routeDistance,
         notes: formData.get('notes'),
-        // Dodajemy informacje o użytkowniku dodającym i odpowiedzialnym
         createdBy: currentUser.name,
         createdByEmail: currentUser.email,
-        // Informacje o osobie odpowiedzialnej
         responsiblePerson: selectedUser ? selectedUser.name : null,
         responsibleEmail: selectedUser ? selectedUser.email : null,
         mpk: selectedUser ? selectedUser.mpk || '' : '',
-        // Jeśli wybrane budowy, dodaj je
         responsibleConstructions: selectedConstructions.length > 0 ? selectedConstructions : null,
-        // Jeśli jest opis towaru, dodaj go
         goodsDescription: showGoodsDescription ? goodsDescription : null
       };
-      
-      console.log('Dane zamówienia do zapisania:', data);
       
       onSubmit(data);
     }
@@ -1114,9 +841,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       )}
 
       {isResponse ? (
-        // Formularz odpowiedzi
         <>
-          {/* Sekcja daty dostawy */}
           <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 mb-6">
             <div className="flex justify-between items-center">
               <div className="flex items-center">
@@ -1217,12 +942,11 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
             </div>
           </div>
           
-          {/* SEKCJA: Zaawansowane łączenie transportów z konfiguracją tras */}
           <div className="mt-6 border-t pt-6">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-medium flex items-center">
                 <LinkIcon size={20} className="mr-2 text-blue-600" />
-                Połącz z innymi transportami (zaawansowane)
+                Połącz z innymi transportami
               </h3>
               <button
                 type="button"
@@ -1266,37 +990,40 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                   <div className="space-y-4">
                     <h4 className="font-medium text-blue-700">Konfiguracja trasy:</h4>
                     
-                    // W sekcji głównego transportu, dodaj pole do edycji kolejności rozładunku:
-                    {/* SEKCJA GŁÓWNEGO TRANSPORTU - Z EDYTOWALNA KOLEJNOŚCIĄ ROZŁADUNKU */}
                     <div className="p-3 bg-blue-50 rounded border border-blue-200 mb-4">
                       <div className="font-medium text-blue-700 mb-2">
                         GŁÓWNY: {initialData?.orderNumber || 'Nowy'} (MPK: {initialData?.mpk || 'Brak'})
                       </div>
                       <div className="text-sm text-gray-600 mb-2">
-                        🟢 Załadunek: {selectedLocation.replace('Magazyn ', '')} (kolejność: 1)
+                        🟢 Załadunek: {selectedLocation.replace('Magazyn ', '')}
                       </div>
-                      
-                      {/* NOWE: Pole do edycji kolejności głównego rozładunku */}
-                      <div className="text-sm text-gray-600 mb-2 flex items-center">
-                        🔴 Rozładunek: Miejsce dostawy 
-                        <span className="ml-2 mr-1">(kolejność:</span>
-                        <input
-                          type="number"
-                          min="2"
-                          max="10"
-                          value={mainUnloadingOrder}
-                          onChange={(e) => setMainUnloadingOrder(parseInt(e.target.value))}
-                          className="w-16 p-1 border rounded text-sm mx-1"
-                        />
-                        <span>)</span>
+                      <div className="text-sm text-gray-600 mb-2">
+                        🔴 Rozładunek: {(() => {
+                          const deliveryCity = document.querySelector('input[name="deliveryCity"]')?.value || 'Miejsce dostawy';
+                          return deliveryCity;
+                        })()}
+                        <div className="mt-2">
+                          Kolejność rozładunku:
+                          {[1, 2, 3, 4, 5].slice(0, transportsToMerge.length + 2).map(num => (
+                            <button
+                              key={num}
+                              type="button"
+                              className={num === (transportsToMerge.length + 3) ? buttonClasses.orderButtonActive : buttonClasses.orderButton}
+                              onClick={() => {
+                                // Nie robimy nic - główny zawsze na końcu
+                              }}
+                              style={{ marginLeft: '4px' }}
+                            >
+                              {num}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                      
                       <div className="text-sm font-medium text-green-700 mt-2">
                         Koszt: {getMainTransportCost().toFixed(2)} PLN
                       </div>
                     </div>
                     
-                    {/* Transporty do połączenia z konfiguracją */}
                     {transportsToMerge.map((transport, index) => {
                       const config = routeConfiguration[transport.id] || {};
                       return (
@@ -1315,7 +1042,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                             </button>
                           </div>
                           
-                          {/* Konfiguracja miejsc - Z LEPSZYM PODGLĄDEM KOLEJNOŚCI */}
                           <div className="grid grid-cols-2 gap-4 mb-3">
                             <div className="bg-green-50 p-2 rounded">
                               <div className="flex items-center mb-2">
@@ -1329,17 +1055,20 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                               </div>
                               {config.useLoading !== false && (
                                 <div>
-                                  <label className="text-xs text-gray-600">Kolejność załadunku:</label>
-                                  <input
-                                    type="number"
-                                    min="2"
-                                    max="10"
-                                    value={config.loadingOrder || index + 2}
-                                    onChange={(e) => handleRouteConfigurationChange(transport.id, 'loadingOrder', parseInt(e.target.value))}
-                                    className="w-full p-1 border rounded text-sm mt-1"
-                                  />
-                                  <div className="text-xs text-gray-500 mt-1">
-                                    📍 {transport.location.replace('Magazyn ', '')}
+                                  <div className="text-xs text-gray-600 mb-1">📍 {transport.location.replace('Magazyn ', '')}</div>
+                                  <div>
+                                    Kolejność:
+                                    {[1, 2, 3, 4, 5].slice(0, transportsToMerge.length + 2).map(num => (
+                                      <button
+                                        key={num}
+                                        type="button"
+                                        className={num === config.loadingOrder ? buttonClasses.orderButtonActive : buttonClasses.orderButton}
+                                        onClick={() => handleRouteConfigurationChange(transport.id, 'loadingOrder', num)}
+                                        style={{ marginLeft: '4px' }}
+                                      >
+                                        {num}
+                                      </button>
+                                    ))}
                                   </div>
                                 </div>
                               )}
@@ -1357,31 +1086,26 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                               </div>
                               {config.useUnloading !== false && (
                                 <div>
-                                  <label className="text-xs text-gray-600">Kolejność rozładunku:</label>
-                                  <input
-                                    type="number"
-                                    min="2"
-                                    max="10"
-                                    value={config.unloadingOrder || index + 2}
-                                    onChange={(e) => handleRouteConfigurationChange(transport.id, 'unloadingOrder', parseInt(e.target.value))}
-                                    className="w-full p-1 border rounded text-sm mt-1"
-                                  />
-                                  <div className="text-xs text-gray-500 mt-1">
-                                    📍 {transport.delivery?.city || 'Brak danych'}
+                                  <div className="text-xs text-gray-600 mb-1">📍 {transport.delivery?.city || 'Brak danych'}</div>
+                                  <div>
+                                    Kolejność:
+                                    {[1, 2, 3, 4, 5].slice(0, transportsToMerge.length + 2).map(num => (
+                                      <button
+                                        key={num}
+                                        type="button"
+                                        className={num === config.unloadingOrder ? buttonClasses.orderButtonActive : buttonClasses.orderButton}
+                                        onClick={() => handleRouteConfigurationChange(transport.id, 'unloadingOrder', num)}
+                                        style={{ marginLeft: '4px' }}
+                                      >
+                                        {num}
+                                      </button>
+                                    ))}
                                   </div>
-                                  
-                                  {/* NOWE: Informacja o konflikcie kolejności */}
-                                  {config.unloadingOrder === mainUnloadingOrder && (
-                                    <div className="text-xs text-orange-600 mt-1 font-medium">
-                                      ⚠️ Ta sama kolejność co główny rozładunek!
-                                    </div>
-                                  )}
                                 </div>
                               )}
                             </div>
                           </div>
                           
-                          {/* Koszt */}
                           <div className="flex items-center space-x-2">
                             <DollarSign size={14} className="text-gray-500" />
                             <input
@@ -1397,12 +1121,10 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                       );
                     })}
                     
-                    // 2. POPRAWKA w sekcji podglądu trasy - usuń zbędne przyciski i uprość opisy
-                    {/* SEKCJA PODGLĄDU SEKWENCYJNEJ TRASY - POPRAWIONA */}
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                       <h4 className="font-medium text-blue-700 mb-3 flex items-center">
                         <Route size={18} className="mr-2" />
-                        Podgląd sekwencyjnej trasy:
+                        Podgląd trasy:
                       </h4>
                       {(() => {
                         const routeInfo = calculateMergedRoute();
@@ -1410,30 +1132,20 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                     
                         return (
                           <div className="space-y-2">
-                            {sortedPoints.map((point, index) => {
-                              // POPRAWKA: Dla głównego rozładunku pobierz miasto z formularza
-                              let locationName = point.description;
-                              if (point.transportId === 'main' && point.type === 'unloading') {
-                                const deliveryCity = document.querySelector('input[name="deliveryCity"]')?.value || 'Miejsce dostawy';
-                                locationName = deliveryCity;
-                              }
-                    
-                              return (
-                                <div key={`${point.transportId}-${point.type}-${index}`} className="flex items-center">
-                                  <span className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center mr-3">
-                                    {index + 1}
-                                  </span>
-                                  <span className={`mr-2 ${point.type === 'loading' ? 'text-green-600' : 'text-red-600'}`}>
-                                    {point.type === 'loading' ? '🟢 Załadunek' : '🔴 Rozładunek'}
-                                  </span>
-                                  <span className="font-medium">{locationName}</span>
-                                  {point.transportId !== 'main' && (
-                                    <span className="ml-2 text-sm text-purple-600">Transport #{point.transportId}</span>
-                                  )}
-                                  <span className="ml-2 text-xs text-gray-500">(kolejność: {point.order})</span>
-                                </div>
-                              );
-                            })}
+                            {sortedPoints.map((point, index) => (
+                              <div key={`${point.transportId}-${point.type}-${index}`} className="flex items-center">
+                                <span className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center mr-3">
+                                  {index + 1}
+                                </span>
+                                <span className={`mr-2 ${point.type === 'loading' ? 'text-green-600' : 'text-red-600'}`}>
+                                  {point.type === 'loading' ? '🟢 Załadunek' : '🔴 Rozładunek'}
+                                </span>
+                                <span className="font-medium">{point.description}</span>
+                                {point.transportId !== 'main' && (
+                                  <span className="ml-2 text-sm text-purple-600">Transport #{point.transportId}</span>
+                                )}
+                              </div>
+                            ))}
                             
                             <div className="mt-4 bg-amber-50 border border-amber-200 rounded p-3">
                               <div className="text-sm text-amber-700 font-medium mb-1">Cena całkowita: {(() => {
@@ -1446,10 +1158,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                               </div>
                               <div className="text-sm text-amber-600">
                                 Pozostaje dla głównego: {getMainTransportCost().toFixed(2)} PLN
-                              </div>
-                              <div className="text-xs text-amber-600 mt-2">
-                                <strong>Uwaga:</strong> Po zapisaniu odpowiedzi transporty zostaną połączone według skonfigrowanej trasy. 
-                                Oryginalne transporty z listy zostaną usunięte.
                               </div>
                             </div>
                           </div>
@@ -1473,7 +1181,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         </>
       ) : (
         <>
-          {/* Reszta formularza (dla nowych zamówień i edycji) */}
           <div>
             <label className="block text-sm font-medium mb-1">Miejsce załadunku</label>
             <div className="grid grid-cols-3 gap-2">
@@ -1505,7 +1212,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
             <div className="space-y-4">
               <h3 className="text-lg font-medium">Adres punktu odbioru</h3>
               
-              {/* Nazwa firmy w punkcie odbioru - nowe pole */}
               <div>
                 <label className="block text-sm font-medium mb-1">Nazwa firmy (punkt odbioru)</label>
                 <input
@@ -1577,7 +1283,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
             />
           </div>
           
-          {/* Towar - zmodyfikowany wygląd przycisku */}
           <div>
             <div className="flex justify-between items-center mb-2">
               <label className="block text-sm font-medium">Towar</label>
@@ -1618,11 +1323,9 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
             )}
           </div>
 
-          {/* Adres dostawy z dodanym polem nazwy klienta na początku */}
           <div className="space-y-4">
             <h3 className="text-lg font-medium">Adres dostawy</h3>
             
-            {/* Nazwa klienta przeniesiona do sekcji adresu dostawy */}
             <div>
               <label className="block text-sm font-medium mb-1">
                 Nazwa firmy/klienta
@@ -1716,7 +1419,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
             </div>
           </div>
 
-          {/* Nowy komponent wyboru użytkownika lub budowy z autouzupełnianiem */}
           <div className="mb-4">
             <label className="block text-sm font-medium mb-1">
               Osoba odpowiedzialna / budowa / numer MPK
@@ -1756,7 +1458,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                 <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
                   {filteredItems.length > 0 ? (
                     <>
-                      {/* Osoby */}
                       {filteredItems.filter(item => item.type === 'user').length > 0 && (
                         <div className="px-3 py-1 bg-gray-100 text-gray-700 text-xs font-semibold">
                           Osoby
@@ -1779,7 +1480,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                         ))
                       }
                       
-                      {/* Budowy */}
                       {filteredItems.filter(item => item.type === 'construction').length > 0 && (
                         <div className="px-3 py-1 bg-gray-100 text-gray-700 text-xs font-semibold">
                           Budowy
@@ -1808,7 +1508,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
               )}
             </div>
             
-            {/* Wyświetlanie wybranej osoby/budowy */}
             {selectedUser && (
               <div className="mt-2 p-2 bg-blue-50 rounded-md border border-blue-100">
                 <div className="flex justify-between">
@@ -1824,7 +1523,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
               </div>
             )}
             
-            {/* Wyświetlanie wybranych budów */}
             {selectedConstructions.length > 0 && (
               <div className="mt-2 p-2 bg-green-50 rounded-md border border-green-100">
                 <h4 className="font-medium text-sm mb-2">Wybrane budowy:</h4>
