@@ -84,17 +84,17 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
 
   // FUNKCJE DLA ZAAWANSOWANEGO ŁĄCZENIA TRANSPORTÓW
 
-  // Dodawanie transportu z domyślną konfiguracją trasy
+  // 1. POPRAWKA domyślnej konfiguracji - oba checkboxy domyślnie zaznaczone
   const handleAddTransportToMerge = (transportId) => {
     const transport = availableTransports.find(t => t.id === parseInt(transportId));
     if (transport && !transportsToMerge.find(t => t.id === transport.id)) {
       
-      // Domyślna konfiguracja - załadunek TAK, rozładunek NIE (żeby nie dublować)
+      // POPRAWIONA konfiguracja - oba checkboxy domyślnie TRUE
       const defaultConfig = {
-        useLoading: true, // zawsze pobierz załadunek z dodawanego transportu
-        useUnloading: false, // domyślnie NIE pobieraj rozładunku (żeby uniknąć wielu rozładunków)
+        useLoading: true,     // załadunek domyślnie TAK
+        useUnloading: true,   // POPRAWKA: rozładunek też domyślnie TAK
         loadingOrder: transportsToMerge.length + 2, // kolejny załadunek po głównym
-        unloadingOrder: 900 + transportsToMerge.length // późny rozładunek, ale przed głównym
+        unloadingOrder: transportsToMerge.length + 2 // POPRAWKA: kolejny rozładunek
       };
       
       const newTransport = {
@@ -1299,7 +1299,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                             </button>
                           </div>
                           
-                          {/* Konfiguracja miejsc */}
+                          {/* Konfiguracja miejsc - POPRAWIONA */}
                           <div className="grid grid-cols-2 gap-4 mb-3">
                             <div className="bg-green-50 p-2 rounded">
                               <div className="flex items-center mb-2">
@@ -1323,7 +1323,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                                     className="w-full p-1 border rounded text-sm mt-1"
                                   />
                                   <div className="text-xs text-gray-500 mt-1">
-                                    📍 {transport.location}
+                                    📍 {transport.location.replace('Magazyn ', '')}
                                   </div>
                                 </div>
                               )}
@@ -1333,7 +1333,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                               <div className="flex items-center mb-2">
                                 <input
                                   type="checkbox"
-                                  checked={config.useUnloading !== false} // domyślnie true
+                                  checked={config.useUnloading !== false} // POPRAWKA: domyślnie true zamiast false
                                   onChange={(e) => handleRouteConfigurationChange(transport.id, 'useUnloading', e.target.checked)}
                                   className="mr-2"
                                 />
@@ -1374,108 +1374,87 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                       );
                     })}
                     
-                    {/* Podgląd trasy */}
-                    <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded">
-                      <h5 className="font-medium text-blue-700 mb-2">Podgląd sekwencyjnej trasy:</h5>
+                    // 2. POPRAWKA w sekcji podglądu trasy - usuń zbędne przyciski i uprość opisy
+                    {/* SEKCJA PODGLĄDU SEKWENCYJNEJ TRASY - POPRAWIONA */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                      <h4 className="font-medium text-blue-700 mb-3 flex items-center">
+                        <Route size={18} className="mr-2" />
+                        Podgląd sekwencyjnej trasy:
+                      </h4>
                       {(() => {
                         const routeInfo = calculateMergedRoute();
+                        const sortedPoints = routeInfo.points.sort((a, b) => {
+                          if (a.order !== b.order) return a.order - b.order;
+                          if (a.type === 'loading' && b.type === 'unloading') return -1;
+                          if (a.type === 'unloading' && b.type === 'loading') return 1;
+                          return 0;
+                        });
+                    
                         return (
-                          <div>
-                            <div className="text-sm space-y-1">
-                              {routeInfo.points.map((point, index) => (
-                                <div key={index} className="flex items-center">
-                                  <span className="mr-2 font-mono text-xs bg-gray-200 px-1 rounded">{index + 1}</span>
-                                  <span className={`px-2 py-1 rounded text-xs ${
-                                    point.type === 'loading' 
-                                      ? 'bg-green-100 text-green-700' 
-                                      : 'bg-red-100 text-red-700'
-                                  }`}>
+                          <div className="space-y-2">
+                            {sortedPoints.map((point, index) => {
+                              // POPRAWKA: Uprość opisy - usuń "główny", używaj nazw miejscowości
+                              let locationName = '';
+                              if (point.transportId === 'main') {
+                                if (point.type === 'loading') {
+                                  locationName = selectedLocation.replace('Magazyn ', '');
+                                } else {
+                                  // Dla rozładunku głównego - pobierz miasto z formularza
+                                  const deliveryCity = document.querySelector('input[name="deliveryCity"]')?.value || 'Miejsce dostawy';
+                                  locationName = deliveryCity;
+                                }
+                              } else {
+                                if (point.type === 'loading') {
+                                  const transport = transportsToMerge.find(t => t.id === point.transportId);
+                                  locationName = transport ? transport.location.replace('Magazyn ', '') : 'Nieznane';
+                                } else {
+                                  const transport = transportsToMerge.find(t => t.id === point.transportId);
+                                  locationName = transport?.delivery?.city || 'Brak danych';
+                                }
+                              }
+                    
+                              return (
+                                <div key={`${point.transportId}-${point.type}-${index}`} className="flex items-center">
+                                  <span className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center mr-3">
+                                    {index + 1}
+                                  </span>
+                                  <span className={`mr-2 ${point.type === 'loading' ? 'text-green-600' : 'text-red-600'}`}>
                                     {point.type === 'loading' ? '🟢 Załadunek' : '🔴 Rozładunek'}
                                   </span>
-                                  <span className="ml-2 text-gray-600">{point.description}</span>
+                                  <span className="font-medium">{locationName}</span>
                                   {point.transportId !== 'main' && (
-                                    <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-1 rounded">
-                                      Transport #{point.transportId}
-                                    </span>
+                                    <span className="ml-2 text-sm text-purple-600">Transport #{point.transportId}</span>
                                   )}
                                 </div>
-                              ))}
-                            </div>
-                            <div className="mt-3 p-2 bg-blue-100 rounded">
-                              <div className="text-sm font-medium text-blue-700">
-                                {calculatedRouteDistance > 0 ? (
-                                  `Rzeczywista odległość trasy (Google Maps): ${calculatedRouteDistance} km`
-                                ) : (
-                                  'Odległość trasy nie została jeszcze obliczona'
-                                )}
+                              );
+                            })}
+                            
+                            {/* USUŃ sekcję z przyciskami "Oblicz rzeczywistą odległość" i "Zobacz trasę na Google Maps" */}
+                            
+                            <div className="mt-4 bg-amber-50 border border-amber-200 rounded p-3">
+                              <div className="text-sm text-amber-700 font-medium mb-1">Cena całkowita: {(() => {
+                                const mainCost = getMainTransportCost();
+                                const additionalCosts = Object.values(costDistribution).reduce((sum, cost) => sum + parseFloat(cost || 0), 0);
+                                return (mainCost + additionalCosts).toFixed(2);
+                              })()} PLN</div>
+                              <div className="text-sm text-amber-600">
+                                Przydzielone do innych: {Object.values(costDistribution).reduce((sum, cost) => sum + parseFloat(cost || 0), 0).toFixed(2)} PLN
                               </div>
-                              <div className="text-xs text-blue-600 mt-1">
-                                (obliczona punkt po punkcie przez Google Maps API)
+                              <div className="text-sm text-amber-600">
+                                Pozostaje dla głównego: {(() => {
+                                  const mainCost = getMainTransportCost();
+                                  const additionalCosts = Object.values(costDistribution).reduce((sum, cost) => sum + parseFloat(cost || 0), 0);
+                                  return (mainCost + additionalCosts - additionalCosts).toFixed(2);
+                                })()} PLN
                               </div>
-                              
-                              {/* Przyciski akcji */}
-                              <div className="mt-3 flex space-x-2">
-                                <button
-                                  type="button"
-                                  onClick={handleCalculateMergedRouteDistance}
-                                  disabled={isCalculatingDistance}
-                                  className="px-3 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600 disabled:opacity-50"
-                                >
-                                  {isCalculatingDistance ? 'Obliczanie...' : '📊 Oblicz rzeczywistą odległość'}
-                                </button>
-                                
-                                {routeInfo.points.length > 1 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const mapsLink = generateGoogleMapsLinkForMerged();
-                                      if (mapsLink) {
-                                        window.open(mapsLink, '_blank');
-                                      } else {
-                                        alert('Nie można wygenerować linku - sprawdź czy wszystkie adresy są wypełnione');
-                                      }
-                                    }}
-                                    className="px-3 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600"
-                                  >
-                                    🗺️ Zobacz trasę na Google Maps
-                                  </button>
-                                )}
+                              <div className="text-xs text-amber-600 mt-2">
+                                <strong>Uwaga:</strong> Po zapisaniu odpowiedzi transporty zostaną połączone według skonfigurowanej trasy. 
+                                Oryginalne transporty z listy zostaną usunięte.
                               </div>
                             </div>
                           </div>
                         );
                       })()}
-                    </div>
-                    
-                    {/* Podsumowanie kosztów */}
-                    <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
-                      <div className="text-sm">
-                        <div className="flex justify-between">
-                          <span>Cena całkowita:</span>
-                          <span className="font-medium">{totalPrice} PLN</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Przydzielone do innych:</span>
-                          <span>{Object.values(costDistribution).reduce((sum, cost) => sum + parseFloat(cost || 0), 0).toFixed(2)} PLN</span>
-                        </div>
-                        <div className="flex justify-between font-medium border-t pt-1 mt-1">
-                          <span>Pozostaje dla głównego:</span>
-                          <span className={getMainTransportCost() < 0 ? 'text-red-600' : 'text-green-600'}>
-                            {getMainTransportCost().toFixed(2)} PLN
-                          </span>
-                        </div>
-                      </div>
-                      
-                      {getMainTransportCost() < 0 && (
-                        <div className="mt-2 text-xs text-red-600 bg-red-50 p-2 rounded">
-                          ⚠️ Uwaga: Przydzielone koszty przekraczają cenę całkowitą!
-                        </div>
-                      )}
-                      
-                      <div className="mt-2 text-xs text-yellow-800">
-                        <strong>Uwaga:</strong> Po zapisaniu odpowiedzi transporty zostaną połączone według skonfigurowanej trasy. 
-                        Oryginalne transporty z listy zostaną usunięte.
-                      </div>
                     </div>
                   </div>
                 )}
