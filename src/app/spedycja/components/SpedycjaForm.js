@@ -34,7 +34,8 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     weight: initialData?.goodsDescription?.weight || ''
   })
   
-  // STANY DLA ZAAWANSOWANEGO SYSTEMU ŁĄCZENIA TRANSPORTÓW
+  // Stan dla kolejności głównego rozładunku
+  const [mainUnloadingOrder, setMainUnloadingOrder] = useState(999);
   const [transportsToMerge, setTransportsToMerge] = useState([])
   const [costDistribution, setCostDistribution] = useState({})
   const [availableTransports, setAvailableTransports] = useState([])
@@ -214,7 +215,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         allPoints.push({
           type: 'loading',
           transportId: transport.id,
-          order: config.loadingOrder + 1, // +1 żeby było po głównym załadunku
+          order: config.loadingOrder + 1,
           location: getLocationCoords(transport),
           description: transport.location.replace('Magazyn ', ''),
           address: transport.location
@@ -225,7 +226,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         allPoints.push({
           type: 'unloading',
           transportId: transport.id,
-          order: config.unloadingOrder + 10, // +10 żeby rozładunki były po załadunkach
+          order: config.unloadingOrder + 10,
           location: getDeliveryCoords(transport),
           description: transport.delivery?.city || 'Nie podano',
           address: transport.delivery ? 
@@ -235,12 +236,12 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       }
     });
     
-    // Główny rozładunek - zawsze na końcu
+    // Główny rozładunek - EDYTOWALNY!
     const deliveryCity = document.querySelector('input[name="deliveryCity"]')?.value || initialData?.delivery?.city || 'Miejsce dostawy';
     const mainUnloading = {
       type: 'unloading',
       transportId: 'main',
-      order: 100, // Zawsze na końcu
+      order: mainUnloadingOrder + 10, // Używa wybranej kolejności
       location: null,
       description: deliveryCity,
       address: 'Adres dostawy głównej'
@@ -1002,6 +1003,20 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                           const deliveryCity = document.querySelector('input[name="deliveryCity"]')?.value || initialData?.delivery?.city || 'Miejsce dostawy';
                           return deliveryCity;
                         })()}
+                        <div className="mt-2">
+                          Kolejność rozładunku:
+                          {Array.from({ length: transportsToMerge.length + 1 }, (_, i) => i + 1).map(num => (
+                            <button
+                              key={num}
+                              type="button"
+                              className={num === mainUnloadingOrder ? buttonClasses.orderButtonActive : buttonClasses.orderButton}
+                              onClick={() => setMainUnloadingOrder(num)}
+                              style={{ marginLeft: '4px' }}
+                            >
+                              {num}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                       <div className="text-sm font-medium text-green-700 mt-2">
                         Koszt: {getMainTransportCost().toFixed(2)} PLN
@@ -1073,7 +1088,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                                   <div className="text-xs text-gray-600 mb-1">📍 {transport.delivery?.city || 'Brak danych'}</div>
                                   <div>
                                     Kolejność:
-                                    {Array.from({ length: transportsToMerge.length }, (_, i) => i + 1).map(num => (
+                                    {Array.from({ length: transportsToMerge.length + 1 }, (_, i) => i + 1).map(num => (
                                       <button
                                         key={num}
                                         type="button"
