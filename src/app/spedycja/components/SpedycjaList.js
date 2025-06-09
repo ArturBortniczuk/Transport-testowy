@@ -1,3 +1,54 @@
+);
+}
+
+// Funkcje pomocnicze dla Google Maps
+
+const getAddressFromRoutePoint = (routePoint) => {
+  if (!routePoint) return '';
+  
+  if (routePoint.address) {
+    return routePoint.address;
+  }
+  
+  if (routePoint.location) {
+    const loc = routePoint.location;
+    if (loc.city && loc.postalCode) {
+      return `${loc.city}, ${loc.postalCode}, ${loc.street || ''}`;
+    }
+    if (loc.city) {
+      return loc.city;
+    }
+  }
+  
+  return routePoint.description || '';
+};
+
+const reconstructRouteFromMergedData = (transport, mergedData) => {
+  // Fallback - rekonstruuj prostą trasę głównego transportu
+  let origin = '';
+  let destination = '';
+  
+  if (transport.location === 'Odbiory własne' && transport.producerAddress) {
+    const addr = transport.producerAddress;
+    origin = `${addr.city},${addr.postalCode},${addr.street || ''}`;
+  } else if (transport.location === 'Magazyn Białystok') {
+    origin = 'Białystok';
+  } else if (transport.location === 'Magazyn Zielonka') {
+    origin = 'Zielonka';
+  }
+  
+  if (transport.delivery) {
+    const addr = transport.delivery;
+    destination = `${addr.city},${addr.postalCode},${addr.street || ''}`;
+  }
+  
+  if (!origin || !destination) return '';
+  
+  origin = encodeURIComponent(origin);
+  destination = encodeURIComponent(destination);
+  
+  return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
+};// src/app/spedycja/components/SpedycjaList.js
 import React, { useState } from 'react'
 import { format } from 'date-fns'
 import { pl } from 'date-fns/locale'
@@ -13,7 +64,7 @@ export default function SpedycjaList({
   onCreateOrder, 
   canSendOrder,
   onEdit,
-  onCopy,  // <-- DODAJ TEN PROP
+  onCopy,
   currentUserEmail
 }) {
   const [expandedId, setExpandedId] = useState(null)
@@ -101,176 +152,135 @@ export default function SpedycjaList({
   };
 
   // Funkcja do generowania linku do Google Maps - ZAKTUALIZOWANA
-const generateGoogleMapsLink = (transport) => {
-  const isMerged = isMergedTransport(transport);
-  
-  if (!isMerged) {
-    // Dla normalnego transportu - stara logika
-    let origin = '';
-    let destination = '';
+  const generateGoogleMapsLink = (transport) => {
+    const isMerged = isMergedTransport(transport);
     
-    if (transport.location === 'Odbiory własne' && transport.producerAddress) {
-      const addr = transport.producerAddress;
-      origin = `${addr.city},${addr.postalCode},${addr.street || ''}`;
-    } else if (transport.location === 'Magazyn Białystok') {
-      origin = 'Białystok';
-    } else if (transport.location === 'Magazyn Zielonka') {
-      origin = 'Zielonka';
+    if (!isMerged) {
+      // Dla normalnego transportu - stara logika
+      let origin = '';
+      let destination = '';
+      
+      if (transport.location === 'Odbiory własne' && transport.producerAddress) {
+        const addr = transport.producerAddress;
+        origin = `${addr.city},${addr.postalCode},${addr.street || ''}`;
+      } else if (transport.location === 'Magazyn Białystok') {
+        origin = 'Białystok';
+      } else if (transport.location === 'Magazyn Zielonka') {
+        origin = 'Zielonka';
+      }
+      
+      if (transport.delivery) {
+        const addr = transport.delivery;
+        destination = `${addr.city},${addr.postalCode},${addr.street || ''}`;
+      }
+      
+      if (!origin || !destination) return '';
+      
+      origin = encodeURIComponent(origin);
+      destination = encodeURIComponent(destination);
+      
+      return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
     }
     
-    if (transport.delivery) {
-      const addr = transport.delivery;
-      destination = `${addr.city},${addr.postalCode},${addr.street || ''}`;
+    // NOWA LOGIKA: Dla transportu połączonego - sekwencyjna trasa
+    const mergedData = getMergedTransportsData(transport);
+    if (!mergedData) return '';
+    
+    try {
+      // Rekonstrukcja trasy z danych response
+      const routePoints = transport.response?.routePoints;
+      
+      if (routePoints && routePoints.length > 1) {
+        // Użyj zapisanych punktów trasy
+        return generateMapsLinkFromRoutePoints(routePoints);
+      }
+      
+      // Fallback - rekonstruuj trasę z danych transportów
+      return reconstructRouteFromMergedData(transport, mergedData);
+      
+    } catch (error) {
+      console.error('Błąd generowania linku Maps dla połączonego transportu:', error);
+      return '';
+    }
+  };
+
+  // NOWA FUNKCJA: Generowanie linku z zapisanych punktów trasy
+  const generateMapsLinkFromRoutePoints = (routePoints) => {
+    if (routePoints.length < 2) return '';
+    
+    let origin = '';
+    let destination = '';
+    const waypoints = [];
+    
+    // Pierwszy punkt to origin
+    const firstPoint = routePoints[0];
+    origin = getAddressFromRoutePoint(firstPoint);
+    
+    // Ostatni punkt to destination  
+    const lastPoint = routePoints[routePoints.length - 1];
+    destination = getAddressFromRoutePoint(lastPoint);
+    
+    // Środkowe punkty to waypoints
+    for (let i = 1; i < routePoints.length - 1; i++) {
+      const waypointAddress = getAddressFromRoutePoint(routePoints[i]);
+      if (waypointAddress) {
+        waypoints.push(waypointAddress);
+      }
     }
     
     if (!origin || !destination) return '';
     
-    origin = encodeURIComponent(origin);
-    destination = encodeURIComponent(destination);
+    const waypointsParam = waypoints.length > 0 ? 
+      `&waypoints=${encodeURIComponent(waypoints.join('|'))}` : '';
     
-    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
-  }
-  
-  // NOWA LOGIKA: Dla transportu połączonego - sekwencyjna trasa
-  const mergedData = getMergedTransportsData(transport);
-  if (!mergedData) return '';
-  
-  try {
-    // Rekonstrukcja trasy z danych response
-    const routePoints = transport.response?.routePoints;
-    
-    if (routePoints && routePoints.length > 1) {
-      // Użyj zapisanych punktów trasy
-      return generateMapsLinkFromRoutePoints(routePoints);
-    }
-    
-    // Fallback - rekonstruuj trasę z danych transportów
-    return reconstructRouteFromMergedData(transport, mergedData);
-    
-  } catch (error) {
-    console.error('Błąd generowania linku Maps dla połączonego transportu:', error);
-    return '';
-  }
-};
+    return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}${waypointsParam}&travelmode=driving`;
+  };
 
-// NOWA FUNKCJA: Generowanie linku z zapisanych punktów trasy
-const generateMapsLinkFromRoutePoints = (routePoints) => {
-  if (routePoints.length < 2) return '';
-  
-  let origin = '';
-  let destination = '';
-  const waypoints = [];
-  
-  // Pierwszy punkt to origin
-  const firstPoint = routePoints[0];
-  origin = getAddressFromRoutePoint(firstPoint);
-  
-  // Ostatni punkt to destination  
-  const lastPoint = routePoints[routePoints.length - 1];
-  destination = getAddressFromRoutePoint(lastPoint);
-  
-  // Środkowe punkty to waypoints
-  for (let i = 1; i < routePoints.length - 1; i++) {
-    const waypointAddress = getAddressFromRoutePoint(routePoints[i]);
-    if (waypointAddress) {
-      waypoints.push(waypointAddress);
-    }
-  }
-  
-  if (!origin || !destination) return '';
-  
-  const waypointsParam = waypoints.length > 0 ? `&waypoints=${encodeURIComponent(waypoints.join('|'))}` : '';
-  
-  return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}${waypointsParam}&travelmode=driving`;
-};
-
-// NOWA FUNKCJA: Pobieranie adresu z punktu trasy
-const getAddressFromRoutePoint = (routePoint) => {
-  if (!routePoint || !routePoint.location) return '';
-  
-  // Jeśli to magazyn
-  if (routePoint.description.includes('Magazyn Białystok') || routePoint.address === 'Magazyn Białystok') {
-    return 'Białystok';
-  }
-  if (routePoint.description.includes('Magazyn Zielonka') || routePoint.address === 'Magazyn Zielonka') {
-    return 'Zielonka';
-  }
-  
-  // Jeśli mamy współrzędne w location
-  const loc = routePoint.location;
-  if (loc.city) {
-    return `${loc.city}, ${loc.postalCode || ''}, ${loc.street || ''}`;
-  }
-  
-  // Fallback - użyj description
-  return routePoint.description.replace('Załadunek: ', '').replace('Rozładunek: ', '');
-};
-
-// NOWA FUNKCJA: Rekonstrukcja trasy z danych połączonych transportów (fallback)
-const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
-  const points = [];
-  
-  // Główny załadunek
-  if (mainTransport.location === 'Magazyn Białystok') {
-    points.push('Białystok');
-  } else if (mainTransport.location === 'Magazyn Zielonka') {
-    points.push('Zielonka');
-  } else if (mainTransport.location === 'Odbiory własne' && mainTransport.producerAddress) {
-    const addr = mainTransport.producerAddress;
-    points.push(`${addr.city}, ${addr.postalCode}, ${addr.street || ''}`);
-  }
-  
-  // Dodatkowe załadunki z połączonych transportów
-  mergedData.originalTransports.forEach(transport => {
-    try {
-      let locationData = transport.location_data;
-      if (typeof locationData === 'string') {
-        locationData = JSON.parse(locationData);
-      }
-      
-      if (transport.location === 'Magazyn Białystok') {
-        points.push('Białystok');
-      } else if (transport.location === 'Magazyn Zielonka') {
-        points.push('Zielonka');
-      } else if (transport.location === 'Odbiory własne' && locationData) {
-        points.push(`${locationData.city}, ${locationData.postalCode}, ${locationData.street || ''}`);
-      }
-    } catch (error) {
-      console.error('Błąd parsowania danych lokalizacji:', error);
-    }
-  });
-  
-  // Główny rozładunek (zawsze ostatni)
-  if (mainTransport.delivery) {
-    const addr = mainTransport.delivery;
-    points.push(`${addr.city}, ${addr.postalCode}, ${addr.street || ''}`);
-  }
-  
-  if (points.length < 2) return '';
-  
-  const origin = points[0];
-  const destination = points[points.length - 1];
-  const waypoints = points.slice(1, -1);
-  
-  const waypointsParam = waypoints.length > 0 ? `&waypoints=${encodeURIComponent(waypoints.join('|'))}` : '';
-  
-  return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}${waypointsParam}&travelmode=driving`;
-};
-
-  // NOWA FUNKCJA: Generuje wyświetlaną trasę dla połączonych transportów
+  // POPRAWIONA FUNKCJA: Generuje wyświetlaną trasę dla połączonych transportów
   const getDisplayRoute = (zamowienie) => {
     const mergedData = getMergedTransportsData(zamowienie);
     
     if (mergedData) {
-      // Dla połączonych transportów - pokaż trasę głównego + info o dodatkowych
-      const mainRoute = `${getLoadingCity(zamowienie)} → ${getDeliveryCity(zamowienie)}`;
-      const additionalCount = mergedData.originalTransports.length;
+      // Zbierz wszystkie miasta rozładunku
+      const allUnloadingCities = [];
+      const allMPKs = [];
+      
+      // Dodaj główny transport
+      if (zamowienie.delivery?.city && !allUnloadingCities.includes(zamowienie.delivery.city)) {
+        allUnloadingCities.push(zamowienie.delivery.city);
+      }
+      if (zamowienie.mpk && !allMPKs.includes(zamowienie.mpk)) {
+        allMPKs.push(zamowienie.mpk);
+      }
+      
+      // Dodaj z połączonych transportów
+      mergedData.originalTransports.forEach(originalTransport => {
+        const unloadingCity = originalTransport.delivery_data?.city || 
+                             (typeof originalTransport.delivery_data === 'string' ? 
+                              JSON.parse(originalTransport.delivery_data || '{}').city : null);
+        
+        if (unloadingCity && !allUnloadingCities.includes(unloadingCity)) {
+          allUnloadingCities.push(unloadingCity);
+        }
+        
+        if (originalTransport.mpk && !allMPKs.includes(originalTransport.mpk)) {
+          allMPKs.push(originalTransport.mpk);
+        }
+      });
+
+      // Utwórz czytelny opis trasy
+      const mainLoadingCity = getLoadingCity(zamowienie);
+      const unloadingText = allUnloadingCities.length > 3 
+        ? `${allUnloadingCities.slice(0, 3).join(', ')} (+${allUnloadingCities.length - 3} więcej)`
+        : allUnloadingCities.join(', ');
       
       return {
-        text: `${mainRoute} (+${additionalCount} tras)`,
+        text: `${mainLoadingCity} → ${unloadingText}`,
         distance: mergedData.totalDistance,
         isMerged: true,
-        additionalRoutes: mergedData.originalTransports.map(t => t.route)
+        allCities: allUnloadingCities,
+        allMPKs: allMPKs,
+        additionalInfo: `${mergedData.originalTransports.length + 1} tras, MPK: ${allMPKs.join(', ')}`
       };
     }
     
@@ -391,224 +401,238 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
         return 'Grupa Eltron Sp. z o.o.';
       }
       return transportData.location || 'Nie podano';
-    };
-    
+    }
+
+    // Funkcja pomocnicza do formatowania nazwy firmy rozładunku
     const getTransportUnloadingCompany = (transportData) => {
-      if (!transportData) return 'Nie podano';
-      return transportData.client_name || 'Nie podano';
-    };
+      return transportData.client_name || transportData.clientName || 'Nie podano';
+    }
+
+    // Zbierz wszystkie miasta rozładunku i numery MPK
+    const allUnloadingCities = [];
+    const allMPKs = [];
     
-    // Funkcja do formatowania adresu z raw danych
-    const formatRawAddress = (addressData) => {
-      if (!addressData) return 'Brak danych';
-      
-      try {
-        let parsed = addressData;
-        if (typeof addressData === 'string') {
-          parsed = JSON.parse(addressData);
-        }
-        
-        if (parsed && (parsed.city || parsed.postalCode || parsed.street)) {
-          return `${parsed.city || ''}, ${parsed.postalCode || ''}, ${parsed.street || ''}`.replace(/^,\s*|,\s*$/g, '');
-        }
-      } catch (error) {
-        console.error('Błąd parsowania adresu:', error);
-      }
-      
-      return 'Brak danych';
-    };
-    
-    // Sprawdź czy mergedData.originalTransports istnieje i jest tablicą
-    if (!mergedData.originalTransports || !Array.isArray(mergedData.originalTransports)) {
-      return (
-        <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <div className="text-red-700">
-            Błąd: Nieprawidłowe dane połączonych transportów
-          </div>
-        </div>
-      );
+    // Dodaj główny transport
+    if (transport.delivery?.city && !allUnloadingCities.includes(transport.delivery.city)) {
+      allUnloadingCities.push(transport.delivery.city);
+    }
+    if (transport.mpk && !allMPKs.includes(transport.mpk)) {
+      allMPKs.push(transport.mpk);
     }
     
-    return (
-      <div className="mt-4 p-4 bg-purple-50 border border-purple-200 rounded-lg">
-        <h4 className="font-medium text-purple-700 mb-3 flex items-center">
-          <LinkIcon size={18} className="mr-2" />
-          Transport połączony ({mergedData.originalTransports.length + 1} tras)
-        </h4>
+    // Dodaj z połączonych transportów
+    mergedData.originalTransports.forEach(originalTransport => {
+      const unloadingCity = originalTransport.delivery_data?.city || 
+                           (typeof originalTransport.delivery_data === 'string' ? 
+                            JSON.parse(originalTransport.delivery_data || '{}').city : null);
+      
+      if (unloadingCity && !allUnloadingCities.includes(unloadingCity)) {
+        allUnloadingCities.push(unloadingCity);
+      }
+      
+      if (originalTransport.mpk && !allMPKs.includes(originalTransport.mpk)) {
+        allMPKs.push(originalTransport.mpk);
+      }
+    });
+
+    // Utwórz faktyczną sekwencję tras (nie załadunek-rozładunek, ale chronologiczną)
+    const createRouteSequence = () => {
+      const sequence = [];
+      
+      // Rozpocznij od głównego załadunku
+      sequence.push({
+        type: 'loading',
+        city: getLoadingCity(transport),
+        company: getLoadingCompanyName(transport),
+        address: transport.location === 'Odbiory własne' && transport.producerAddress 
+          ? formatAddress(transport.producerAddress)
+          : transport.location,
+        contact: transport.loading_contact,
+        transportId: 'main',
+        mpk: transport.mpk
+      });
+
+      // Dodaj punkty z połączonych transportów (w kolejności logicznej)
+      mergedData.originalTransports.forEach((originalTransport, index) => {
+        // Załadunek (jeśli różny od głównego)
+        const loadingCity = originalTransport.location === 'Odbiory własne' && originalTransport.location_data
+          ? JSON.parse(originalTransport.location_data || '{}').city
+          : originalTransport.location?.replace('Magazyn ', '');
         
-        <div className="space-y-4">
-          {/* Główny transport */}
-          <div className="p-4 bg-white rounded border-l-4 border-purple-400">
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <div className="font-semibold text-purple-800 text-lg">
-                  GŁÓWNY: {transport.orderNumber || transport.id}
+        const mainLoadingCity = getLoadingCity(transport);
+        
+        if (loadingCity && loadingCity !== mainLoadingCity) {
+          sequence.push({
+            type: 'loading',
+            city: loadingCity,
+            company: getTransportLoadingCompany(originalTransport),
+            address: originalTransport.location,
+            contact: originalTransport.loading_contact,
+            transportId: originalTransport.id,
+            mpk: originalTransport.mpk
+          });
+        }
+
+        // Rozładunek
+        const deliveryData = originalTransport.delivery_data 
+          ? (typeof originalTransport.delivery_data === 'string' 
+             ? JSON.parse(originalTransport.delivery_data) 
+             : originalTransport.delivery_data)
+          : null;
+
+        if (deliveryData) {
+          sequence.push({
+            type: 'unloading',
+            city: deliveryData.city,
+            company: getTransportUnloadingCompany(originalTransport),
+            address: formatAddress(deliveryData),
+            contact: originalTransport.unloading_contact,
+            transportId: originalTransport.id,
+            mpk: originalTransport.mpk
+          });
+        }
+      });
+
+      // Zakończ głównym rozładunkiem
+      sequence.push({
+        type: 'unloading',
+        city: getDeliveryCity(transport),
+        company: getUnloadingCompanyName(transport),
+        address: formatAddress(transport.delivery),
+        contact: transport.unloading_contact,
+        transportId: 'main',
+        mpk: transport.mpk
+      });
+
+      return sequence;
+    };
+
+    const routeSequence = createRouteSequence();
+
+    return (
+      <div className="space-y-6">
+        {/* Podsumowanie transportu */}
+        <div className="bg-white rounded-lg border border-purple-200 p-4">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h4 className="font-medium text-purple-700 text-lg">
+                Transport: {getLoadingCity(transport)} → {allUnloadingCities.join(', ')}
+              </h4>
+              <div className="text-sm text-gray-600 mt-1 space-y-1">
+                <div>
+                  <span className="font-medium">Miasta rozładunku:</span> {allUnloadingCities.join(', ')}
                 </div>
-                <div className="text-sm text-gray-600">
-                  MPK: {transport.mpk || 'Brak'}
+                <div>
+                  <span className="font-medium">Numery MPK:</span> {allMPKs.join(', ')}
                 </div>
-              </div>
-              <div className="text-right">
-                <div className="flex items-center text-green-700 font-medium text-lg">
-                  <DollarSign size={18} className="mr-1" />
-                  {(mergedData.mainTransportCost || 0).toFixed(2)} PLN
-                </div>
-                <div className="text-xs text-gray-500">
-                  {mergedData.costBreakdown?.mainTransport?.distance || 0} km
+                <div>
+                  <span className="font-medium">Łączny dystans:</span> {mergedData.totalDistance} km
                 </div>
               </div>
             </div>
-            
-            {/* Szczegóły głównego transportu */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 pt-3 border-t border-purple-100">
-              <div>
-                <h5 className="font-medium text-purple-700 mb-2 flex items-center">
-                  <MapPin size={14} className="mr-1" />
-                  Załadunek
-                </h5>
-                <div className="text-sm">
-                  <div className="font-medium">{getLoadingCompanyName(transport)}</div>
-                  <div className="text-gray-600">
-                    {transport.location === 'Odbiory własne' && transport.producerAddress 
-                      ? formatAddress(transport.producerAddress)
-                      : transport.location}
-                  </div>
-                  <div className="text-gray-500 flex items-center mt-1">
-                    <Phone size={12} className="mr-1" />
-                    {transport.loadingContact || 'Brak'}
-                  </div>
-                </div>
+            <div className="text-right">
+              <div className="flex items-center text-green-700 font-medium text-lg">
+                <DollarSign size={18} className="mr-1" />
+                {(mergedData.totalMergedCost || 0).toFixed(2)} PLN
               </div>
-              
-              <div>
-                <h5 className="font-medium text-purple-700 mb-2 flex items-center">
-                  <MapPin size={14} className="mr-1" />
-                  Rozładunek
-                </h5>
-                <div className="text-sm">
-                  <div className="font-medium">{getUnloadingCompanyName(transport)}</div>
-                  <div className="text-gray-600">{formatAddress(transport.delivery)}</div>
-                  <div className="text-gray-500 flex items-center mt-1">
-                    <Phone size={12} className="mr-1" />
-                    {transport.unloadingContact || 'Brak'}
-                  </div>
-                </div>
+              <div className="text-xs text-gray-500 mt-1">
+                Koszt rozłożony między transporty
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Sekwencja trasy */}
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <h4 className="font-medium text-gray-700 mb-4 flex items-center">
+            <MapPin size={18} className="mr-2" />
+            Sekwencja trasy
+          </h4>
           
-          {/* Połączone transporty */}
-          {mergedData.originalTransports.map((originalTransport, index) => {
-            // Sprawdź czy originalTransport nie jest null lub undefined
-            if (!originalTransport) {
-              return (
-                <div key={`error-${index}`} className="p-4 bg-red-50 rounded border border-red-200">
-                  <div className="text-red-700">Błąd: Brakujące dane transportu #{index + 1}</div>
-                </div>
-              );
-            }
-            
-            return (
-              <div key={originalTransport.id || `transport-${index}`} className="p-4 bg-white rounded border-l-4 border-gray-300">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <div className="font-medium text-gray-800">
-                      {index + 2}. {originalTransport.orderNumber || `Transport ${originalTransport.id || index + 1}`}
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      MPK: {originalTransport.mpk || 'Brak'}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      Odp: {originalTransport.responsiblePerson || 'Brak'}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="flex items-center text-green-700 font-medium">
-                      <DollarSign size={16} className="mr-1" />
-                      {(originalTransport.costAssigned || 0).toFixed(2)} PLN
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {originalTransport.distance || 0} km
-                    </div>
-                  </div>
+          <div className="space-y-3">
+            {routeSequence.map((point, index) => (
+              <div key={`${point.transportId}-${point.type}-${index}`} className="flex items-start">
+                <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-medium text-sm mr-3 mt-1">
+                  {index + 1}
                 </div>
                 
-                {/* Szczegóły połączonego transportu */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 pt-3 border-t border-gray-100">
-                  <div>
-                    <h5 className="font-medium text-gray-700 mb-2 flex items-center">
-                      <MapPin size={14} className="mr-1" />
-                      Załadunek
-                    </h5>
-                    <div className="text-sm">
-                      <div className="font-medium">{getTransportLoadingCompany(originalTransport)}</div>
-                      <div className="text-gray-600">
-                        {originalTransport.location === 'Odbiory własne' 
-                          ? formatRawAddress(originalTransport.location_data)
-                          : originalTransport.location}
-                      </div>
-                      <div className="text-gray-500 flex items-center mt-1">
-                        <Phone size={12} className="mr-1" />
-                        {originalTransport.loading_contact || 'Brak'}
-                      </div>
-                    </div>
+                <div className="flex-grow">
+                  <div className="flex items-center">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium mr-2 ${
+                      point.type === 'loading' 
+                        ? 'bg-green-100 text-green-700' 
+                        : 'bg-red-100 text-red-700'
+                    }`}>
+                      {point.type === 'loading' ? 'Załadunek' : 'Rozładunek'}
+                    </span>
+                    
+                    {point.mpk && (
+                      <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-medium mr-2">
+                        MPK: {point.mpk}
+                      </span>
+                    )}
                   </div>
                   
-                  <div>
-                    <h5 className="font-medium text-gray-700 mb-2 flex items-center">
-                      <MapPin size={14} className="mr-1" />
-                      Rozładunek
-                    </h5>
-                    <div className="text-sm">
-                      <div className="font-medium">{getTransportUnloadingCompany(originalTransport)}</div>
-                      <div className="text-gray-600">{formatRawAddress(originalTransport.delivery_data)}</div>
-                      <div className="text-gray-500 flex items-center mt-1">
+                  <div className="mt-1">
+                    <div className="font-medium text-gray-800">{point.company}</div>
+                    <div className="text-sm text-gray-600">{point.address}</div>
+                    {point.contact && (
+                      <div className="text-sm text-gray-500 flex items-center mt-1">
                         <Phone size={12} className="mr-1" />
-                        {originalTransport.unloading_contact || 'Brak'}
+                        {point.contact}
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
                 
-                {/* Dodatkowe informacje */}
-                {originalTransport.documents && (
-                  <div className="mt-2 text-xs text-gray-600">
-                    <span className="font-medium">Dokumenty:</span> {originalTransport.documents}
+                {index < routeSequence.length - 1 && (
+                  <div className="flex-shrink-0 ml-2 mt-6">
+                    <ArrowRight size={16} className="text-gray-400" />
                   </div>
                 )}
               </div>
-            );
-          })}
-          
-          {/* Podsumowanie */}
-          <div className="pt-3 border-t border-purple-200 bg-purple-25">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="font-medium text-purple-700">Łączna odległość:</span>
-                <span className="ml-2 text-purple-800 font-semibold">{mergedData.totalDistance || 0} km</span>
+            ))}
+          </div>
+        </div>
+
+        {/* Szczegóły kosztów - kompaktowo */}
+        {mergedData.costBreakdown && (
+          <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
+            <h4 className="font-medium text-gray-700 mb-3 flex items-center">
+              <DollarSign size={18} className="mr-2" />
+              Podział kosztów
+            </h4>
+            
+            <div className="text-sm space-y-2">
+              {/* Główny transport */}
+              <div className="flex justify-between">
+                <span>Transport (MPK: {transport.mpk})</span>
+                <span className="font-medium">{(mergedData.costBreakdown.mainTransport?.cost || 0).toFixed(2)} PLN</span>
               </div>
-              <div>
-                <span className="font-medium text-purple-700">Łączny koszt:</span>
-                <span className="ml-2 text-purple-800 font-semibold">{transport.response?.deliveryPrice || 0} PLN</span>
+              
+              {/* Połączone transporty */}
+              {mergedData.costBreakdown.mergedTransports?.map(t => (
+                <div key={t.id} className="flex justify-between">
+                  <span>Transport MPK: {t.mpk}</span>
+                  <span className="font-medium">{(t.cost || 0).toFixed(2)} PLN</span>
+                </div>
+              ))}
+              
+              <div className="border-t pt-2 mt-2 flex justify-between font-medium">
+                <span>Łącznie:</span>
+                <span>{(mergedData.totalMergedCost || 0).toFixed(2)} PLN</span>
               </div>
             </div>
-            
-            <div className="mt-2 text-xs text-purple-600">
-              Połączono {mergedData.mergedAt ? format(new Date(mergedData.mergedAt), 'dd.MM.yyyy HH:mm', { locale: pl }) : 'brak daty'} przez {mergedData.mergedBy || 'Nieznany'}
+          </div>
+        )}
+
+        {/* Informacje o połączeniu */}
+        <div className="bg-purple-50 rounded-lg border border-purple-200 p-4">
+          <div className="text-sm text-purple-700">
+            <div className="font-medium mb-1">Informacje o połączeniu</div>
+            <div>Połączono: {mergedData.mergedAt ? 
+              format(new Date(mergedData.mergedAt), 'dd.MM.yyyy HH:mm', { locale: pl }) : 'brak daty'} przez {mergedData.mergedBy || 'Nieznany'}
             </div>
-            
-            {/* Przycisk rozłączania dla adminów */}
-            {isAdmin && (
-              <div className="mt-3 flex justify-end">
-                <button
-                  onClick={() => handleUnmergeTransport(transport.id)}
-                  className={buttonClasses.danger}
-                >
-                  <Unlink size={16} />
-                  Rozłącz transporty
-                </button>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -697,7 +721,7 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
                       {displayRoute.isMerged && (
                         <span className="ml-2 bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full text-xs flex items-center">
                           <LinkIcon size={12} className="mr-1" />
-                          {displayRoute.distance} km łącznie
+                          {displayRoute.additionalInfo}
                         </span>
                       )}
                     </h3>
@@ -705,137 +729,66 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
                       <Calendar size={14} className="mr-1" />
                       Data dostawy: 
                       {dateChanged ? (
-                        <span className="ml-1 flex items-center">
+                        <span className="ml-1">
                           <span className="line-through text-gray-400">{formatDate(zamowienie.deliveryDate)}</span>
-                          <ArrowRight size={12} className="mx-1 text-yellow-500" />
-                          <span className="bg-yellow-50 px-1.5 py-0.5 rounded text-yellow-700 font-medium">
-                            {formatDate(displayDate)}
-                          </span>
+                          <span className="ml-2 text-orange-600 font-medium">{formatDate(displayDate)}</span>
                         </span>
                       ) : (
                         <span className="ml-1">{formatDate(displayDate)}</span>
                       )}
                     </p>
-                    <p className="text-sm text-gray-500 flex items-center mt-1">
-                      <FileText size={14} className="mr-1" />
-                      {zamowienie.orderNumber && <span className="font-medium mr-2">{zamowienie.orderNumber}</span>}
-                      MPK: {zamowienie.mpk}
-                    </p>
                     
-                    {/* Wyświetl informację o budowach */}
-                    {zamowienie.responsibleConstructions && zamowienie.responsibleConstructions.length > 0 && (
-                      <div className="flex items-center mt-1">
-                        <Building size={14} className="mr-1 text-green-600" />
-                        <span className="text-sm text-green-600">
-                          Budowa: {zamowienie.responsibleConstructions[0].name}
-                          {zamowienie.responsibleConstructions.length > 1 && ` +${zamowienie.responsibleConstructions.length - 1}`}
-                        </span>
+                    {/* Dodatkowe informacje dla transportu połączonego */}
+                    {displayRoute.isMerged && (
+                      <div className="text-xs text-purple-600 mt-1 flex items-center">
+                        <MapPin size={12} className="mr-1" />
+                        {displayRoute.distance} km łącznie • {displayRoute.allCities.length} {displayRoute.allCities.length === 1 ? 'miasto' : displayRoute.allCities.length < 5 ? 'miasta' : 'miast'} rozładunku
                       </div>
                     )}
                   </div>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <span className={`px-3 py-1 rounded-full text-sm flex items-center ${statusInfo.className}`}>
+
+                <div className="flex items-center space-x-3">
+                  <div className={`px-3 py-1 rounded-full text-sm font-medium flex items-center ${statusInfo.className}`}>
                     {statusInfo.icon}
                     {statusInfo.label}
-                  </span>
+                  </div>
                   
-                  {expandedId === zamowienie.id ? (
-                    <button 
-                      className="p-1 rounded-full hover:bg-gray-200"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setExpandedId(null)
-                      }}
-                    >
-                      <ChevronUp size={20} />
-                    </button>
-                  ) : (
-                    <button 
-                      className="p-1 rounded-full hover:bg-gray-200"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setExpandedId(zamowienie.id)
-                      }}
-                    >
-                      <ChevronDown size={20} />
-                    </button>
-                  )}
-                  {/* Przycisk kopiowania - dla wszystkich użytkowników */}
-                  <button 
-                    type="button"
-                    className={buttonClasses.outline}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onCopy(zamowienie)
-                    }}
-                  >
-                    <Copy size={16} />
-                    Kopiuj
-                  </button>
-                  {/* Przycisk edycji - widoczny dla twórcy lub admina (ale nie dla połączonych) */}
-                  {canEdit && (
-                    <button 
-                      type="button"
-                      className={buttonClasses.outline}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onEdit(zamowienie)
-                      }}
-                    >
-                      <Pencil size={16} />
-                      Edytuj
-                    </button>
-                  )}
-                  
-                  {/* Przyciski admina - odpowiadanie i oznaczanie jako zrealizowane */}
-                  {isAdmin && zamowienie.status === 'new' && (
-                    <>
-                      {/* Pokaż przycisk "Odpowiedz" tylko jeśli NIE MA odpowiedzi i NIE JEST połączony */}
-                      {(!zamowienie.response || Object.keys(zamowienie.response).length === 0) && !isMerged && (
+                  {!showArchive && (
+                    <div className="flex items-center space-x-2">
+                      {canEdit && (
                         <button 
                           type="button"
-                          className={buttonClasses.outline}
+                          className="text-gray-400 hover:text-blue-600 transition-colors"
                           onClick={(e) => {
                             e.stopPropagation()
-                            onResponse(zamowienie)
+                            onEdit(zamowienie)
                           }}
+                          title="Edytuj zamówienie"
                         >
-                          <Clipboard size={16} />
-                          Odpowiedz
+                          <Edit size={18} />
                         </button>
                       )}
                       
-                      {/* Pokaż przycisk "Edytuj odpowiedź" tylko jeśli JUŻ MA odpowiedź i NIE JEST połączony */}
-                      {(zamowienie.response && Object.keys(zamowienie.response).length > 0) && !isMerged && (
+                      {(isAdmin || isCreatedByCurrentUser(zamowienie)) && (
                         <button 
                           type="button"
-                          className={buttonClasses.outline}
+                          className="text-gray-400 hover:text-green-600 transition-colors"
                           onClick={(e) => {
                             e.stopPropagation()
-                            onResponse(zamowienie)
+                            onCopy(zamowienie)
                           }}
+                          title="Kopiuj zamówienie"
                         >
-                          <Edit size={16} />
-                          Edytuj odpowiedź
+                          <Copy size={18} />
                         </button>
                       )}
-                      
-                      <button 
-                        type="button"
-                        className={buttonClasses.success}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          if (confirm('Czy na pewno chcesz oznaczyć to zlecenie jako zrealizowane?')) {
-                            onMarkAsCompleted(zamowienie.id)
-                          }
-                        }}
-                      >
-                        <Truck size={16} />
-                        Zrealizowane
-                      </button>
-                    </>
+                    </div>
                   )}
+                  
+                  <div className="text-gray-400">
+                    {expandedId === zamowienie.id ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                  </div>
                 </div>
               </div>
 
@@ -912,117 +865,95 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
                                     <p className="text-sm mb-1.5"><span className="font-medium">Numery auta:</span> {zamowienie.response.vehicleNumber}</p>
                                   </div>
                                   
-                                  {/* Informacje o kosztach */}
+                                  {/* Informacje o kosztach - ukryte dla połączonych */}
                                   <div className="bg-white p-3 rounded-md shadow-sm border border-gray-100">
                                     <h5 className="text-sm font-medium mb-2 pb-1 border-b flex items-center text-green-600">
                                       <DollarSign size={14} className="mr-1" />
-                                      Dane finansowe (łącznie)
+                                      Dane finansowe
                                     </h5>
-                                    <p className="text-sm mb-1.5"><span className="font-medium">Cena całkowita:</span> 
-                                      <span className="bg-green-50 px-2 py-0.5 rounded ml-1">
-                                        {zamowienie.response.deliveryPrice} PLN
-                                      </span>
-                                    </p>
-                                    <p className="text-sm mb-1.5"><span className="font-medium">Odległość łączna:</span> 
-                                      <span className="bg-blue-50 px-2 py-0.5 rounded ml-1">
-                                        {displayRoute.distance} km (trasa połączona)
-                                      </span>
-                                    </p>
-                                    {(() => {
-                                      const totalDistance = displayRoute.distance;
-                                      if (totalDistance > 0 && zamowienie.response.deliveryPrice > 0) {
-                                        return (
-                                          <p className="text-sm mb-1.5"><span className="font-medium">Koszt za km:</span> 
-                                            <span className="bg-green-50 px-2 py-0.5 rounded ml-1">
-                                              {(zamowienie.response.deliveryPrice / totalDistance).toFixed(2)} PLN/km
-                                            </span>
-                                          </p>
-                                        );
-                                      }
-                                      return null;
-                                    })()}
-                                    
-                                    <div className="mt-2 pt-2 border-t border-gray-100">
-                                      <p className="text-xs text-purple-600">
-                                        Koszt podzielony między {getMergedTransportsData(zamowienie)?.originalTransports.length + 1} transporty
-                                      </p>
-                                    </div>
+                                    <p className="text-sm mb-1.5">Szczegóły kosztów znajdują się w sekcji "Podział kosztów" powyżej</p>
                                   </div>
                                   
-                                  {/* Informacje o realizacji */}
+                                  {/* Informacje o trasie */}
                                   <div className="bg-white p-3 rounded-md shadow-sm border border-gray-100">
                                     <h5 className="text-sm font-medium mb-2 pb-1 border-b flex items-center text-purple-600">
-                                      <Calendar size={14} className="mr-1" />
-                                      Informacje o realizacji
+                                      <MapPin size={14} className="mr-1" />
+                                      Trasa
                                     </h5>
-                                    <p className="text-sm mb-1.5"><span className="font-medium">Data odpowiedzi:</span> {formatDate(zamowienie.completedAt || zamowienie.createdAt)}</p>
-                                    
-                                    <div className="bg-purple-50 p-2 rounded-md border border-purple-100 mt-2 mb-1.5">
-                                      <p className="text-xs font-medium text-purple-800 flex items-center">
-                                        <LinkIcon size={12} className="mr-1" />
-                                        Transport połączony
-                                      </p>
-                                      <p className="text-xs text-purple-600 mt-1">
-                                        {getMergedTransportsData(zamowienie)?.originalTransports.length} transportów dodatkowo
-                                      </p>
-                                    </div>
-                                    
-                                    {zamowienie.response.dateChanged && (
-                                      <div className="bg-yellow-50 p-2 rounded-md border border-yellow-100 mt-2 mb-1.5">
-                                        <p className="text-sm font-medium text-yellow-800">Zmieniono datę dostawy:</p>
-                                        <p className="text-xs flex justify-between mt-1">
-                                          <span>Z: <span className="line-through">{formatDate(zamowienie.response.originalDeliveryDate)}</span></span>
-                                          <span>→</span>
-                                          <span>Na: <span className="font-medium">{formatDate(zamowienie.response.newDeliveryDate)}</span></span>
-                                        </p>
-                                      </div>
-                                    )}
-                                    
-                                    {zamowienie.response.adminNotes && (
-                                      <p className="text-sm"><span className="font-medium">Uwagi:</span> {zamowienie.response.adminNotes}</p>
+                                    <p className="text-sm mb-1.5"><span className="font-medium">Dystans:</span> {zamowienie.response.totalDistance || 0} km</p>
+                                    <p className="text-sm mb-1.5"><span className="font-medium">Liczba tras:</span> {getMergedTransportsData(zamowienie)?.originalTransports.length + 1}</p>
+                                    {generateGoogleMapsLink(zamowienie) && (
+                                      <a 
+                                        href={generateGoogleMapsLink(zamowienie)} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center text-blue-600 hover:text-blue-800 text-sm"
+                                      >
+                                        <MapPin size={12} className="mr-1" />
+                                        Zobacz trasę w Google Maps
+                                      </a>
                                     )}
                                   </div>
                                 </div>
                               )}
                             </div>
                           )}
-                          
+
                           {/* Przyciski akcji */}
-                          <div className="mt-5 flex justify-center space-x-4">
-                            {/* Link do Google Maps */}
-                            {generateGoogleMapsLink(zamowienie) && (
-                              <a 
-                                href={generateGoogleMapsLink(zamowienie)} 
-                                target="_blank" 
-                                rel="noopener noreferrer" 
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center transition-colors font-medium text-base"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <MapPin size={18} className="mr-2" />
-                                Zobacz trasę na Google Maps
-                              </a>
-                            )}
-                            
-                            {/* Przycisk CMR */}
-                            <button 
-                              type="button"
-                              className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg flex items-center transition-colors font-medium text-base"
-                              onClick={() => generateCMR(zamowienie)}
-                            >
-                              <FileText size={18} className="mr-2" />
-                              Generuj list przewozowy CMR
-                            </button>
-                            
-                            {/* Przycisk zlecenia transportowego */}
-                            {zamowienie.response && !showArchive && canSendOrder && (
-                              <button 
-                                type="button"
-                                className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg flex items-center transition-colors font-medium text-base"
-                                onClick={() => onCreateOrder(zamowienie)}
-                              >
-                                <Truck size={18} className="mr-2" />
-                                Stwórz zlecenie transportowe
-                              </button>
+                          <div className="mt-6 pt-4 border-t border-gray-200 flex flex-wrap gap-3">
+                            {statusInfo.label !== 'Zakończone' && (
+                              <>
+                                {/* Przyciski dla transportu z odpowiedzią */}
+                                {(zamowienie.response && Object.keys(zamowienie.response).length > 0) && (
+                                  <>
+                                    <button 
+                                      type="button"
+                                      className={buttonClasses.success}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        onCreateOrder(zamowienie)
+                                      }}
+                                    >
+                                      <FileText size={16} />
+                                      Stwórz zlecenie transportowe
+                                    </button>
+                                    
+                                    {/* Przycisk rozłączania transportów - tylko dla adminów i tylko dla połączonych */}
+                                    {isAdmin && isMerged && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          if (confirm('Czy na pewno chcesz rozłączyć ten transport? Wszystkie połączone transporty zostaną przywrócone jako osobne zlecenia.')) {
+                                            handleUnmergeTransport(zamowienie.id)
+                                          }
+                                        }}
+                                        className={buttonClasses.success}
+                                        style={{ backgroundColor: '#ef4444', borderColor: '#ef4444' }}
+                                        onMouseOver={(e) => e.target.style.backgroundColor = '#dc2626'}
+                                        onMouseOut={(e) => e.target.style.backgroundColor = '#ef4444'}
+                                      >
+                                        <Unlink size={16} />
+                                        Rozłącz transporty
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                                
+                                <button 
+                                  type="button"
+                                  className={buttonClasses.success}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    if (confirm('Czy na pewno chcesz oznaczyć to zlecenie jako zrealizowane?')) {
+                                      onMarkAsCompleted(zamowienie.id)
+                                    }
+                                  }}
+                                >
+                                  <Truck size={16} />
+                                  Zrealizowane
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>
@@ -1069,22 +1000,25 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
                               <div className="mb-2">
                                 <div className="font-medium text-sm text-gray-700">Adres:</div>
                                 <div className="text-sm">
-                                  {zamowienie.location === 'Odbiory własne' ? (
-                                    formatAddress(zamowienie.producerAddress)
-                                  ) : (
+                                  {zamowienie.location === 'Odbiory własne' ?
+                                    formatAddress(zamowienie.producerAddress) :
                                     zamowienie.location
-                                  )}
+                                  }
                                 </div>
                               </div>
-                              <p className="text-sm text-gray-600 mb-3 flex items-center">
-                                <Phone size={14} className="mr-1" />
-                                Kontakt: {zamowienie.loadingContact}
-                              </p>
+                              {zamowienie.loadingContact && (
+                                <div className="mb-2">
+                                  <div className="font-medium text-sm text-gray-700">Kontakt:</div>
+                                  <div className="text-sm flex items-center">
+                                    <Phone size={12} className="mr-1" />
+                                    {zamowienie.loadingContact}
+                                  </div>
+                                </div>
+                              )}
                               
-                              <h4 className="font-medium mt-5 mb-3 pb-2 border-b flex items-center text-orange-700">
-                                <MapPin size={18} className="mr-2" />
-                                Szczegóły dostawy
-                              </h4>
+                              <hr className="my-3" />
+                              
+                              <h5 className="font-medium mb-2 text-red-700">Szczegóły rozładunku</h5>
                               <div className="mb-2">
                                 <div className="font-medium text-sm text-gray-700">Firma:</div>
                                 <div className="text-sm">{getUnloadingCompanyName(zamowienie)}</div>
@@ -1093,128 +1027,79 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
                                 <div className="font-medium text-sm text-gray-700">Adres:</div>
                                 <div className="text-sm">{formatAddress(zamowienie.delivery)}</div>
                               </div>
-                              <p className="text-sm text-gray-600 mb-3 flex items-center">
-                                <Phone size={14} className="mr-1" />
-                                Kontakt: {zamowienie.unloadingContact}
-                              </p>
-                              
-                              {/* Link do Google Maps */}
-                              {generateGoogleMapsLink(zamowienie) && (
-                                <div className="mt-4">
-                                  <a 
-                                    href={generateGoogleMapsLink(zamowienie)} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer" 
-                                    className="bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-2 rounded-md flex items-center w-fit transition-colors"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <MapPin size={16} className="mr-2" />
-                                    Zobacz trasę na Google Maps
-                                  </a>
+                              {zamowienie.unloadingContact && (
+                                <div className="mb-2">
+                                  <div className="font-medium text-sm text-gray-700">Kontakt:</div>
+                                  <div className="text-sm flex items-center">
+                                    <Phone size={12} className="mr-1" />
+                                    {zamowienie.unloadingContact}
+                                  </div>
                                 </div>
                               )}
                             </div>
 
-                            {/* Sekcja 3: Informacje o transporcie */}
+                            {/* Sekcja 3: Status i odpowiedź */}
                             <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-                              <h4 className="font-medium mb-3 pb-2 border-b flex items-center text-purple-700">
-                                <Truck size={18} className="mr-2" />
-                                Informacje o transporcie
+                              <h4 className="font-medium mb-3 pb-2 border-b flex items-center text-orange-700">
+                                <AlertCircle size={18} className="mr-2" />
+                                Status zlecenia
                               </h4>
-                              
-                              {/* Data dostawy z wyróżnieniem, jeśli zmieniona */}
-                              <div className="text-sm mb-2">
-                                <div className="flex items-center">
-                                  <Calendar size={14} className="mr-2 text-gray-500" />
-                                  <span className="font-medium">Data dostawy:</span>
+                              <div className="mb-3">
+                                <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${statusInfo.className}`}>
+                                  {statusInfo.icon}
+                                  {statusInfo.label}
                                 </div>
-                                
-                                {dateChanged ? (
-                                  <div className="ml-7 mt-1 p-2 bg-yellow-50 rounded-md border border-yellow-200">
-                                    <div className="flex items-center text-yellow-800">
-                                      <AlertCircle size={14} className="mr-1" />
-                                      <span className="font-medium">Uwaga: Data została zmieniona!</span>
-                                    </div>
-                                    <div className="mt-1 flex items-center">
-                                      <span className="text-gray-500">Data pierwotna:</span>
-                                      <span className="ml-1 line-through text-gray-500">{formatDate(zamowienie.deliveryDate)}</span>
-                                    </div>
-                                    <div className="mt-1 flex items-center">
-                                      <span className="text-gray-800 font-medium">Data aktualna:</span>
-                                      <span className="ml-1 font-medium text-green-700">{formatDate(zamowienie.response.newDeliveryDate)}</span>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="ml-7 mt-1">
-                                    {formatDate(zamowienie.deliveryDate)}
-                                  </div>
-                                )}
                               </div>
                               
-                              <p className="text-sm mb-2 flex items-center">
-                                <Calendar size={14} className="mr-2 text-gray-500" />
-                                <span className="font-medium">Data dodania:</span> {formatDate(zamowienie.createdAt)}
-                              </p>
-                              
-                              <p className="text-sm mb-2 flex items-center">
-                                <MapPin size={14} className="mr-2 text-gray-500" />
-                                <span className="font-medium">Odległość:</span> 
-                                <span className="bg-blue-50 px-2 py-0.5 rounded ml-1 font-medium">
-                                  {displayRoute.distance} km
-                                </span>
-                              </p>
-                              
-                              {zamowienie.response && zamowienie.response.deliveryPrice && (
-                                <>
-                                  <p className="text-sm mb-2 flex items-center">
-                                    <DollarSign size={14} className="mr-2 text-gray-500" />
-                                    <span className="font-medium">Cena transportu:</span> 
-                                    <span className="bg-green-50 px-2 py-0.5 rounded ml-1 font-medium">
-                                      {zamowienie.response.deliveryPrice} PLN
-                                    </span>
-                                  </p>
-                                  <p className="text-sm mb-2 flex items-center">
-                                    <DollarSign size={14} className="mr-2 text-gray-500" />
-                                    <span className="font-medium">Cena za km:</span> 
-                                    <span className="bg-green-50 px-2 py-0.5 rounded ml-1 font-medium">
-                                      {(() => {
-                                        const totalDistance = displayRoute.distance;
-                                        return totalDistance > 0 
-                                          ? (zamowienie.response.deliveryPrice / totalDistance).toFixed(2)
-                                          : '0.00';
-                                      })()} PLN/km
-                                    </span>
-                                  </p>
-                                </>
-                              )}
-                              
-                              {zamowienie.notes && (
-                                <div className="mt-3 bg-gray-50 p-2 rounded-md">
-                                  <p className="text-sm"><span className="font-medium">Uwagi:</span> {zamowienie.notes}</p>
+                              {/* Informacje o odpowiedzi */}
+                              {zamowienie.response && Object.keys(zamowienie.response).length > 0 ? (
+                                <div className="space-y-2">
+                                  <div className="bg-green-50 p-3 rounded-md border border-green-100">
+                                    <div className="text-green-800 font-medium text-sm mb-1">Odpowiedź została udzielona</div>
+                                    <div className="text-green-700 text-xs">
+                                      Sprawdź szczegóły realizacji poniżej
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="space-y-2">
+                                  <div className="bg-blue-50 p-3 rounded-md border border-blue-100">
+                                    <div className="text-blue-800 font-medium text-sm mb-1">Oczekuje na odpowiedź</div>
+                                    <div className="text-blue-700 text-xs">
+                                      Zlecenie zostało utworzone i oczekuje na odpowiedź przewoźnika
+                                    </div>
+                                  </div>
                                 </div>
                               )}
                             </div>
                           </div>
 
-                          {canEdit && (
-                            <div className="mt-4 flex justify-end">
-                              <button 
-                                type="button"
-                                className={buttonClasses.primary}
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  onEdit(zamowienie)
-                                }}
-                              >
-                                <Pencil size={16} />
-                                Edytuj zamówienie
-                              </button>
+                          {/* Sekcja z uwagami - jeśli są */}
+                          {(zamowienie.notes || zamowienie.response?.adminNotes) && (
+                            <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                              <h4 className="font-bold text-gray-700 mb-3 flex items-center">
+                                <FileText size={18} className="mr-2" />
+                                Uwagi
+                              </h4>
+                              {zamowienie.notes && (
+                                <div className="mb-2">
+                                  <span className="font-medium text-gray-700">Uwagi zlecenia:</span>
+                                  <p className="text-gray-900 mt-1">{zamowienie.notes}</p>
+                                </div>
+                              )}
+                              {zamowienie.response?.adminNotes && (
+                                <div>
+                                  <span className="font-medium text-gray-700">Uwagi przewoźnika:</span>
+                                  <p className="text-gray-900 mt-1">{zamowienie.response.adminNotes}</p>
+                                </div>
+                              )}
                             </div>
                           )}
 
+                          {/* Szczegóły realizacji dla normalnych transportów */}
                           {zamowienie.response && (
-                            <div className="mt-4 p-5 rounded-lg border shadow-sm bg-gray-50 border-gray-200">
-                              <h4 className="font-medium mb-3 pb-2 border-b border-gray-200 flex items-center text-gray-800">
+                            <div className="mt-4 p-5 rounded-lg border shadow-sm bg-green-50 border-green-200">
+                              <h4 className="font-medium mb-3 pb-2 border-b border-green-300 flex items-center text-green-800">
                                 <Truck size={18} className="mr-2" />
                                 Szczegóły realizacji
                               </h4>
@@ -1243,78 +1128,98 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
                                       <DollarSign size={14} className="mr-1" />
                                       Dane finansowe
                                     </h5>
-                                    <p className="text-sm mb-1.5"><span className="font-medium">Cena całkowita:</span> 
-                                      <span className="bg-green-50 px-2 py-0.5 rounded ml-1">
-                                        {zamowienie.response.deliveryPrice} PLN
-                                      </span>
-                                    </p>
-                                    <p className="text-sm mb-1.5"><span className="font-medium">Odległość całkowita:</span> 
-                                      {`${displayRoute.distance} km`}
-                                    </p>
-                                    {(() => {
-                                      const totalDistance = displayRoute.distance;
-                                      
-                                      if (totalDistance > 0 && zamowienie.response.deliveryPrice > 0) {
-                                        return (
-                                          <p className="text-sm mb-1.5"><span className="font-medium">Koszt za km:</span> 
-                                            <span className="bg-green-50 px-2 py-0.5 rounded ml-1">
-                                              {(zamowienie.response.deliveryPrice / totalDistance).toFixed(2)} PLN/km
-                                            </span>
-                                          </p>
-                                        );
-                                      }
-                                      return null;
-                                    })()}
+                                    <p className="text-sm mb-1.5"><span className="font-medium">Cena dostawy:</span> {zamowienie.response.deliveryPrice} PLN</p>
+                                    <p className="text-sm mb-1.5"><span className="font-medium">Termin płatności:</span> {zamowienie.response.paymentTerm}</p>
                                   </div>
                                   
-                                  {/* Informacje o realizacji */}
+                                  {/* Informacje o trasie */}
                                   <div className="bg-white p-3 rounded-md shadow-sm border border-gray-100">
                                     <h5 className="text-sm font-medium mb-2 pb-1 border-b flex items-center text-purple-600">
-                                      <Calendar size={14} className="mr-1" />
-                                      Informacje o realizacji
+                                      <MapPin size={14} className="mr-1" />
+                                      Trasa
                                     </h5>
-                                    <p className="text-sm mb-1.5"><span className="font-medium">Data odpowiedzi:</span> {formatDate(zamowienie.completedAt || zamowienie.createdAt)}</p>
-                                    
-                                    {zamowienie.response.dateChanged && (
-                                      <div className="bg-yellow-50 p-2 rounded-md border border-yellow-100 mt-2 mb-1.5">
-                                        <p className="text-sm font-medium text-yellow-800">Zmieniono datę dostawy:</p>
-                                        <p className="text-xs flex justify-between mt-1">
-                                          <span>Z: <span className="line-through">{formatDate(zamowienie.response.originalDeliveryDate)}</span></span>
-                                          <span>→</span>
-                                          <span>Na: <span className="font-medium">{formatDate(zamowienie.response.newDeliveryDate)}</span></span>
-                                        </p>
-                                      </div>
-                                    )}
-                                    
-                                    {zamowienie.response.adminNotes && (
-                                      <p className="text-sm"><span className="font-medium">Uwagi:</span> {zamowienie.response.adminNotes}</p>
+                                    <p className="text-sm mb-1.5"><span className="font-medium">Dystans:</span> {zamowienie.distanceKm || zamowienie.response.distance || 0} km</p>
+                                    {generateGoogleMapsLink(zamowienie) && (
+                                      <a 
+                                        href={generateGoogleMapsLink(zamowienie)} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center text-blue-600 hover:text-blue-800 text-sm"
+                                      >
+                                        <MapPin size={12} className="mr-1" />
+                                        Zobacz trasę w Google Maps
+                                      </a>
                                     )}
                                   </div>
                                 </div>
                               )}
-                              
-                              <div className="mt-5 flex space-x-3">
-                                <button 
-                                  type="button"
-                                  className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors flex items-center gap-2"
-                                  onClick={() => generateCMR(zamowienie)}
-                                >
-                                  <FileText size={16} />
-                                  Generuj CMR
-                                </button>
-                                {zamowienie.response && !showArchive && canSendOrder && (
+                            </div>
+                          )}
+
+                          {/* Przyciski akcji */}
+                          <div className="mt-6 pt-4 border-t border-gray-200 flex flex-wrap gap-3">
+                            {statusInfo.label !== 'Zakończone' && (
+                              <>
+                                {(!zamowienie.response || Object.keys(zamowienie.response).length === 0) && !isMerged && (
                                   <button 
                                     type="button"
-                                    className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors flex items-center gap-2"
-                                    onClick={() => onCreateOrder(zamowienie)}
+                                    className={buttonClasses.primary}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      onResponse(zamowienie)
+                                    }}
                                   >
-                                    <Truck size={16} />
+                                    <Clipboard size={16} />
+                                    Odpowiedz
+                                  </button>
+                                )}
+                                
+                                {/* Pokaż przycisk "Edytuj odpowiedź" tylko jeśli JUŻ MA odpowiedź i NIE JEST połączony */}
+                                {(zamowienie.response && Object.keys(zamowienie.response).length > 0) && !isMerged && (
+                                  <button 
+                                    type="button"
+                                    className={buttonClasses.outline}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      onResponse(zamowienie)
+                                    }}
+                                  >
+                                    <Edit size={16} />
+                                    Edytuj odpowiedź
+                                  </button>
+                                )}
+                                
+                                {/* Przyciski dla transportu z odpowiedzią */}
+                                {(zamowienie.response && Object.keys(zamowienie.response).length > 0) && (
+                                  <button 
+                                    type="button"
+                                    className={buttonClasses.success}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      onCreateOrder(zamowienie)
+                                    }}
+                                  >
+                                    <FileText size={16} />
                                     Stwórz zlecenie transportowe
                                   </button>
                                 )}
-                              </div>
-                            </div>
-                          )}
+                                
+                                <button 
+                                  type="button"
+                                  className={buttonClasses.success}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    if (confirm('Czy na pewno chcesz oznaczyć to zlecenie jako zrealizowane?')) {
+                                      onMarkAsCompleted(zamowienie.id)
+                                    }
+                                  }}
+                                >
+                                  <Truck size={16} />
+                                  Zrealizowane
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </div>
                       );
                     }
@@ -1325,5 +1230,5 @@ const reconstructRouteFromMergedData = (mainTransport, mergedData) => {
           );
         })}
     </div>
-  )
+  );
 }
