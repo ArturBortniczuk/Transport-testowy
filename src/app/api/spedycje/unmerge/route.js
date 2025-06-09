@@ -174,11 +174,12 @@ export async function POST(request) {
       }, { status: 400 });
     }
     
-    console.log('Liczba transportów do przywrócenia:', mergedData.originalTransports.length);
+    console.log('Liczba połączonych transportów do przywrócenia:', mergedData.originalTransports.length);
     
-    // POPRAWKA: Wygeneruj wszystkie numery zamówień naraz
-    const orderNumbers = await generateOrderNumbersForUnmerge(mergedData.originalTransports.length);
-    console.log('Wygenerowane numery zamówień:', orderNumbers);
+    // POPRAWKA: Generuj numery dla WSZYSTKICH transportów (główny + połączone)
+    const totalTransportsToRestore = mergedData.originalTransports.length + 1; // +1 dla głównego
+    const orderNumbers = await generateOrderNumbersForUnmerge(totalTransportsToRestore);
+    console.log('Wygenerowane numery zamówień dla wszystkich transportów:', orderNumbers);
     
     // GŁÓWNA OPERACJA ROZŁĄCZANIA W TRANSAKCJI
     try {
@@ -187,12 +188,62 @@ export async function POST(request) {
         
         const restoredTransports = [];
         
-        // Przywróć oryginalne transporty - JEDEN PO DRUGIM z unikalnym numerem
+        // NOWE: Najpierw przywróć transport główny jako osobne zlecenie
+        console.log('=== PRZYWRACANIE TRANSPORTU GŁÓWNEGO ===');
+        const mainOrderNumber = orderNumbers[0]; // Pierwszy numer dla głównego
+        
+        // Przygotuj dane głównego transportu (bez danych o merge)
+        const mainTransportData = {
+          order_number: mainOrderNumber,
+          status: 'new',
+          created_by: mergedTransport.created_by,
+          created_by_email: mergedTransport.created_by_email,
+          responsible_person: mergedTransport.responsible_person,
+          responsible_email: mergedTransport.responsible_email,
+          mpk: mergedTransport.mpk,
+          location: mergedTransport.location,
+          location_data: mergedTransport.location_data,
+          delivery_data: mergedTransport.delivery_data,
+          loading_contact: mergedTransport.loading_contact,
+          unloading_contact: mergedTransport.unloading_contact,
+          delivery_date: mergedTransport.delivery_date,
+          documents: mergedTransport.documents,
+          notes: (mergedTransport.notes || '').replace(/\n\n\[POŁĄCZONO\].*$/s, '') + // Usuń stare notatki o połączeniu
+                `\n\n[ROZŁĄCZONO]: Transport został przywrócony jako osobne zlecenie. ` +
+                `Rozłączono przez ${user.name} w dniu ${new Date().toLocaleDateString('pl-PL')} o ${new Date().toLocaleTimeString('pl-PL')}.`,
+          distance_km: mergedTransport.distance_km,
+          client_name: mergedTransport.client_name,
+          goods_description: mergedTransport.goods_description,
+          responsible_constructions: mergedTransport.responsible_constructions,
+          created_at: db.fn.now(),
+          merged_transports: null // Wyczyść dane o połączeniu
+        };
+        
+        try {
+          // Wstaw przywrócony transport główny
+          const [mainInsertedId] = await trx('spedycje')
+            .insert(mainTransportData)
+            .returning('id');
+          
+          restoredTransports.push({
+            id: mainInsertedId,
+            orderNumber: mainOrderNumber,
+            originalId: 'main',
+            type: 'main'
+          });
+          
+          console.log('Przywrócono transport główny z ID:', mainInsertedId, 'i numerem:', mainOrderNumber);
+        } catch (mainInsertError) {
+          console.error('Błąd wstawiania transportu głównego:', mainInsertError);
+          throw mainInsertError;
+        }
+        
+        // Przywróć oryginalne transporty - KAŻDY z unikalnym numerem (zaczynając od orderNumbers[1])
         for (let i = 0; i < mergedData.originalTransports.length; i++) {
           const originalTransport = mergedData.originalTransports[i];
-          const newOrderNumber = orderNumbers[i]; // Każdy transport dostaje unikalny numer
+          const newOrderNumber = orderNumbers[i + 1]; // +1 bo pierwszy numer jest dla głównego
           
-          console.log(`Przywracam transport ${i + 1}/${mergedData.originalTransports.length}:`, originalTransport.id, 'z numerem:', newOrderNumber);
+          console.log(`Przywracam połączony transport ${i + 1}/${mergedData.originalTransports.length}:`, originalTransport.id, 'z numerem:', newOrderNumber);
           
           const restoredTransportData = {
             order_number: newOrderNumber,
@@ -231,7 +282,8 @@ export async function POST(request) {
             restoredTransports.push({
               id: insertedId,
               orderNumber: newOrderNumber,
-              originalId: originalTransport.id
+              originalId: originalTransport.id,
+              type: 'merged'
             });
             
             console.log('Przywrócono transport z ID:', insertedId, 'i numerem zamówienia:', newOrderNumber);
@@ -241,34 +293,33 @@ export async function POST(request) {
           }
         }
         
-        // Zaktualizuj główny transport - zamiast usuwania, oznacz jako rozłączony
+        // Usuń oryginalny połączony transport (teraz już niepotrzebny)
         try {
           await trx('spedycje')
             .where('id', transportId)
-            .update({
-              status: 'unmerged',
-              notes: (mergedTransport.notes || '') + 
-                     `\n\n[ROZŁĄCZONO]: Transport został rozłączony na ${mergedData.originalTransports.length} osobnych zleceń. ` +
-                     `Wykonano przez ${user.name} w dniu ${new Date().toLocaleDateString('pl-PL')} o ${new Date().toLocaleTimeString('pl-PL')}.`,
-              merged_transports: null
-            });
+            .del();
           
-          console.log('Zaktualizowano główny transport - oznaczono jako rozłączony');
-          
-        } catch (updateError) {
-          console.error('Błąd aktualizacji głównego transportu:', updateError);
-          throw updateError;
+          console.log('Usunięto oryginalny połączony transport ID:', transportId);
+        } catch (deleteError) {
+          console.error('Błąd usuwania oryginalnego transportu:', deleteError);
+          throw deleteError;
         }
         
         console.log('=== TRANSAKCJA ZAKOŃCZONA POMYŚLNIE ===');
         console.log('Przywrócone transporty:', restoredTransports);
       });
       
+      const totalRestored = mergedData.originalTransports.length + 1; // +1 dla głównego
+      
       return NextResponse.json({ 
         success: true,
-        message: `Pomyślnie rozłączono transport. Przywrócono ${mergedData.originalTransports.length} transportów jako nowe zlecenia z numerami: ${orderNumbers.join(', ')}.`,
-        restoredCount: mergedData.originalTransports.length,
-        orderNumbers: orderNumbers
+        message: `Pomyślnie rozłączono transport. Przywrócono ${totalRestored} transportów jako nowe zlecenia z numerami: ${orderNumbers.join(', ')}.`,
+        restoredCount: totalRestored,
+        orderNumbers: orderNumbers,
+        details: {
+          mainTransport: orderNumbers[0],
+          mergedTransports: orderNumbers.slice(1)
+        }
       });
       
     } catch (transactionError) {
