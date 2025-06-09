@@ -214,7 +214,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         allPoints.push({
           type: 'loading',
           transportId: transport.id,
-          order: config.loadingOrder || 999,
+          order: config.loadingOrder + 1, // +1 żeby było po głównym załadunku
           location: getLocationCoords(transport),
           description: transport.location.replace('Magazyn ', ''),
           address: transport.location
@@ -225,7 +225,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         allPoints.push({
           type: 'unloading',
           transportId: transport.id,
-          order: config.unloadingOrder || 999,
+          order: config.unloadingOrder + 10, // +10 żeby rozładunki były po załadunkach
           location: getDeliveryCoords(transport),
           description: transport.delivery?.city || 'Nie podano',
           address: transport.delivery ? 
@@ -235,12 +235,12 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       }
     });
     
-    // Główny rozładunek
-    const deliveryCity = document.querySelector('input[name="deliveryCity"]')?.value || 'Miejsce dostawy';
+    // Główny rozładunek - zawsze na końcu
+    const deliveryCity = document.querySelector('input[name="deliveryCity"]')?.value || initialData?.delivery?.city || 'Miejsce dostawy';
     const mainUnloading = {
       type: 'unloading',
       transportId: 'main',
-      order: transportsToMerge.length + 3,
+      order: 100, // Zawsze na końcu
       location: null,
       description: deliveryCity,
       address: 'Adres dostawy głównej'
@@ -999,25 +999,9 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                       </div>
                       <div className="text-sm text-gray-600 mb-2">
                         🔴 Rozładunek: {(() => {
-                          const deliveryCity = document.querySelector('input[name="deliveryCity"]')?.value || 'Miejsce dostawy';
+                          const deliveryCity = document.querySelector('input[name="deliveryCity"]')?.value || initialData?.delivery?.city || 'Miejsce dostawy';
                           return deliveryCity;
                         })()}
-                        <div className="mt-2">
-                          Kolejność rozładunku:
-                          {[1, 2, 3, 4, 5].slice(0, transportsToMerge.length + 2).map(num => (
-                            <button
-                              key={num}
-                              type="button"
-                              className={num === (transportsToMerge.length + 3) ? buttonClasses.orderButtonActive : buttonClasses.orderButton}
-                              onClick={() => {
-                                // Nie robimy nic - główny zawsze na końcu
-                              }}
-                              style={{ marginLeft: '4px' }}
-                            >
-                              {num}
-                            </button>
-                          ))}
-                        </div>
                       </div>
                       <div className="text-sm font-medium text-green-700 mt-2">
                         Koszt: {getMainTransportCost().toFixed(2)} PLN
@@ -1058,7 +1042,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                                   <div className="text-xs text-gray-600 mb-1">📍 {transport.location.replace('Magazyn ', '')}</div>
                                   <div>
                                     Kolejność:
-                                    {[1, 2, 3, 4, 5].slice(0, transportsToMerge.length + 2).map(num => (
+                                    {Array.from({ length: transportsToMerge.length }, (_, i) => i + 1).map(num => (
                                       <button
                                         key={num}
                                         type="button"
@@ -1089,7 +1073,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                                   <div className="text-xs text-gray-600 mb-1">📍 {transport.delivery?.city || 'Brak danych'}</div>
                                   <div>
                                     Kolejność:
-                                    {[1, 2, 3, 4, 5].slice(0, transportsToMerge.length + 2).map(num => (
+                                    {Array.from({ length: transportsToMerge.length }, (_, i) => i + 1).map(num => (
                                       <button
                                         key={num}
                                         type="button"
