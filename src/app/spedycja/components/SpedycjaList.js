@@ -1,54 +1,4 @@
-);
-}
-
-// Funkcje pomocnicze dla Google Maps
-
-const getAddressFromRoutePoint = (routePoint) => {
-  if (!routePoint) return '';
-  
-  if (routePoint.address) {
-    return routePoint.address;
-  }
-  
-  if (routePoint.location) {
-    const loc = routePoint.location;
-    if (loc.city && loc.postalCode) {
-      return `${loc.city}, ${loc.postalCode}, ${loc.street || ''}`;
-    }
-    if (loc.city) {
-      return loc.city;
-    }
-  }
-  
-  return routePoint.description || '';
-};
-
-const reconstructRouteFromMergedData = (transport, mergedData) => {
-  // Fallback - rekonstruuj prostą trasę głównego transportu
-  let origin = '';
-  let destination = '';
-  
-  if (transport.location === 'Odbiory własne' && transport.producerAddress) {
-    const addr = transport.producerAddress;
-    origin = `${addr.city},${addr.postalCode},${addr.street || ''}`;
-  } else if (transport.location === 'Magazyn Białystok') {
-    origin = 'Białystok';
-  } else if (transport.location === 'Magazyn Zielonka') {
-    origin = 'Zielonka';
-  }
-  
-  if (transport.delivery) {
-    const addr = transport.delivery;
-    destination = `${addr.city},${addr.postalCode},${addr.street || ''}`;
-  }
-  
-  if (!origin || !destination) return '';
-  
-  origin = encodeURIComponent(origin);
-  destination = encodeURIComponent(destination);
-  
-  return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
-};// src/app/spedycja/components/SpedycjaList.js
+// src/app/spedycja/components/SpedycjaList.js
 import React, { useState } from 'react'
 import { format } from 'date-fns'
 import { pl } from 'date-fns/locale'
@@ -151,91 +101,6 @@ export default function SpedycjaList({
     }
   };
 
-  // Funkcja do generowania linku do Google Maps - ZAKTUALIZOWANA
-  const generateGoogleMapsLink = (transport) => {
-    const isMerged = isMergedTransport(transport);
-    
-    if (!isMerged) {
-      // Dla normalnego transportu - stara logika
-      let origin = '';
-      let destination = '';
-      
-      if (transport.location === 'Odbiory własne' && transport.producerAddress) {
-        const addr = transport.producerAddress;
-        origin = `${addr.city},${addr.postalCode},${addr.street || ''}`;
-      } else if (transport.location === 'Magazyn Białystok') {
-        origin = 'Białystok';
-      } else if (transport.location === 'Magazyn Zielonka') {
-        origin = 'Zielonka';
-      }
-      
-      if (transport.delivery) {
-        const addr = transport.delivery;
-        destination = `${addr.city},${addr.postalCode},${addr.street || ''}`;
-      }
-      
-      if (!origin || !destination) return '';
-      
-      origin = encodeURIComponent(origin);
-      destination = encodeURIComponent(destination);
-      
-      return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
-    }
-    
-    // NOWA LOGIKA: Dla transportu połączonego - sekwencyjna trasa
-    const mergedData = getMergedTransportsData(transport);
-    if (!mergedData) return '';
-    
-    try {
-      // Rekonstrukcja trasy z danych response
-      const routePoints = transport.response?.routePoints;
-      
-      if (routePoints && routePoints.length > 1) {
-        // Użyj zapisanych punktów trasy
-        return generateMapsLinkFromRoutePoints(routePoints);
-      }
-      
-      // Fallback - rekonstruuj trasę z danych transportów
-      return reconstructRouteFromMergedData(transport, mergedData);
-      
-    } catch (error) {
-      console.error('Błąd generowania linku Maps dla połączonego transportu:', error);
-      return '';
-    }
-  };
-
-  // NOWA FUNKCJA: Generowanie linku z zapisanych punktów trasy
-  const generateMapsLinkFromRoutePoints = (routePoints) => {
-    if (routePoints.length < 2) return '';
-    
-    let origin = '';
-    let destination = '';
-    const waypoints = [];
-    
-    // Pierwszy punkt to origin
-    const firstPoint = routePoints[0];
-    origin = getAddressFromRoutePoint(firstPoint);
-    
-    // Ostatni punkt to destination  
-    const lastPoint = routePoints[routePoints.length - 1];
-    destination = getAddressFromRoutePoint(lastPoint);
-    
-    // Środkowe punkty to waypoints
-    for (let i = 1; i < routePoints.length - 1; i++) {
-      const waypointAddress = getAddressFromRoutePoint(routePoints[i]);
-      if (waypointAddress) {
-        waypoints.push(waypointAddress);
-      }
-    }
-    
-    if (!origin || !destination) return '';
-    
-    const waypointsParam = waypoints.length > 0 ? 
-      `&waypoints=${encodeURIComponent(waypoints.join('|'))}` : '';
-    
-    return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}${waypointsParam}&travelmode=driving`;
-  };
-
   // POPRAWIONA FUNKCJA: Generuje wyświetlaną trasę dla połączonych transportów
   const getDisplayRoute = (zamowienie) => {
     const mergedData = getMergedTransportsData(zamowienie);
@@ -255,9 +120,15 @@ export default function SpedycjaList({
       
       // Dodaj z połączonych transportów
       mergedData.originalTransports.forEach(originalTransport => {
-        const unloadingCity = originalTransport.delivery_data?.city || 
-                             (typeof originalTransport.delivery_data === 'string' ? 
-                              JSON.parse(originalTransport.delivery_data || '{}').city : null);
+        let unloadingCity;
+        try {
+          unloadingCity = originalTransport.delivery_data?.city || 
+                         (typeof originalTransport.delivery_data === 'string' ? 
+                          JSON.parse(originalTransport.delivery_data || '{}').city : null);
+        } catch (error) {
+          console.error('Błąd parsowania delivery_data:', error);
+          unloadingCity = null;
+        }
         
         if (unloadingCity && !allUnloadingCities.includes(unloadingCity)) {
           allUnloadingCities.push(unloadingCity);
@@ -422,9 +293,15 @@ export default function SpedycjaList({
     
     // Dodaj z połączonych transportów
     mergedData.originalTransports.forEach(originalTransport => {
-      const unloadingCity = originalTransport.delivery_data?.city || 
-                           (typeof originalTransport.delivery_data === 'string' ? 
-                            JSON.parse(originalTransport.delivery_data || '{}').city : null);
+      let unloadingCity;
+      try {
+        unloadingCity = originalTransport.delivery_data?.city || 
+                       (typeof originalTransport.delivery_data === 'string' ? 
+                        JSON.parse(originalTransport.delivery_data || '{}').city : null);
+      } catch (error) {
+        console.error('Błąd parsowania delivery_data:', error);
+        unloadingCity = null;
+      }
       
       if (unloadingCity && !allUnloadingCities.includes(unloadingCity)) {
         allUnloadingCities.push(unloadingCity);
@@ -455,9 +332,15 @@ export default function SpedycjaList({
       // Dodaj punkty z połączonych transportów (w kolejności logicznej)
       mergedData.originalTransports.forEach((originalTransport, index) => {
         // Załadunek (jeśli różny od głównego)
-        const loadingCity = originalTransport.location === 'Odbiory własne' && originalTransport.location_data
-          ? JSON.parse(originalTransport.location_data || '{}').city
-          : originalTransport.location?.replace('Magazyn ', '');
+        let loadingCity;
+        try {
+          loadingCity = originalTransport.location === 'Odbiory własne' && originalTransport.location_data
+            ? JSON.parse(originalTransport.location_data || '{}').city
+            : originalTransport.location?.replace('Magazyn ', '');
+        } catch (error) {
+          console.error('Błąd parsowania location_data:', error);
+          loadingCity = originalTransport.location?.replace('Magazyn ', '');
+        }
         
         const mainLoadingCity = getLoadingCity(transport);
         
@@ -474,11 +357,17 @@ export default function SpedycjaList({
         }
 
         // Rozładunek
-        const deliveryData = originalTransport.delivery_data 
-          ? (typeof originalTransport.delivery_data === 'string' 
-             ? JSON.parse(originalTransport.delivery_data) 
-             : originalTransport.delivery_data)
-          : null;
+        let deliveryData;
+        try {
+          deliveryData = originalTransport.delivery_data 
+            ? (typeof originalTransport.delivery_data === 'string' 
+               ? JSON.parse(originalTransport.delivery_data) 
+               : originalTransport.delivery_data)
+            : null;
+        } catch (error) {
+          console.error('Błąd parsowania delivery_data:', error);
+          deliveryData = null;
+        }
 
         if (deliveryData) {
           sequence.push({
@@ -680,6 +569,33 @@ export default function SpedycjaList({
         )}
       </div>
     );
+  };
+
+  // Funkcja do generowania linku do Google Maps
+  const generateGoogleMapsLink = (transport) => {
+    let origin = '';
+    let destination = '';
+    
+    if (transport.location === 'Odbiory własne' && transport.producerAddress) {
+      const addr = transport.producerAddress;
+      origin = `${addr.city},${addr.postalCode},${addr.street || ''}`;
+    } else if (transport.location === 'Magazyn Białystok') {
+      origin = 'Białystok';
+    } else if (transport.location === 'Magazyn Zielonka') {
+      origin = 'Zielonka';
+    }
+    
+    if (transport.delivery) {
+      const addr = transport.delivery;
+      destination = `${addr.city},${addr.postalCode},${addr.street || ''}`;
+    }
+    
+    if (!origin || !destination) return '';
+    
+    origin = encodeURIComponent(origin);
+    destination = encodeURIComponent(destination);
+    
+    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
   };
 
   return (
