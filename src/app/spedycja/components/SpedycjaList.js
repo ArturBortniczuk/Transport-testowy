@@ -717,18 +717,6 @@ export default function SpedycjaList({
                     if (isMerged) {
                       // DLA POŁĄCZONYCH TRANSPORTÓW - pokaż tylko sekcję połączonych tras
                       return (
-                        <div>
-                          {/* Informacja o transporcie połączonym */}
-                          <div className="mb-6 bg-purple-50 border border-purple-200 rounded-lg p-4">
-                            <h4 className="font-medium text-purple-700 mb-2 flex items-center">
-                              <LinkIcon size={18} className="mr-2" />
-                              Transport połączony - szczegóły tras
-                            </h4>
-                            <p className="text-sm text-purple-600">
-                              Ten transport zawiera {getMergedTransportsData(zamowienie)?.originalTransports.length + 1} tras realizowanych w jednym kursie.
-                              Szczegółowe informacje o wszystkich trasach znajdują się poniżej.
-                            </p>
-                          </div>
 
                           {/* Sekcja informacji o połączonych transportach */}
                           {renderMergedTransportsInfo(zamowienie)}
