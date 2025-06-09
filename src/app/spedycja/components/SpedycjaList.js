@@ -861,6 +861,7 @@ export default function SpedycjaList({
                                   return null;
                                 })}
                               </div>
+                            </div>                              </div>
                             </div>
 
                             {/* Rozładunki */}
