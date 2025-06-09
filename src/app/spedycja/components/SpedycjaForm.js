@@ -8,6 +8,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
   const [users, setUsers] = useState([])
   const [constructions, setConstructions] = useState([])
   const [selectedUser, setSelectedUser] = useState(null)
+  const [mainUnloadingOrder, setMainUnloadingOrder] = useState(999) // Domyślnie wysoka kolejność
   const [selectedConstructions, setSelectedConstructions] = useState([])
   const [totalPrice, setTotalPrice] = useState(initialData?.response?.deliveryPrice || 0)
   const [currentUser, setCurrentUser] = useState({
@@ -325,7 +326,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
           transportId: transport.id,
           order: config.loadingOrder || 999,
           location: getLocationCoords(transport),
-          description: transport.location.replace('Magazyn ', ''), // POPRAWKA: Usuń "Magazyn"
+          description: transport.location.replace('Magazyn ', ''),
           address: transport.location
         });
       }
@@ -336,50 +337,36 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
           transportId: transport.id,
           order: config.unloadingOrder || 999,
           location: getDeliveryCoords(transport),
-          description: transport.delivery?.city || 'Nie podano', // POPRAWKA: Tylko miasto
+          description: transport.delivery?.city || 'Nie podano',
           address: transport.delivery ? 
             `${transport.delivery.city}, ${transport.delivery.postalCode}, ${transport.delivery.street}` :
             'Brak adresu'
         });
       }
     });
-
-    const maxUnloadingOrder = Math.max(
-      ...allPoints
-        .filter(p => p.type === 'unloading')
-        .map(p => p.order),
-      0
-    );
     
-    // Główny rozładunek - zawsze ostatni
+    // NOWE: Główny rozładunek z edytowalną kolejnością
     const mainUnloading = {
       type: 'unloading',
       transportId: 'main',
-      order: maxUnloadingOrder + 1, // POPRAWKA: Zawsze po wszystkich innych rozładunkach
-      location: null, // będzie uzupełnione z formularza
-      description: 'Miejsce dostawy', // POPRAWKA: Uprość opis
+      order: mainUnloadingOrder, // ZMIANA: Używa edytowalnej kolejności
+      location: null,
+      description: 'Miejsce dostawy',
       address: 'Adres dostawy głównej'
     };
     
     allPoints.push(mainUnloading);
     
-    // Sortuj punkty według kolejności
+    // Sortowanie pozostaje bez zmian
     const sortedPoints = allPoints.sort((a, b) => {
       if (a.order !== b.order) return a.order - b.order;
-      // Przy tej samej kolejności, załadunek przed rozładunkiem
       if (a.type === 'loading' && b.type === 'unloading') return -1;
       if (a.type === 'unloading' && b.type === 'loading') return 1;
-          // Jeśli ten sam typ, sortuj według transportId (main na końcu)
       if (a.transportId === 'main' && b.transportId !== 'main') return 1;
       if (a.transportId !== 'main' && b.transportId === 'main') return -1;
       return 0;
     });
-    console.log('Posortowane punkty trasy:', sortedPoints.map(p => ({
-      order: p.order,
-      type: p.type,
-      transportId: p.transportId,
-      description: p.description
-    })));
+    
     return { 
       points: sortedPoints, 
       estimatedDistance: calculatedRouteDistance || 0
@@ -1279,17 +1266,31 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                   <div className="space-y-4">
                     <h4 className="font-medium text-blue-700">Konfiguracja trasy:</h4>
                     
-                    {/* Główny transport */}
-                    <div className="p-3 bg-white rounded border border-blue-200">
-                      <div className="font-semibold text-blue-800 mb-2">
+                    // W sekcji głównego transportu, dodaj pole do edycji kolejności rozładunku:
+                    {/* SEKCJA GŁÓWNEGO TRANSPORTU - Z EDYTOWALNA KOLEJNOŚCIĄ ROZŁADUNKU */}
+                    <div className="p-3 bg-blue-50 rounded border border-blue-200 mb-4">
+                      <div className="font-medium text-blue-700 mb-2">
                         GŁÓWNY: {initialData?.orderNumber || 'Nowy'} (MPK: {initialData?.mpk || 'Brak'})
                       </div>
-                      <div className="text-sm text-gray-600">
-                        🟢 Załadunek: {selectedLocation} (kolejność: 1)
+                      <div className="text-sm text-gray-600 mb-2">
+                        🟢 Załadunek: {selectedLocation.replace('Magazyn ', '')} (kolejność: 1)
                       </div>
-                      <div className="text-sm text-gray-600">
-                        🔴 Rozładunek: Miejsce dostawy (kolejność: ostatnia)
+                      
+                      {/* NOWE: Pole do edycji kolejności głównego rozładunku */}
+                      <div className="text-sm text-gray-600 mb-2 flex items-center">
+                        🔴 Rozładunek: Miejsce dostawy 
+                        <span className="ml-2 mr-1">(kolejność:</span>
+                        <input
+                          type="number"
+                          min="2"
+                          max="10"
+                          value={mainUnloadingOrder}
+                          onChange={(e) => setMainUnloadingOrder(parseInt(e.target.value))}
+                          className="w-16 p-1 border rounded text-sm mx-1"
+                        />
+                        <span>)</span>
                       </div>
+                      
                       <div className="text-sm font-medium text-green-700 mt-2">
                         Koszt: {getMainTransportCost().toFixed(2)} PLN
                       </div>
@@ -1314,13 +1315,13 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                             </button>
                           </div>
                           
-                          {/* Konfiguracja miejsc - POPRAWIONA */}
+                          {/* Konfiguracja miejsc - Z LEPSZYM PODGLĄDEM KOLEJNOŚCI */}
                           <div className="grid grid-cols-2 gap-4 mb-3">
                             <div className="bg-green-50 p-2 rounded">
                               <div className="flex items-center mb-2">
                                 <input
                                   type="checkbox"
-                                  checked={config.useLoading !== false} // domyślnie true
+                                  checked={config.useLoading !== false}
                                   onChange={(e) => handleRouteConfigurationChange(transport.id, 'useLoading', e.target.checked)}
                                   className="mr-2"
                                 />
@@ -1348,7 +1349,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                               <div className="flex items-center mb-2">
                                 <input
                                   type="checkbox"
-                                  checked={config.useUnloading !== false} // POPRAWKA: domyślnie true zamiast false
+                                  checked={config.useUnloading !== false}
                                   onChange={(e) => handleRouteConfigurationChange(transport.id, 'useUnloading', e.target.checked)}
                                   className="mr-2"
                                 />
@@ -1368,6 +1369,13 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                                   <div className="text-xs text-gray-500 mt-1">
                                     📍 {transport.delivery?.city || 'Brak danych'}
                                   </div>
+                                  
+                                  {/* NOWE: Informacja o konflikcie kolejności */}
+                                  {config.unloadingOrder === mainUnloadingOrder && (
+                                    <div className="text-xs text-orange-600 mt-1 font-medium">
+                                      ⚠️ Ta sama kolejność co główny rozładunek!
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
