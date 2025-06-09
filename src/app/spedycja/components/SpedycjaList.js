@@ -717,9 +717,280 @@ export default function SpedycjaList({
                     if (isMerged) {
                       // DLA POŁĄCZONYCH TRANSPORTÓW - pokaż tylko sekcję połączonych tras
                       return (
+                        <div>
+                          {/* Podsumowanie transportu połączonego */}
+                          <div className="mb-6 bg-white rounded-lg border border-purple-200 p-4">
+                            <div className="flex justify-between items-start mb-4">
+                              <div>
+                                <h4 className="font-medium text-purple-700 text-lg flex items-center">
+                                  <LinkIcon size={18} className="mr-2" />
+                                  Transport: {getLoadingCity(zamowienie)} → {getMergedTransportsData(zamowienie) ? 
+                                    (() => {
+                                      const mergedData = getMergedTransportsData(zamowienie);
+                                      const allCities = [zamowienie.delivery?.city];
+                                      mergedData.originalTransports.forEach(t => {
+                                        try {
+                                          const city = t.delivery_data?.city || 
+                                                     (typeof t.delivery_data === 'string' ? 
+                                                      JSON.parse(t.delivery_data || '{}').city : null);
+                                          if (city && !allCities.includes(city)) allCities.push(city);
+                                        } catch (e) {}
+                                      });
+                                      return allCities.filter(Boolean).join(', ');
+                                    })() : getDeliveryCity(zamowienie)
+                                  }
+                                </h4>
+                                <div className="text-sm text-gray-600 mt-1 space-y-1">
+                                  <div>
+                                    <span className="font-medium">Numery MPK:</span> {(() => {
+                                      const mergedData = getMergedTransportsData(zamowienie);
+                                      const allMPKs = [zamowienie.mpk];
+                                      mergedData?.originalTransports.forEach(t => {
+                                        if (t.mpk && !allMPKs.includes(t.mpk)) allMPKs.push(t.mpk);
+                                      });
+                                      return allMPKs.filter(Boolean).join(', ');
+                                    })()}
+                                  </div>
+                                  <div>
+                                    <span className="font-medium">Liczba tras:</span> {getMergedTransportsData(zamowienie)?.originalTransports.length + 1}
+                                  </div>
+                                  <div>
+                                    <span className="font-medium">Dokumenty:</span> {(() => {
+                                      const mergedData = getMergedTransportsData(zamowienie);
+                                      const allDocs = [zamowienie.documents];
+                                      mergedData?.originalTransports.forEach(t => {
+                                        if (t.documents && !allDocs.includes(t.documents)) allDocs.push(t.documents);
+                                      });
+                                      return allDocs.filter(Boolean).join(', ') || 'Brak';
+                                    })()}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
 
-                          {/* Sekcja informacji o połączonych transportach */}
-                          {renderMergedTransportsInfo(zamowienie)}
+                          {/* Kafelki załadunków i rozładunków */}
+                          <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Załadunki */}
+                            <div className="bg-green-50 rounded-lg border border-green-200 p-4">
+                              <h4 className="font-medium text-green-700 mb-4 flex items-center">
+                                <MapPin size={18} className="mr-2" />
+                                Załadunki
+                              </h4>
+                              <div className="space-y-3">
+                                {/* Główny załadunek */}
+                                <div className="bg-white p-3 rounded border-l-4 border-green-400">
+                                  <div className="flex items-center mb-1">
+                                    <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-medium mr-2">
+                                      MPK: {zamowienie.mpk}
+                                    </span>
+                                  </div>
+                                  <div className="font-medium text-gray-800">{getLoadingCompanyName(zamowienie)}</div>
+                                  <div className="text-sm text-gray-600">
+                                    {zamowienie.location === 'Odbiory własne' && zamowienie.producerAddress 
+                                      ? formatAddress(zamowienie.producerAddress)
+                                      : zamowienie.location}
+                                  </div>
+                                  {zamowienie.producerAddress?.pinLocation && (
+                                    <div className="text-xs text-gray-500 mt-1">
+                                      📍 Pineska: {zamowienie.producerAddress.pinLocation}
+                                    </div>
+                                  )}
+                                  {zamowienie.loading_contact && (
+                                    <div className="text-sm text-gray-500 flex items-center mt-1">
+                                      <Phone size={12} className="mr-1" />
+                                      {zamowienie.loading_contact}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Dodatkowe załadunki z połączonych transportów */}
+                                {getMergedTransportsData(zamowienie)?.originalTransports.map((transport, index) => {
+                                  let loadingCity;
+                                  try {
+                                    loadingCity = transport.location === 'Odbiory własne' && transport.location_data
+                                      ? JSON.parse(transport.location_data || '{}').city
+                                      : transport.location?.replace('Magazyn ', '');
+                                  } catch (e) {
+                                    loadingCity = transport.location?.replace('Magazyn ', '');
+                                  }
+                                  
+                                  if (loadingCity && loadingCity !== getLoadingCity(zamowienie)) {
+                                    return (
+                                      <div key={transport.id} className="bg-white p-3 rounded border-l-4 border-gray-300">
+                                        <div className="flex items-center mb-1">
+                                          <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-medium mr-2">
+                                            MPK: {transport.mpk}
+                                          </span>
+                                        </div>
+                                        <div className="font-medium text-gray-800">
+                                          {transport.location === 'Odbiory własne' 
+                                            ? (transport.sourceClientName || transport.client_name || 'Odbiory własne')
+                                            : 'Grupa Eltron Sp. z o.o.'
+                                          }
+                                        </div>
+                                        <div className="text-sm text-gray-600">{transport.location}</div>
+                                        {transport.loading_contact && (
+                                          <div className="text-sm text-gray-500 flex items-center mt-1">
+                                            <Phone size={12} className="mr-1" />
+                                            {transport.loading_contact}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Rozładunki */}
+                            <div className="bg-red-50 rounded-lg border border-red-200 p-4">
+                              <h4 className="font-medium text-red-700 mb-4 flex items-center">
+                                <MapPin size={18} className="mr-2" />
+                                Rozładunki
+                              </h4>
+                              <div className="space-y-3">
+                                {/* Główny rozładunek */}
+                                <div className="bg-white p-3 rounded border-l-4 border-red-400">
+                                  <div className="flex items-center mb-1">
+                                    <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-medium mr-2">
+                                      MPK: {zamowienie.mpk}
+                                    </span>
+                                  </div>
+                                  <div className="font-medium text-gray-800">{getUnloadingCompanyName(zamowienie)}</div>
+                                  <div className="text-sm text-gray-600">{formatAddress(zamowienie.delivery)}</div>
+                                  {zamowienie.delivery?.pinLocation && (
+                                    <div className="text-xs text-gray-500 mt-1">
+                                      📍 Pineska: {zamowienie.delivery.pinLocation}
+                                    </div>
+                                  )}
+                                  {zamowienie.unloading_contact && (
+                                    <div className="text-sm text-gray-500 flex items-center mt-1">
+                                      <Phone size={12} className="mr-1" />
+                                      {zamowienie.unloading_contact}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Rozładunki z połączonych transportów */}
+                                {getMergedTransportsData(zamowienie)?.originalTransports.map((transport, index) => {
+                                  let deliveryData;
+                                  try {
+                                    deliveryData = transport.delivery_data 
+                                      ? (typeof transport.delivery_data === 'string' 
+                                         ? JSON.parse(transport.delivery_data) 
+                                         : transport.delivery_data)
+                                      : null;
+                                  } catch (e) {
+                                    deliveryData = null;
+                                  }
+
+                                  if (deliveryData) {
+                                    return (
+                                      <div key={transport.id} className="bg-white p-3 rounded border-l-4 border-gray-300">
+                                        <div className="flex items-center mb-1">
+                                          <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-medium mr-2">
+                                            MPK: {transport.mpk}
+                                          </span>
+                                        </div>
+                                        <div className="font-medium text-gray-800">
+                                          {transport.client_name || transport.clientName || 'Nie podano'}
+                                        </div>
+                                        <div className="text-sm text-gray-600">{formatAddress(deliveryData)}</div>
+                                        {deliveryData.pinLocation && (
+                                          <div className="text-xs text-gray-500 mt-1">
+                                            📍 Pineska: {deliveryData.pinLocation}
+                                          </div>
+                                        )}
+                                        {transport.unloading_contact && (
+                                          <div className="text-sm text-gray-500 flex items-center mt-1">
+                                            <Phone size={12} className="mr-1" />
+                                            {transport.unloading_contact}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                })}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Informacje o towarze */}
+                          {(() => {
+                            const mergedData = getMergedTransportsData(zamowienie);
+                            const hasGoodsInfo = zamowienie.goodsDescription || 
+                              mergedData?.originalTransports.some(t => t.goods_description);
+                            
+                            if (hasGoodsInfo) {
+                              return (
+                                <div className="mb-6 bg-blue-50 rounded-lg border border-blue-200 p-4">
+                                  <h4 className="font-medium text-blue-700 mb-4 flex items-center">
+                                    <ShoppingBag size={18} className="mr-2" />
+                                    Informacje o towarze
+                                  </h4>
+                                  <div className="space-y-3">
+                                    {/* Główny towar */}
+                                    {zamowienie.goodsDescription && (
+                                      <div className="bg-white p-3 rounded">
+                                        <div className="flex items-center mb-1">
+                                          <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-medium mr-2">
+                                            MPK: {zamowienie.mpk}
+                                          </span>
+                                        </div>
+                                        {zamowienie.goodsDescription.description && (
+                                          <p className="text-sm">{zamowienie.goodsDescription.description}</p>
+                                        )}
+                                        {zamowienie.goodsDescription.weight && (
+                                          <p className="text-sm flex items-center mt-1">
+                                            <Weight size={12} className="mr-1" />
+                                            Waga: {zamowienie.goodsDescription.weight}
+                                          </p>
+                                        )}
+                                      </div>
+                                    )}
+                                    
+                                    {/* Towar z połączonych transportów */}
+                                    {mergedData?.originalTransports.map(transport => {
+                                      if (transport.goods_description) {
+                                        let goodsDesc;
+                                        try {
+                                          goodsDesc = typeof transport.goods_description === 'string' 
+                                            ? JSON.parse(transport.goods_description)
+                                            : transport.goods_description;
+                                        } catch (e) {
+                                          goodsDesc = { description: transport.goods_description };
+                                        }
+                                        
+                                        return (
+                                          <div key={transport.id} className="bg-white p-3 rounded">
+                                            <div className="flex items-center mb-1">
+                                              <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-medium mr-2">
+                                                MPK: {transport.mpk}
+                                              </span>
+                                            </div>
+                                            {goodsDesc.description && (
+                                              <p className="text-sm">{goodsDesc.description}</p>
+                                            )}
+                                            {goodsDesc.weight && (
+                                              <p className="text-sm flex items-center mt-1">
+                                                <Weight size={12} className="mr-1" />
+                                                Waga: {goodsDesc.weight}
+                                              </p>
+                                            )}
+                                          </div>
+                                        );
+                                      }
+                                      return null;
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
 
                           {/* Sekcja z uwagami - jeśli są */}
                           {(zamowienie.notes || zamowienie.response?.adminNotes) && (
@@ -769,34 +1040,47 @@ export default function SpedycjaList({
                                     <p className="text-sm mb-1.5"><span className="font-medium">Numery auta:</span> {zamowienie.response.vehicleNumber}</p>
                                   </div>
                                   
-                                  {/* Informacje o kosztach - ukryte dla połączonych */}
+                                  {/* Dane finansowe z podziałem kosztów */}
                                   <div className="bg-white p-3 rounded-md shadow-sm border border-gray-100">
                                     <h5 className="text-sm font-medium mb-2 pb-1 border-b flex items-center text-green-600">
                                       <DollarSign size={14} className="mr-1" />
                                       Dane finansowe
                                     </h5>
-                                    <p className="text-sm mb-1.5">Szczegóły kosztów znajdują się w sekcji "Podział kosztów" powyżej</p>
+                                    {(() => {
+                                      const mergedData = getMergedTransportsData(zamowienie);
+                                      if (mergedData?.costBreakdown) {
+                                        return (
+                                          <div className="text-xs space-y-1">
+                                            <div className="flex justify-between">
+                                              <span>MPK {zamowienie.mpk}:</span>
+                                              <span className="font-medium">{(mergedData.costBreakdown.mainTransport?.cost || 0).toFixed(2)} PLN</span>
+                                            </div>
+                                            {mergedData.costBreakdown.mergedTransports?.map(t => (
+                                              <div key={t.id} className="flex justify-between">
+                                                <span>MPK {t.mpk}:</span>
+                                                <span className="font-medium">{(t.cost || 0).toFixed(2)} PLN</span>
+                                              </div>
+                                            ))}
+                                            <div className="border-t pt-1 mt-1 flex justify-between font-medium">
+                                              <span>Łącznie:</span>
+                                              <span>{(mergedData.totalMergedCost || 0).toFixed(2)} PLN</span>
+                                            </div>
+                                          </div>
+                                        );
+                                      } else {
+                                        return <p className="text-sm">Brak szczegółów kosztów</p>;
+                                      }
+                                    })()}
                                   </div>
                                   
-                                  {/* Informacje o trasie */}
+                                  {/* Informacje o trasie bez kosztów */}
                                   <div className="bg-white p-3 rounded-md shadow-sm border border-gray-100">
                                     <h5 className="text-sm font-medium mb-2 pb-1 border-b flex items-center text-purple-600">
                                       <MapPin size={14} className="mr-1" />
                                       Trasa
                                     </h5>
-                                    <p className="text-sm mb-1.5"><span className="font-medium">Dystans:</span> {zamowienie.response.totalDistance || 0} km</p>
+                                    <p className="text-sm mb-1.5"><span className="font-medium">Dystans:</span> {zamowienie.response.totalDistance || getMergedTransportsData(zamowienie)?.totalDistance || 0} km</p>
                                     <p className="text-sm mb-1.5"><span className="font-medium">Liczba tras:</span> {getMergedTransportsData(zamowienie)?.originalTransports.length + 1}</p>
-                                    {generateGoogleMapsLink(zamowienie) && (
-                                      <a 
-                                        href={generateGoogleMapsLink(zamowienie)} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center text-blue-600 hover:text-blue-800 text-sm"
-                                      >
-                                        <MapPin size={12} className="mr-1" />
-                                        Zobacz trasę w Google Maps
-                                      </a>
-                                    )}
                                   </div>
                                 </div>
                               )}
@@ -822,6 +1106,20 @@ export default function SpedycjaList({
                                       Stwórz zlecenie transportowe
                                     </button>
                                     
+                                    {/* Zobacz trasę w Google Maps */}
+                                    {generateGoogleMapsLink(zamowienie) && (
+                                      <a 
+                                        href={generateGoogleMapsLink(zamowienie)} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className={buttonClasses.outline}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <MapPin size={16} />
+                                        Zobacz trasę w Google Maps
+                                      </a>
+                                    )}
+                                    
                                     {/* Przycisk rozłączania transportów - tylko dla adminów i tylko dla połączonych */}
                                     {isAdmin && isMerged && (
                                       <button
@@ -835,6 +1133,31 @@ export default function SpedycjaList({
                                         className={buttonClasses.success}
                                         style={{ backgroundColor: '#ef4444', borderColor: '#ef4444' }}
                                         onMouseOver={(e) => e.target.style.backgroundColor = '#dc2626'}
+                                        onMouseOut={(e) => e.target.style.backgroundColor = '#ef4444'}
+                                      >
+                                        <Unlink size={16} />
+                                        Rozłącz transporty
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                                
+                                <button 
+                                  type="button"
+                                  className={buttonClasses.success}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    if (confirm('Czy na pewno chcesz oznaczyć to zlecenie jako zrealizowane?')) {
+                                      onMarkAsCompleted(zamowienie.id)
+                                    }
+                                  }}
+                                >
+                                  <Truck size={16} />
+                                  Zrealizowane
+                                </button>
+                              </>
+                            )}
+                          </div>onMouseOver={(e) => e.target.style.backgroundColor = '#dc2626'}
                                         onMouseOut={(e) => e.target.style.backgroundColor = '#ef4444'}
                                       >
                                         <Unlink size={16} />
@@ -1095,17 +1418,33 @@ export default function SpedycjaList({
                                 
                                 {/* Przyciski dla transportu z odpowiedzią */}
                                 {(zamowienie.response && Object.keys(zamowienie.response).length > 0) && (
-                                  <button 
-                                    type="button"
-                                    className={buttonClasses.success}
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      onCreateOrder(zamowienie)
-                                    }}
-                                  >
-                                    <FileText size={16} />
-                                    Stwórz zlecenie transportowe
-                                  </button>
+                                  <>
+                                    <button 
+                                      type="button"
+                                      className={buttonClasses.success}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        onCreateOrder(zamowienie)
+                                      }}
+                                    >
+                                      <FileText size={16} />
+                                      Stwórz zlecenie transportowe
+                                    </button>
+                                    
+                                    {/* Zobacz trasę w Google Maps */}
+                                    {generateGoogleMapsLink(zamowienie) && (
+                                      <a 
+                                        href={generateGoogleMapsLink(zamowienie)} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className={buttonClasses.outline}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <MapPin size={16} />
+                                        Zobacz trasę w Google Maps
+                                      </a>
+                                    )}
+                                  </>
                                 )}
                                 
                                 <button 
