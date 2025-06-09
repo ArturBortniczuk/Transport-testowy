@@ -309,7 +309,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       transportId: 'main',
       order: 1,
       location: getLocationCoords(initialData || { location: selectedLocation, producerAddress: null }),
-      description: `Załadunek główny: ${selectedLocation}`,
+      description: selectedLocation.replace('Magazyn ', ''), // POPRAWKA: Usuń "Magazyn"
       address: selectedLocation
     };
     
@@ -325,7 +325,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
           transportId: transport.id,
           order: config.loadingOrder || 999,
           location: getLocationCoords(transport),
-          description: `Załadunek: ${transport.location}`,
+          description: transport.location.replace('Magazyn ', ''), // POPRAWKA: Usuń "Magazyn"
           address: transport.location
         });
       }
@@ -336,21 +336,28 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
           transportId: transport.id,
           order: config.unloadingOrder || 999,
           location: getDeliveryCoords(transport),
-          description: `Rozładunek: ${transport.delivery?.city || 'Nie podano'}`,
+          description: transport.delivery?.city || 'Nie podano', // POPRAWKA: Tylko miasto
           address: transport.delivery ? 
             `${transport.delivery.city}, ${transport.delivery.postalCode}, ${transport.delivery.street}` :
             'Brak adresu'
         });
       }
     });
+
+    const maxUnloadingOrder = Math.max(
+      ...allPoints
+        .filter(p => p.type === 'unloading')
+        .map(p => p.order),
+      0
+    );
     
     // Główny rozładunek - zawsze ostatni
     const mainUnloading = {
       type: 'unloading',
       transportId: 'main',
-      order: 1000, // zawsze na końcu
+      order: maxUnloadingOrder + 1, // POPRAWKA: Zawsze po wszystkich innych rozładunkach
       location: null, // będzie uzupełnione z formularza
-      description: 'Rozładunek główny',
+      description: 'Miejsce dostawy', // POPRAWKA: Uprość opis
       address: 'Adres dostawy głównej'
     };
     
@@ -362,9 +369,17 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       // Przy tej samej kolejności, załadunek przed rozładunkiem
       if (a.type === 'loading' && b.type === 'unloading') return -1;
       if (a.type === 'unloading' && b.type === 'loading') return 1;
+          // Jeśli ten sam typ, sortuj według transportId (main na końcu)
+      if (a.transportId === 'main' && b.transportId !== 'main') return 1;
+      if (a.transportId !== 'main' && b.transportId === 'main') return -1;
       return 0;
     });
-    
+    console.log('Posortowane punkty trasy:', sortedPoints.map(p => ({
+      order: p.order,
+      type: p.type,
+      transportId: p.transportId,
+      description: p.description
+    })));
     return { 
       points: sortedPoints, 
       estimatedDistance: calculatedRouteDistance || 0
@@ -1383,34 +1398,16 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                       </h4>
                       {(() => {
                         const routeInfo = calculateMergedRoute();
-                        const sortedPoints = routeInfo.points.sort((a, b) => {
-                          if (a.order !== b.order) return a.order - b.order;
-                          if (a.type === 'loading' && b.type === 'unloading') return -1;
-                          if (a.type === 'unloading' && b.type === 'loading') return 1;
-                          return 0;
-                        });
+                        const sortedPoints = routeInfo.points;
                     
                         return (
                           <div className="space-y-2">
                             {sortedPoints.map((point, index) => {
-                              // POPRAWKA: Uprość opisy - usuń "główny", używaj nazw miejscowości
-                              let locationName = '';
-                              if (point.transportId === 'main') {
-                                if (point.type === 'loading') {
-                                  locationName = selectedLocation.replace('Magazyn ', '');
-                                } else {
-                                  // Dla rozładunku głównego - pobierz miasto z formularza
-                                  const deliveryCity = document.querySelector('input[name="deliveryCity"]')?.value || 'Miejsce dostawy';
-                                  locationName = deliveryCity;
-                                }
-                              } else {
-                                if (point.type === 'loading') {
-                                  const transport = transportsToMerge.find(t => t.id === point.transportId);
-                                  locationName = transport ? transport.location.replace('Magazyn ', '') : 'Nieznane';
-                                } else {
-                                  const transport = transportsToMerge.find(t => t.id === point.transportId);
-                                  locationName = transport?.delivery?.city || 'Brak danych';
-                                }
+                              // POPRAWKA: Dla głównego rozładunku pobierz miasto z formularza
+                              let locationName = point.description;
+                              if (point.transportId === 'main' && point.type === 'unloading') {
+                                const deliveryCity = document.querySelector('input[name="deliveryCity"]')?.value || 'Miejsce dostawy';
+                                locationName = deliveryCity;
                               }
                     
                               return (
@@ -1425,11 +1422,10 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                                   {point.transportId !== 'main' && (
                                     <span className="ml-2 text-sm text-purple-600">Transport #{point.transportId}</span>
                                   )}
+                                  <span className="ml-2 text-xs text-gray-500">(kolejność: {point.order})</span>
                                 </div>
                               );
                             })}
-                            
-                            {/* USUŃ sekcję z przyciskami "Oblicz rzeczywistą odległość" i "Zobacz trasę na Google Maps" */}
                             
                             <div className="mt-4 bg-amber-50 border border-amber-200 rounded p-3">
                               <div className="text-sm text-amber-700 font-medium mb-1">Cena całkowita: {(() => {
@@ -1441,14 +1437,10 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                                 Przydzielone do innych: {Object.values(costDistribution).reduce((sum, cost) => sum + parseFloat(cost || 0), 0).toFixed(2)} PLN
                               </div>
                               <div className="text-sm text-amber-600">
-                                Pozostaje dla głównego: {(() => {
-                                  const mainCost = getMainTransportCost();
-                                  const additionalCosts = Object.values(costDistribution).reduce((sum, cost) => sum + parseFloat(cost || 0), 0);
-                                  return (mainCost + additionalCosts - additionalCosts).toFixed(2);
-                                })()} PLN
+                                Pozostaje dla głównego: {getMainTransportCost().toFixed(2)} PLN
                               </div>
                               <div className="text-xs text-amber-600 mt-2">
-                                <strong>Uwaga:</strong> Po zapisaniu odpowiedzi transporty zostaną połączone według skonfigurowanej trasy. 
+                                <strong>Uwaga:</strong> Po zapisaniu odpowiedzi transporty zostaną połączone według skonfigrowanej trasy. 
                                 Oryginalne transporty z listy zostaną usunięte.
                               </div>
                             </div>
