@@ -836,6 +836,25 @@ export default function SpedycjaList({
                                             {transport.loading_contact}
                                           </div>
                                         )}
+                                  </>
+                                )}
+                                
+                                <button 
+                                  type="button"
+                                  className={buttonClasses.success}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    if (confirm('Czy na pewno chcesz oznaczyć to zlecenie jako zrealizowane?')) {
+                                      onMarkAsCompleted(zamowienie.id)
+                                    }
+                                  }}
+                                >
+                                  <Truck size={16} />
+                                  Zrealizowane
+                                </button>
+                              </>
+                            )}
+                          </div>
                                       </div>
                                     );
                                   }
@@ -1138,26 +1157,7 @@ export default function SpedycjaList({
                                         <Unlink size={16} />
                                         Rozłącz transporty
                                       </button>
-                                    )}
-                                  </>
-                                )}
-                                
-                                <button 
-                                  type="button"
-                                  className={buttonClasses.success}
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    if (confirm('Czy na pewno chcesz oznaczyć to zlecenie jako zrealizowane?')) {
-                                      onMarkAsCompleted(zamowienie.id)
-                                    }
-                                  }}
-                                >
-                                  <Truck size={16} />
-                                  Zrealizowane
-                                </button>
-                              </>
-                            )}
-                          </div>onMouseOver={(e) => e.target.style.backgroundColor = '#dc2626'}
+                                    )}onMouseOver={(e) => e.target.style.backgroundColor = '#dc2626'}
                                         onMouseOut={(e) => e.target.style.backgroundColor = '#ef4444'}
                                       >
                                         <Unlink size={16} />
