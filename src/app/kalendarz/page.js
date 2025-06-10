@@ -1242,7 +1242,7 @@ export default function KalendarzPage() {
                </div>
              </div>
            </div>
-         {/* Sekcja naprawy kilometrów - tylko dla adminów */}
+         )}
          {(userRole === 'admin' || userRole === 'super_admin') && <FixDistances />}
        </div>
      </DragDropContext>
