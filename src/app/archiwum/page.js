@@ -1,11 +1,11 @@
 // src/app/archiwum/page.js
 'use client'
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect, Fragment } from 'react'
 import { format } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { KIEROWCY, RYNKI, POJAZDY } from '../kalendarz/constants'
 import * as XLSX from 'xlsx'
-import { ChevronLeft, ChevronRight, FileText, Download, ThumbsUp, ThumbsDown, Compass, ChevronDown, MapPin, Truck, Building, Phone, User, Calendar, Info, ExternalLink } from 'lucide-react'
+import { ChevronLeft, ChevronRight, FileText, Download, Star, StarOff, Compass, ChevronDown, MapPin, Truck, Building, Phone, User, Calendar, Info, ExternalLink, Trash2 } from 'lucide-react'
 import TransportRating from '@/components/TransportRating'
 import TransportRatingBadge from '@/components/TransportRatingBadge'
 
@@ -23,8 +23,7 @@ export default function ArchiwumPage() {
   const [selectedTransport, setSelectedTransport] = useState(null)
   const [showRatingModal, setShowRatingModal] = useState(false)
   const [expandedRows, setExpandedRows] = useState({})
-  const [ratableTransports, setRatableTransports] = useState({})
-  const [ratingValues, setRatingValues] = useState({})
+  const [ratingRefreshTrigger, setRatingRefreshTrigger] = useState(0)
   
   // Filtry
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
@@ -37,137 +36,24 @@ export default function ArchiwumPage() {
   
   // Lista użytkowników (handlowców) do filtrowania
   const [users, setUsers] = useState([])
-  const [constructions, setConstructions] = useState([])
-  
-  // Lista dostępnych lat i miesięcy
-  const currentYear = new Date().getFullYear()
-  const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
-  const months = [
-    { value: 'all', label: 'Wszystkie miesiące' },
-    { value: '0', label: 'Styczeń' },
-    { value: '1', label: 'Luty' },
-    { value: '2', label: 'Marzec' },
-    { value: '3', label: 'Kwiecień' },
-    { value: '4', label: 'Maj' },
-    { value: '5', label: 'Czerwiec' },
-    { value: '6', label: 'Lipiec' },
-    { value: '7', label: 'Sierpień' },
-    { value: '8', label: 'Wrzesień' },
-    { value: '9', label: 'Październik' },
-    { value: '10', label: 'Listopad' },
-    { value: '11', label: 'Grudzień' }
-  ]
-
-  // Ładowanie zapisanych filtrów przy inicjalizacji
-  useEffect(() => {
-    const savedFilters = sessionStorage.getItem('archiveFilters');
-    if (savedFilters) {
-      try {
-        const filters = JSON.parse(savedFilters);
-        setSelectedYear(filters.selectedYear || new Date().getFullYear());
-        setShowAdvancedFilters(filters.showAdvancedFilters || false);
-        setSelectedMonth(filters.selectedMonth || 'all');
-        setSelectedWarehouse(filters.selectedWarehouse || '');
-        setSelectedDriver(filters.selectedDriver || '');
-        setSelectedRequester(filters.selectedRequester || '');
-        setSelectedRating(filters.selectedRating || 'all');
-        setSelectedConstruction(filters.selectedConstruction || '');
-        setCurrentPage(filters.currentPage || 1);
-      } catch (e) {
-        console.error("Błąd przy ładowaniu zapisanych filtrów:", e);
-      }
-    }
-  }, []);
-
-  // Funkcja do przełączania rozwinięcia wiersza
-  const toggleRowExpand = (id) => {
-    setExpandedRows(prev => ({
-      ...prev,
-      [id]: !prev[id]
-    }))
-  }
-
-  // Funkcja aktualizująca informację o możliwości oceny transportu i jego ocenie
-  const handleCanBeRatedChange = (transportId, canBeRated, isPositive = null) => {
-    setRatableTransports(prev => {
-      // Jeśli wartość się nie zmieniła, nie aktualizuj stanu
-      if (prev[transportId] === canBeRated) return prev
-      return {
-        ...prev,
-        [transportId]: canBeRated
-      }
-    })
-    
-    // Zapisujemy również wartość oceny jeśli jest dostępna
-    if (isPositive !== null) {
-      setRatingValues(prev => ({
-        ...prev,
-        [transportId]: { isPositive }
-      }))
-    }
-  }
 
   useEffect(() => {
-    // Sprawdź czy użytkownik jest administratorem
-    const checkAdmin = async () => {
-      try {
-        const response = await fetch('/api/check-admin')
-        const data = await response.json()
-        setIsAdmin(data.isAdmin)
-      } catch (error) {
-        console.error('Błąd sprawdzania uprawnień administratora:', error)
-        setIsAdmin(false)
-      }
-    }
-    
-    // Pobierz listę użytkowników (handlowców)
-    const fetchUsers = async () => {
-      try {
-        const response = await fetch('/api/users/list')
-        if (response.ok) {
-          const data = await response.json()
-          setUsers(data)
-        }
-      } catch (error) {
-        console.error('Błąd pobierania użytkowników:', error)
-      }
-    }
-
-    // Pobierz listę budów do filtrowania
-    const fetchConstructions = async () => {
-      try {
-        const response = await fetch('/api/constructions')
-        if (response.ok) {
-          const data = await response.json()
-          setConstructions(data.constructions || [])
-        }
-      } catch (error) {
-        console.error('Błąd pobierania budów:', error)
-      }
-    }
-
-    checkAdmin()
+    fetchArchiwum()
     fetchUsers()
-    fetchConstructions()
-    fetchArchivedTransports()
   }, [])
 
-  // Pobierz dane archiwum z API
-  const fetchArchivedTransports = async () => {
+  const fetchArchiwum = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/transports?status=completed')
+      const response = await fetch('/api/archiwum')
       const data = await response.json()
       
       if (data.success) {
-        // Sortuj transporty od najnowszych
-        const sortedTransports = data.transports.sort((a, b) => 
-          new Date(b.delivery_date) - new Date(a.delivery_date)
-        )
-        setArchiwum(sortedTransports)
-        applyFilters(sortedTransports, selectedYear, selectedMonth, selectedWarehouse, selectedDriver, selectedRequester, selectedRating, selectedConstruction)
+        setArchiwum(data.archiwum)
+        setFilteredArchiwum(data.archiwum)
+        setIsAdmin(data.isAdmin)
       } else {
-        setError('Nie udało się pobrać archiwum transportów')
+        setError(data.error)
       }
     } catch (error) {
       console.error('Błąd pobierania archiwum:', error)
@@ -177,733 +63,542 @@ export default function ArchiwumPage() {
     }
   }
 
-  const renderRatingBadge = (transportId) => {
-    return (
-      <TransportRatingBadge 
-        transportId={transportId} 
-        refreshTrigger={0} // Statyczna wartość, aby uniknąć ponownego renderowania
-        onCanBeRatedChange={(canBeRated, isPositive) => handleCanBeRatedChange(transportId, canBeRated, isPositive)}
-      />
-    )
-  }
-  
-  // Funkcja filtrująca transporty
-  const applyFilters = (transports, year, month, warehouse, driver, requester, rating, construction) => {
-    if (!transports) return
-    
-    const filtered = transports.filter(transport => {
-      const date = new Date(transport.delivery_date)
-      const transportYear = date.getFullYear()
-      
-      // Najpierw sprawdź rok
-      if (transportYear !== parseInt(year)) {
-        return false
-      }
-      
-      // Jeśli wybrany "wszystkie miesiące", nie filtruj po miesiącu
-      if (month !== 'all') {
-        const transportMonth = date.getMonth()
-        if (transportMonth !== parseInt(month)) {
-          return false
-        }
-      }
-      
-      // Filtr magazynu
-      if (warehouse && transport.source_warehouse !== warehouse) {
-        return false
-      }
-      
-      // Filtr kierowcy
-      if (driver && transport.driver_id.toString() !== driver) {
-        return false
-      }
-      
-      // Filtr osoby zlecającej
-      if (requester && transport.requester_email !== requester) {
-        return false
-      }
-      
-      // Filtr oceny - poprawiony
-      if (rating !== 'all') {
-        const hasRating = ratableTransports[transport.id] !== undefined && !ratableTransports[transport.id];
-        
-        if (rating === 'positive') {
-          return hasRating && ratingValues[transport.id]?.isPositive === true;
-        } else if (rating === 'negative') {
-          return hasRating && ratingValues[transport.id]?.isPositive === false;
-        } else if (rating === 'unrated') {
-          return !hasRating || ratableTransports[transport.id];
-        }
-      }
-      
-      // POPRAWIONY Filtr budowy - sprawdzamy client_name i mpk
-      if (construction) {
-        const selectedConstruction = constructions.find(c => c.id.toString() === construction);
-        if (selectedConstruction) {
-          // Sprawdź czy nazwa budowy jest w client_name lub czy MPK się zgadza
-          const matchesClientName = transport.client_name && 
-            transport.client_name.toLowerCase().includes(selectedConstruction.name.toLowerCase());
-          const matchesMpk = transport.mpk && transport.mpk === selectedConstruction.mpk;
-          
-          if (!matchesClientName && !matchesMpk) {
-            return false;
-          }
-        }
-      }
-      
-      return true
-    })
-    
-    setFilteredArchiwum(filtered)
-  }
-
-  // Obsługa zmiany filtrów
-  useEffect(() => {
-    applyFilters(archiwum, selectedYear, selectedMonth, selectedWarehouse, selectedDriver, selectedRequester, selectedRating, selectedConstruction)
-  }, [selectedYear, selectedMonth, selectedWarehouse, selectedDriver, selectedRequester, selectedRating, selectedConstruction, archiwum, ratableTransports, ratingValues])
-
-  // Funkcja do usuwania transportu
-  const handleDeleteTransport = async (id) => {
-    if (!confirm('Czy na pewno chcesz usunąć ten transport?')) {
-      return
-    }
-    
+  const fetchUsers = async () => {
     try {
-      setDeleteStatus({ type: 'loading', message: 'Usuwanie transportu...' })
-      
-      const response = await fetch(`/api/transports/delete?id=${id}`, {
-        method: 'DELETE'
-      })
-      
+      const response = await fetch('/api/users')
       const data = await response.json()
-      
       if (data.success) {
-        // Usuń transport z lokalnego stanu
-        const updatedArchiwum = archiwum.filter(transport => transport.id !== id)
-        setArchiwum(updatedArchiwum)
-        applyFilters(updatedArchiwum, selectedYear, selectedMonth, selectedWarehouse, selectedDriver, selectedRequester, selectedRating, selectedConstruction)
-        
-        setDeleteStatus({ type: 'success', message: 'Transport został usunięty' })
-        
-        // Wyczyść status po 3 sekundach
-        setTimeout(() => {
-          setDeleteStatus(null)
-        }, 3000)
-      } else {
-        setDeleteStatus({ type: 'error', message: data.error || 'Nie udało się usunąć transportu' })
+        setUsers(data.users)
       }
     } catch (error) {
-      console.error('Błąd usuwania transportu:', error)
-      setDeleteStatus({ type: 'error', message: 'Wystąpił błąd podczas usuwania transportu' })
+      console.error('Błąd pobierania użytkowników:', error)
     }
   }
 
-  // Funkcja do otwierania modalu ocen
-  const handleOpenRatingModal = (transport) => {
+  // Funkcja otwierająca modal z oceną
+  const handleOpenRating = (transport) => {
     setSelectedTransport(transport)
     setShowRatingModal(true)
   }
 
-  // Funkcja pomocnicza do znajdowania danych kierowcy
-  const getDriverInfo = (driverId) => {
-    const driver = KIEROWCY.find(k => k.id === parseInt(driverId))
-    if (!driver) return 'Brak danych'
-    
-    // Znajdź pojazd przypisany do kierowcy (używając tego samego ID)
-    const vehicle = POJAZDY.find(p => p.id === parseInt(driverId))
-    const vehicleInfo = vehicle ? vehicle.tabliceRej : 'Brak pojazdu'
-    
-    return `${driver.imie} (${vehicleInfo})`
+  // Funkcja zamykająca modal z oceną
+  const handleCloseRating = () => {
+    setShowRatingModal(false)
+    setSelectedTransport(null)
+    setRatingRefreshTrigger(prev => prev + 1) // Odśwież badge'e
   }
 
-  // Funkcja eksportująca dane do pliku
-  const exportData = () => {
+  // Funkcja filtrowania
+  useEffect(() => {
+    let filtered = archiwum
+
+    // Filtr roku
+    if (selectedYear) {
+      filtered = filtered.filter(item => {
+        const itemYear = new Date(item.data_utworzenia || item.delivery_date).getFullYear()
+        return itemYear === selectedYear
+      })
+    }
+
+    // Filtr miesiąca
+    if (selectedMonth !== 'all') {
+      filtered = filtered.filter(item => {
+        const itemMonth = new Date(item.data_utworzenia || item.delivery_date).getMonth()
+        return itemMonth === parseInt(selectedMonth)
+      })
+    }
+
+    // Filtr magazynu
+    if (selectedWarehouse) {
+      filtered = filtered.filter(item => 
+        (item.zrodlo && item.zrodlo === selectedWarehouse) || 
+        (item.source_warehouse && item.source_warehouse === selectedWarehouse)
+      )
+    }
+
+    // Filtr kierowcy
+    if (selectedDriver) {
+      filtered = filtered.filter(item => {
+        const driverId = item.kierowca || item.driver_id
+        if (!driverId) return false
+        const kierowca = KIEROWCY.find(k => k.id === parseInt(driverId))
+        return kierowca?.nazwa === selectedDriver || kierowca?.imie === selectedDriver
+      })
+    }
+
+    // Filtr zlecającego
+    if (selectedRequester) {
+      filtered = filtered.filter(item => 
+        (item.email_zlecajacego && item.email_zlecajacego === selectedRequester) ||
+        (item.requester_email && item.requester_email === selectedRequester)
+      )
+    }
+
+    // Filtr budowy
+    if (selectedConstruction) {
+      filtered = filtered.filter(item => 
+        (item.budowa && item.budowa.toLowerCase().includes(selectedConstruction.toLowerCase())) ||
+        (item.mpk && item.mpk.toLowerCase().includes(selectedConstruction.toLowerCase()))
+      )
+    }
+
+    setFilteredArchiwum(filtered)
+    setCurrentPage(1) // Reset paginacji przy filtrowaniu
+  }, [archiwum, selectedYear, selectedMonth, selectedWarehouse, selectedDriver, selectedRequester, selectedRating, selectedConstruction])
+
+  // Paginacja
+  const totalPages = Math.ceil(filteredArchiwum.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const currentItems = filteredArchiwum.slice(startIndex, endIndex)
+
+  // Funkcje pomocnicze
+  const getKierowcaNazwa = (id) => {
+    if (!id) return 'Nieznany kierowca'
+    const kierowca = KIEROWCY.find(k => k.id === parseInt(id))
+    return kierowca ? (kierowca.nazwa || kierowca.imie) : 'Nieznany kierowca'
+  }
+
+  const getPojazdNazwa = (id) => {
+    if (!id) return 'Nieznany pojazd'
+    const pojazd = POJAZDY.find(p => p.id === parseInt(id))
+    return pojazd ? pojazd.nazwa : 'Nieznany pojazd'
+  }
+
+  const getRynekNazwa = (id) => {
+    if (!id) return 'Nieznany rynek'
+    const rynek = RYNKI.find(r => r.id === parseInt(id))
+    return rynek ? rynek.nazwa : 'Nieznany rynek'
+  }
+
+  const toggleRowExpansion = (transportId) => {
+    setExpandedRows(prev => ({
+      ...prev,
+      [transportId]: !prev[transportId]
+    }))
+  }
+
+  // Funkcja eksportu
+  const handleExport = () => {
     if (filteredArchiwum.length === 0) {
       alert('Brak danych do eksportu')
       return
     }
-    
+
     // Przygotuj dane do eksportu
     const dataToExport = filteredArchiwum.map(transport => {
-      const driver = KIEROWCY.find(k => k.id === parseInt(transport.driver_id))
+      const driverId = transport.kierowca || transport.driver_id
+      const driver = KIEROWCY.find(k => k.id === parseInt(driverId))
       
       return {
-        'Data transportu': format(new Date(transport.delivery_date), 'dd.MM.yyyy', { locale: pl }),
-        'Miasto': transport.destination_city,
-        'Kod pocztowy': transport.postal_code || '',
-        'Ulica': transport.street || '',
-        'Magazyn': transport.source_warehouse === 'bialystok' ? 'Białystok' : 
-                 transport.source_warehouse === 'zielonka' ? 'Zielonka' : 
-                 transport.source_warehouse,
-        'Odległość (km)': transport.distance || '',
-        'Firma': transport.client_name || '',
+        'Data': format(new Date(transport.data_utworzenia || transport.delivery_date), 'dd.MM.yyyy', { locale: pl }),
+        'Źródło': transport.zrodlo || transport.source_warehouse,
+        'Cel': transport.cel || transport.destination_city,
+        'Kierowca': driver ? (driver.nazwa || driver.imie) : 'Brak danych',
+        'Status': transport.status === 'completed' ? 'Ukończony' : 'W trakcie',
         'MPK': transport.mpk || '',
-        'Kierowca': driver ? driver.imie : '',
-        'Nr rejestracyjny': driver ? driver.tabliceRej : '',
-        'Status': transport.status || '',
-        'Data zakończenia': transport.completed_at ? format(new Date(transport.completed_at), 'dd.MM.yyyy HH:mm', { locale: pl }) : '',
-        'Osoba zlecająca': transport.requester_name || '',
-        'Ocena': ratingValues[transport.id] 
-          ? (ratingValues[transport.id].isPositive ? 'Pozytywna' : 'Negatywna') 
-          : 'Brak oceny'
+        'Odległość (km)': transport.odleglosc || transport.distance || '',
+        'Zlecający': transport.email_zlecajacego || transport.requester_email || ''
       }
     })
-    
-    // Przygotuj nazwę pliku
-    const monthLabel = selectedMonth === 'all' ? 'wszystkie_miesiace' : 
-                     months.find(m => m.value === selectedMonth)?.label.toLowerCase() || selectedMonth
-    
-    const fileName = `transporty_${selectedYear}_${monthLabel}`
-    
-    if (exportFormat === 'csv') {
-      exportToCSV(dataToExport, fileName)
+
+    if (exportFormat === 'xlsx') {
+      const ws = XLSX.utils.json_to_sheet(dataToExport)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Archiwum Transportów')
+      XLSX.writeFile(wb, `archiwum_transportow_${format(new Date(), 'yyyy-MM-dd')}.xlsx`)
     } else {
-      exportToXLSX(dataToExport, fileName)
+      const ws = XLSX.utils.json_to_sheet(dataToExport)
+      const csv = XLSX.utils.sheet_to_csv(ws)
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = `archiwum_transportow_${format(new Date(), 'yyyy-MM-dd')}.csv`
+      link.click()
     }
   }
-  
-  // Eksport do CSV
-  const exportToCSV = (data, fileName) => {
-    // Nagłówki
-    const headers = Object.keys(data[0])
-    
-    // Convert data to CSV string
-    let csvContent = headers.join(';') + '\n'
-    data.forEach(item => {
-      const row = headers.map(header => {
-        let cell = item[header] !== undefined && item[header] !== null ? item[header] : ''
-        // Jeśli komórka zawiera przecinek, średnik lub nowy wiersz, umieść ją w cudzysłowach
-        if (cell.toString().includes(',') || cell.toString().includes(';') || cell.toString().includes('\n')) {
-          cell = `"${cell}"`
-        }
-        return cell
-      }).join(';')
-      csvContent += row + '\n'
-    })
 
-    // Kodowanie do ISO-8859-2 dla polskich znaków w Excelu
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' })
-    
-    // Tworzenie i kliknięcie tymczasowego linku do pobrania
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = `${fileName}.csv`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+  // Funkcja usuwania transportu (dla adminów)
+  const handleDeleteTransport = async (transportId) => {
+    if (!confirm('Czy na pewno chcesz usunąć ten transport? Ta operacja jest nieodwracalna.')) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/archiwum/${transportId}`, {
+        method: 'DELETE'
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setDeleteStatus('success')
+        fetchArchiwum() // Odśwież listę
+        setTimeout(() => setDeleteStatus(null), 3000)
+      } else {
+        setDeleteStatus('error')
+        setTimeout(() => setDeleteStatus(null), 3000)
+      }
+    } catch (error) {
+      console.error('Błąd usuwania transportu:', error)
+      setDeleteStatus('error')
+      setTimeout(() => setDeleteStatus(null), 3000)
+    }
   }
-
-  // Eksport do XLSX
-  const exportToXLSX = (data, fileName) => {
-    const ws = XLSX.utils.json_to_sheet(data)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Transporty')
-    XLSX.writeFile(wb, `${fileName}.xlsx`)
-  }
-
-  // Paginacja
-  const indexOfLastItem = currentPage * itemsPerPage
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage
-  const currentItems = filteredArchiwum.slice(indexOfFirstItem, indexOfLastItem)
-  const totalPages = Math.ceil(filteredArchiwum.length / itemsPerPage)
-
-  // Ulepszona funkcja paginacji z zapisywaniem stanu
-  const paginate = (pageNumber) => {
-    // Zapisujemy aktualny stan filtrów do sessionStorage
-    const filterState = {
-      selectedYear,
-      selectedMonth,
-      selectedWarehouse,
-      showAdvancedFilters,
-      selectedDriver,
-      selectedRequester,
-      selectedRating,
-      selectedConstruction,
-      currentPage: pageNumber
-    };
-    sessionStorage.setItem('archiveFilters', JSON.stringify(filterState));
-    
-    setCurrentPage(pageNumber);
-  };
-
-  const selectStyles = "block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-blue-500"></div>
       </div>
     )
   }
 
   if (error) {
-    return <div className="text-red-500 text-center p-4 bg-red-50 rounded-lg">{error}</div>
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-md p-4">
+        <h3 className="text-red-800 font-medium">Błąd</h3>
+        <p className="text-red-700">{error}</p>
+      </div>
+    )
   }
 
   return (
-    <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Archiwum Transportów
-        </h1>
-        <p className="text-gray-600">
-          Przeglądaj, filtruj i oceniaj zrealizowane transporty
-        </p>
-      </div>
+    <div className="space-y-6">
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">Archiwum Transportów</h1>
+          <div className="flex space-x-3">
+            <button
+              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+            >
+              <ChevronDown className={`inline-block w-4 h-4 mr-2 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
+              Filtry
+            </button>
+            <select
+              value={exportFormat}
+              onChange={(e) => setExportFormat(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md"
+            >
+              <option value="xlsx">Excel (.xlsx)</option>
+              <option value="csv">CSV</option>
+            </select>
+            <button
+              onClick={handleExport}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              <Download className="inline-block w-4 h-4 mr-2" />
+              Eksportuj
+            </button>
+          </div>
+        </div>
 
-      {/* Filters Section - nowy design */}
-      <div className="mb-8 bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold mb-4">Filtry</h3>
-        
-        {/* Podstawowe filtry - zawsze widoczne */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-4">
-          {/* Rok */}
-          <div>
-            <label htmlFor="yearSelect" className="block text-sm font-medium text-gray-700 mb-1">
-              Rok
-            </label>
-            <select
-              id="yearSelect"
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-              className={selectStyles}
-            >
-              {years.map(year => (
-                <option key={year} value={year}>{year}</option>
-              ))}
-            </select>
-          </div>
-          
-          {/* Miesiąc */}
-          <div>
-            <label htmlFor="monthSelect" className="block text-sm font-medium text-gray-700 mb-1">
-              Miesiąc
-            </label>
-            <select
-              id="monthSelect"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className={selectStyles}
-            >
-              {months.map(month => (
-                <option key={month.value} value={month.value}>{month.label}</option>
-              ))}
-            </select>
-          </div>
-          
-          {/* Magazyn */}
-          <div>
-            <label htmlFor="warehouseSelect" className="block text-sm font-medium text-gray-700 mb-1">
-              Magazyn
-            </label>
-            <select
-              id="warehouseSelect"
-              value={selectedWarehouse}
-              onChange={(e) => setSelectedWarehouse(e.target.value)}
-              className={selectStyles}
-            >
-              <option value="">Wszystkie magazyny</option>
-              <option value="bialystok">Magazyn Białystok</option>
-              <option value="zielonka">Magazyn Zielonka</option>
-            </select>
-          </div>
-        </div>
-      
-        {/* Przycisk rozwijania filtrów zaawansowanych */}
-        <div className="mb-4">
-          <button
-            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-            className="flex items-center text-blue-600 hover:text-blue-700 font-medium"
-          >
-            <span>Filtry zaawansowane</span>
-            <ChevronDown 
-              size={16} 
-              className={`ml-1 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} 
-            />
-          </button>
-        </div>
-      
-        {/* Filtry zaawansowane - pokazywane po rozwinięciu */}
+        {/* Panel filtrów */}
         {showAdvancedFilters && (
-          <div className="space-y-4 border-t pt-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {/* Kierowca */}
-              <div>
-                <label htmlFor="driverSelect" className="block text-sm font-medium text-gray-700 mb-1">
-                  Kierowca
-                </label>
-                <select
-                  id="driverSelect"
-                  value={selectedDriver}
-                  onChange={(e) => setSelectedDriver(e.target.value)}
-                  className={selectStyles}
-                >
-                  <option value="">Wszyscy kierowcy</option>
-                  {KIEROWCY.map(kierowca => (
-                    <option key={kierowca.id} value={kierowca.id}>
-                      {kierowca.imie}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-              {/* Osoba zlecająca */}
-              <div>
-                <label htmlFor="requesterSelect" className="block text-sm font-medium text-gray-700 mb-1">
-                  Osoba zlecająca
-                </label>
-                <select
-                  id="requesterSelect"
-                  value={selectedRequester}
-                  onChange={(e) => setSelectedRequester(e.target.value)}
-                  className={selectStyles}
-                >
-                  <option value="">Wszyscy zlecający</option>
-                  {users.map(user => (
-                    <option key={user.email} value={user.email}>
-                      {user.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-              {/* Budowa */}
-              <div>
-                <label htmlFor="constructionSelect" className="block text-sm font-medium text-gray-700 mb-1">
-                  Budowa
-                </label>
-                <select
-                  id="constructionSelect"
-                  value={selectedConstruction}
-                  onChange={(e) => setSelectedConstruction(e.target.value)}
-                  className={selectStyles}
-                >
-                  <option value="">Wszystkie budowy</option>
-                  {constructions.map(construction => (
-                    <option key={construction.id} value={construction.id}>
-                      {construction.name} ({construction.mpk})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-              {/* Ocena */}
-              <div>
-                <label htmlFor="ratingSelect" className="block text-sm font-medium text-gray-700 mb-1">
-                  Ocena
-                </label>
-                <select
-                  id="ratingSelect"
-                  value={selectedRating}
-                  onChange={(e) => setSelectedRating(e.target.value)}
-                  className={selectStyles}
-                >
-                  <option value="all">Wszystkie oceny</option>
-                  <option value="positive">Pozytywne</option>
-                  <option value="negative">Negatywne</option>
-                  <option value="unrated">Nieocenione</option>
-                </select>
-              </div>
-            </div>
-            
-            {/* Sekcja eksportu */}
-            <div className="flex flex-col sm:flex-row gap-4 items-end border-t pt-4">
-              <div className="flex-1">
-                <label htmlFor="exportFormat" className="block text-sm font-medium text-gray-700 mb-1">
-                  Format eksportu
-                </label>
-                <select
-                  id="exportFormat"
-                  value={exportFormat}
-                  onChange={(e) => setExportFormat(e.target.value)}
-                  className={selectStyles}
-                >
-                  <option value="xlsx">Excel (XLSX)</option>
-                  <option value="csv">CSV</option>
-                </select>
-              </div>
-              
-              <div>
-                <button
-                  onClick={exportData}
-                  disabled={filteredArchiwum.length === 0}
-                  className="w-full sm:w-auto py-2 px-6 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-                  title="Eksportuj dane"
-                >
-                  <Download size={18} />
-                  <span>Eksportuj</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Lista transportów */}
-      <div className="space-y-4">
-        {currentItems.length > 0 ? (
-          currentItems.map((transport) => (
-            <div key={transport.id} className="bg-white shadow rounded-lg overflow-hidden">
-              {/* Nagłówek karty transportu */}
-              <div 
-                className="flex items-center justify-between px-4 py-3 bg-gray-50 cursor-pointer"
-                onClick={() => toggleRowExpand(transport.id)}
+          <div className="bg-gray-50 p-4 rounded-md mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Filtry roku i miesiąca */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Rok</label>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
               >
-                <div className="flex items-center space-x-4">
-                  <div className="text-gray-700 flex items-center">
-                    <Calendar size={16} className="mr-2" />
-                    {format(new Date(transport.delivery_date), 'dd.MM.yyyy', { locale: pl })}
-                  </div>
-                  <div className="text-gray-700 hidden md:flex items-center">
-                    <Building size={16}  className={`mr-2 ${transport.source_warehouse === 'bialystok' ? 'text-red-500' : 'text-blue-500'}`}  />
-                    {transport.source_warehouse === 'bialystok' ? 'Magazyn Białystok' : 
-                     transport.source_warehouse === 'zielonka' ? 'Magazyn Zielonka' : 
-                     transport.source_warehouse}
-                  </div>
-                  <div className="flex items-center mx-4 text-sm text-gray-600">
-                    <Compass size={16} className="mr-1 text-green-600" />
-                    {transport.distance ? `${transport.distance} km` : 'N/A'}
-                  </div>
-                  <div className="font-medium text-gray-900 flex items-center">
-                    <MapPin size={16} className="mr-2 text-orange-500" />
-                    {transport.destination_city}
-                  </div>
-                  <div className="text-gray-700 hidden lg:flex items-center">
-                    <Truck size={16} className="mr-2 text-green-500" />
-                    {getDriverInfo(transport.driver_id)}
-                  </div>
-                </div>
-                
-                {/* Dla przycisków w nagłówku karty transportu */}
-                <div className="flex items-center space-x-3">
-                  {renderRatingBadge(transport.id)}
-                  
-                  {/* Pokaż przycisk "Oceń" tylko jeśli transport może być oceniony */}
-                  {ratableTransports[transport.id] !== undefined && (
-                    ratableTransports[transport.id] ? (
-                      <button
-                        key={`rate-button-${transport.id}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenRatingModal(transport);
-                        }}
-                        className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
-                        title="Oceń transport"
-                      >
-                        Oceń
-                      </button>
-                    ) : (
-                      <button
-                        key={`view-button-${transport.id}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenRatingModal(transport);
-                        }}
-                        className="px-3 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-1"
-                        title="Zobacz oceny"
-                      >
-                        Zobacz oceny
-                      </button>
-                    )
-                  )}
-                  
-                  <ChevronDown 
-                    size={20} 
-                    className={`text-gray-500 transition-transform ${expandedRows[transport.id] ? 'rotate-180' : ''}`} 
-                  />
-                </div>
-              </div>
-              
-              {/* Szczegóły transportu - widoczne po rozwinięciu */}
-              {expandedRows[transport.id] && (
-                <div className="p-4 border-t">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500 mb-1">Miejsce docelowe</h3>
-                      <p className="text-gray-900">{transport.destination_city}</p>
-                      <p className="text-gray-700 text-sm">
-                        {transport.postal_code}{transport.street && `, ${transport.street}`}
-                      </p>
-                    </div>
-                    
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500 mb-1">Numery dokumentów</h3>
-                      <p className="text-gray-900 font-medium">
-                        {transport.wz_number || transport.numerWZ || 'Brak numeru'}
-                      </p>
-                    </div>
-                    
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500 mb-1">Odbiorca</h3>
-                      <p className="text-gray-900">{transport.client_name || 'N/A'}</p>
-                      <p className="text-gray-700 text-sm">
-                        MPK: {transport.mpk || 'N/A'}
-                      </p>
-                    </div>
-                    
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500 mb-1">Kierowca</h3>
-                      <p className="text-gray-900">{getDriverInfo(transport.driver_id)}</p>
-                    </div>
-                    
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500 mb-1">Osoba zlecająca</h3>
-                      <p className="text-gray-900">{transport.requester_name || 'N/A'}</p>
-                    </div>
-                    
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500 mb-1">Data zakończenia</h3>
-                      <p className="text-gray-900">
-                        {transport.completed_at 
-                          ? format(new Date(transport.completed_at), 'dd.MM.yyyy HH:mm', { locale: pl })
-                          : 'N/A'
-                        }
-                      </p>
-                    </div>
-                  </div>
-                  
-                  {/* Przyciski akcji */}
-                  <div className="mt-4 flex justify-end">
-                    {/* Pokaż odpowiedni przycisk w zależności od statusu oceny */}
-                    {ratableTransports[transport.id] !== undefined && (
-                      ratableTransports[transport.id] ? (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenRatingModal(transport);
-                          }}
-                          className="px-4 py-2 mr-3 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 flex items-center"
-                          title="Oceń transport"
-                        >
-                          <ThumbsUp size={16} className="mr-2" />
-                          Oceń transport
-                        </button>
-                      ) : (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenRatingModal(transport);
-                          }}
-                          className="px-4 py-2 mr-3 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-1 flex items-center"
-                          title="Zobacz oceny"
-                        >
-                          {ratingValues[transport.id]?.isPositive ? (
-                            <ThumbsUp size={16} className="mr-2" />
-                            ) : (
-                            <ThumbsDown size={16} className="mr-2" />
-                          )}
-                          Zobacz oceny
-                        </button>
-                      )
-                    )}
-                    
-                    {isAdmin && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteTransport(transport.id);
-                        }}
-                        className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1"
-                        title="Usuń transport"
-                      >
-                        Usuń
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
+                {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
             </div>
-          ))
-        ) : (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="flex flex-col items-center justify-center py-10">
-              <FileText size={48} className="text-gray-400 mb-4" />
-              <p className="text-gray-500 text-lg">Brak transportów w wybranym okresie</p>
-              <p className="text-gray-400 mt-2">Spróbuj zmienić kryteria filtrowania</p>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Miesiąc</label>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+              >
+                <option value="all">Wszystkie miesiące</option>
+                {Array.from({ length: 12 }, (_, i) => (
+                  <option key={i} value={i}>
+                    {format(new Date(2023, i), 'LLLL', { locale: pl })}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filtr magazynu */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Magazyn</label>
+              <select
+                value={selectedWarehouse}
+                onChange={(e) => setSelectedWarehouse(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+              >
+                <option value="">Wszystkie magazyny</option>
+                <option value="bialystok">Białystok</option>
+                <option value="zielonka">Zielonka</option>
+              </select>
+            </div>
+
+            {/* Filtr kierowcy */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Kierowca</label>
+              <select
+                value={selectedDriver}
+                onChange={(e) => setSelectedDriver(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+              >
+                <option value="">Wszyscy kierowcy</option>
+                {KIEROWCY.map(kierowca => (
+                  <option key={kierowca.id} value={kierowca.nazwa || kierowca.imie}>
+                    {kierowca.nazwa || kierowca.imie}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filtr zlecającego */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Zlecający</label>
+              <select
+                value={selectedRequester}
+                onChange={(e) => setSelectedRequester(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+              >
+                <option value="">Wszyscy</option>
+                {users.map(user => (
+                  <option key={user.email} value={user.email}>
+                    {user.name} ({user.email})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filtr budowy */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Budowa/MPK</label>
+              <input
+                type="text"
+                value={selectedConstruction}
+                onChange={(e) => setSelectedConstruction(e.target.value)}
+                placeholder="Wpisz nazwę budowy lub MPK..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+              />
             </div>
           </div>
         )}
-      </div>
-      
-      {/* Pagination & Summary */}
-      <div className="mt-6 bg-white rounded-lg shadow px-4 py-4 flex flex-col sm:flex-row justify-between items-center">
-        <div className="text-sm text-gray-700 mb-4 sm:mb-0">
-          <span className="font-medium">Łącznie:</span> {filteredArchiwum.length} transportów
-          {filteredArchiwum.length > 0 && (
-            <span className="ml-2">
-              <span className="font-medium">Całkowita odległość:</span> {filteredArchiwum.reduce((sum, t) => sum + (t.distance || 0), 0).toLocaleString('pl-PL')} km
-            </span>
-          )}
+
+        {/* Podsumowanie */}
+        <div className="mb-4 text-sm text-gray-600">
+          Znaleziono {filteredArchiwum.length} transportów
+          {selectedYear && ` w roku ${selectedYear}`}
+          {selectedMonth !== 'all' && ` w miesiącu ${format(new Date(2023, parseInt(selectedMonth)), 'LLLL', { locale: pl })}`}
         </div>
-        
+
+        {/* Tabela transportów */}
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Data
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Trasa
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Kierowca
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Ocena
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Akcje
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {currentItems.map((transport) => (
+                <Fragment key={transport.id}>
+                  <tr className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {format(new Date(transport.data_utworzenia || transport.delivery_date), 'dd.MM.yyyy', { locale: pl })}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <div className="flex items-center">
+                        <MapPin className="w-4 h-4 text-gray-400 mr-1" />
+                        {(transport.zrodlo === 'bialystok' || transport.source_warehouse === 'bialystok') ? 'Białystok' : 'Zielonka'} → {transport.cel || transport.destination_city || 'Brak danych'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <div className="flex items-center">
+                        <User className="w-4 h-4 text-gray-400 mr-1" />
+                        {getKierowcaNazwa(transport.kierowca || transport.driver_id)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                        transport.status === 'completed' 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {transport.status === 'completed' ? 'Ukończony' : 'W trakcie'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {transport.status === 'completed' && (
+                        <TransportRatingBadge 
+                          transportId={transport.id} 
+                          refreshTrigger={ratingRefreshTrigger}
+                        />
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => toggleRowExpansion(transport.id)}
+                          className="text-blue-600 hover:text-blue-900"
+                          title="Pokaż szczegóły"
+                        >
+                          <Info className="w-4 h-4" />
+                        </button>
+                        {transport.status === 'completed' && (
+                          <button
+                            onClick={() => handleOpenRating(transport)}
+                            className="text-green-600 hover:text-green-900"
+                            title="Pokaż oceny"
+                          >
+                            <Star className="w-4 h-4" />
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button
+                            onClick={() => handleDeleteTransport(transport.id)}
+                            className="text-red-600 hover:text-red-900"
+                            title="Usuń transport"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+
+                  {/* Rozwinięty wiersz ze szczegółami */}
+                  {expandedRows[transport.id] && (
+                    <tr>
+                      <td colSpan="6" className="px-6 py-4 bg-gray-50">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          <div>
+                            <h4 className="font-medium text-gray-900 mb-2">Podstawowe informacje</h4>
+                            <div className="space-y-1 text-sm text-gray-600">
+                              <div className="flex items-center">
+                                <Calendar className="w-4 h-4 mr-2" />
+                                <span>Data: {format(new Date(transport.data_transportu || transport.delivery_date), 'dd.MM.yyyy', { locale: pl })}</span>
+                              </div>
+                              <div className="flex items-center">
+                                <Truck className="w-4 h-4 mr-2" />
+                                <span>Pojazd: {getPojazdNazwa(transport.pojazd || transport.vehicle_id)}</span>
+                              </div>
+                              <div className="flex items-center">
+                                <Building className="w-4 h-4 mr-2" />
+                                <span>Rynek: {getRynekNazwa(transport.rynek || transport.market)}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div>
+                            <h4 className="font-medium text-gray-900 mb-2">Szczegóły transportu</h4>
+                            <div className="space-y-1 text-sm text-gray-600">
+                              {(transport.budowa || transport.mpk) && (
+                                <div>
+                                  <span className="font-medium">Budowa/MPK:</span> {transport.budowa || transport.mpk}
+                                </div>
+                              )}
+                              {(transport.odleglosc || transport.distance) && (
+                                <div>
+                                  <span className="font-medium">Odległość:</span> {transport.odleglosc || transport.distance} km
+                                </div>
+                              )}
+                              {(transport.uwagi || transport.notes) && (
+                                <div>
+                                  <span className="font-medium">Uwagi:</span> {transport.uwagi || transport.notes}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div>
+                            <h4 className="font-medium text-gray-900 mb-2">Zlecający</h4>
+                            <div className="space-y-1 text-sm text-gray-600">
+                              <div className="flex items-center">
+                                <User className="w-4 h-4 mr-2" />
+                                <span>{transport.email_zlecajacego || transport.requester_email}</span>
+                              </div>
+                              <div>
+                                <span className="font-medium">Utworzono:</span> {format(new Date(transport.data_utworzenia || transport.created_at), 'dd.MM.yyyy HH:mm', { locale: pl })}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Paginacja */}
         {totalPages > 1 && (
-          <div className="flex justify-center items-center space-x-2">
+          <div className="flex justify-center items-center space-x-2 mt-6">
             <button
-              onClick={() => paginate(Math.max(1, currentPage - 1))}
+              onClick={() => setCurrentPage(Math.max(currentPage - 1, 1))}
               disabled={currentPage === 1}
-              className="p-2 rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <ChevronLeft size={20} />
+              <ChevronLeft className="w-4 h-4" />
             </button>
             
-            {/* Wyświetlanie numerów stron */}
             <div className="flex space-x-1">
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                // Logika do wyświetlania stron wokół aktualnej strony
-                let pageNum;
-                if (totalPages <= 5) {
-                  // Jeśli mamy 5 lub mniej stron, wyświetl wszystkie
-                  pageNum = i + 1;
-                } else if (currentPage <= 3) {
-                  // Jeśli jesteśmy blisko początku
-                  pageNum = i + 1;
-                } else if (currentPage >= totalPages - 2) {
-                  // Jeśli jesteśmy blisko końca
-                  pageNum = totalPages - 4 + i;
-                } else {
-                  // W środku - wyświetl 2 strony przed i 2 po aktualnej
-                  pageNum = currentPage - 2 + i;
-                }
-                
-                return (
-                  <button
-                    key={pageNum}
-                    onClick={() => paginate(pageNum)}
-                    className={`w-8 h-8 flex items-center justify-center rounded-md ${
-                      currentPage === pageNum
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    {pageNum}
-                  </button>
-                );
-              })}
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                <button
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    currentPage === page
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
             </div>
             
             <button
-              onClick={() => paginate(Math.min(totalPages, currentPage + 1))}
+              onClick={() => setCurrentPage(Math.min(currentPage + 1, totalPages))}
               disabled={currentPage === totalPages}
-              className="p-2 rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <ChevronRight size={20} />
+              <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         )}
       </div>
 
-      {/* Modal oceniania transportu */}
+      {/* Modal ze szczegółowymi ocenami */}
       {showRatingModal && selectedTransport && (
         <TransportRating
           transportId={selectedTransport.id}
-          onClose={() => {
-            setShowRatingModal(false);
-            setSelectedTransport(null);
-            // Odświeżenie listy transportów po zamknięciu modalu ocen
-            fetchArchivedTransports();
-          }}
+          onClose={handleCloseRating}
         />
       )}
     </div>
-  );
+  )
 }
