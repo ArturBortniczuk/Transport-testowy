@@ -45,7 +45,7 @@ export default function ArchiwumPage() {
   const fetchArchiwum = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/archiwum')
+      const response = await fetch('/api/transports/archived')
       const data = await response.json()
       
       if (data.success) {
@@ -225,9 +225,9 @@ export default function ArchiwumPage() {
     }
 
     try {
-      const response = await fetch(`/api/archiwum/${transportId}`, {
-        method: 'DELETE'
-      })
+      const response = await fetch(`/api/transports/delete?id=${transportId}`, {
+        method: 'DELETE'␊
+      })␊
 
       const data = await response.json()
 
