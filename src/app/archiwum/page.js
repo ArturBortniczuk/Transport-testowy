@@ -5,7 +5,7 @@ import { format } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { KIEROWCY, RYNKI, POJAZDY } from '../kalendarz/constants'
 import * as XLSX from 'xlsx'
-import { ChevronLeft, ChevronRight, FileText, Download, Star, StarOff, Compass, ChevronDown, MapPin, Truck, Building, Phone, User, Calendar, Info, ExternalLink, Trash2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, FileText, Download, Star, Compass, ChevronDown, MapPin, Truck, Building, User, Calendar, Info, Trash2 } from 'lucide-react'
 import TransportRating from '@/components/TransportRating'
 import TransportRatingBadge from '@/components/TransportRatingBadge'
 
@@ -24,7 +24,9 @@ export default function ArchiwumPage() {
   const [showRatingModal, setShowRatingModal] = useState(false)
   const [expandedRows, setExpandedRows] = useState({})
   const [ratingRefreshTrigger, setRatingRefreshTrigger] = useState(0)
-  
+  const [ratableTransports, setRatableTransports] = useState({})
+  const [ratingValues, setRatingValues] = useState({})
+
   // Filtry
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [selectedMonth, setSelectedMonth] = useState('all')
@@ -33,27 +35,97 @@ export default function ArchiwumPage() {
   const [selectedRequester, setSelectedRequester] = useState('')
   const [selectedRating, setSelectedRating] = useState('all')
   const [selectedConstruction, setSelectedConstruction] = useState('')
-  
+
   // Lista użytkowników (handlowców) do filtrowania
   const [users, setUsers] = useState([])
+  const [constructions, setConstructions] = useState([])
 
+  // Ładowanie zapisanych filtrów
   useEffect(() => {
-    fetchArchiwum()
-    fetchUsers()
+    const savedFilters = sessionStorage.getItem('archiveFilters')
+    if (savedFilters) {
+      try {
+        const filters = JSON.parse(savedFilters)
+        setSelectedYear(filters.selectedYear || new Date().getFullYear())
+        setShowAdvancedFilters(filters.showAdvancedFilters || false)
+        setSelectedMonth(filters.selectedMonth || 'all')
+        setSelectedWarehouse(filters.selectedWarehouse || '')
+        setSelectedDriver(filters.selectedDriver || '')
+        setSelectedRequester(filters.selectedRequester || '')
+        setSelectedRating(filters.selectedRating || 'all')
+        setSelectedConstruction(filters.selectedConstruction || '')
+        setCurrentPage(filters.currentPage || 1)
+      } catch (e) {
+        console.error('Błąd przy ładowaniu zapisanych filtrów:', e)
+      }
+    }
   }, [])
 
-  const fetchArchiwum = async () => {
+  useEffect(() => {
+    checkAdmin()
+    fetchUsers()
+    fetchConstructions()
+    fetchArchivedTransports()
+  }, [])
+
+  const checkAdmin = async () => {
+    try {
+      const response = await fetch('/api/check-admin')
+      const data = await response.json()
+      setIsAdmin(data.isAdmin)
+    } catch (error) {
+      console.error('Błąd sprawdzania uprawnień administratora:', error)
+      setIsAdmin(false)
+    }
+  }
+
+  const fetchUsers = async () => {
+    try {
+      const response = await fetch('/api/users/list')
+      if (response.ok) {
+        const data = await response.json()
+        setUsers(data)
+      }
+    } catch (error) {
+      console.error('Błąd pobierania użytkowników:', error)
+    }
+  }
+
+  const fetchConstructions = async () => {
+    try {
+      const response = await fetch('/api/constructions')
+      if (response.ok) {
+        const data = await response.json()
+        setConstructions(data.constructions || [])
+      }
+    } catch (error) {
+      console.error('Błąd pobierania budów:', error)
+    }
+  }
+
+  const fetchArchivedTransports = async () => {
     try {
       setLoading(true)
       const response = await fetch('/api/transports/archived')
       const data = await response.json()
-      
+
       if (data.success) {
-        setArchiwum(data.transports)
-        setFilteredArchiwum(data.transports)
-        setIsAdmin(data.isAdmin)
+        const sortedTransports = data.transports.sort((a, b) =>
+          new Date(b.delivery_date) - new Date(a.delivery_date)
+        )
+        setArchiwum(sortedTransports)
+        applyFilters(
+          sortedTransports,
+          selectedYear,
+          selectedMonth,
+          selectedWarehouse,
+          selectedDriver,
+          selectedRequester,
+          selectedRating,
+          selectedConstruction
+        )
       } else {
-        setError(data.error)
+        setError('Nie udało się pobrać archiwum transportów')
       }
     } catch (error) {
       console.error('Błąd pobierania archiwum:', error)
@@ -63,96 +135,100 @@ export default function ArchiwumPage() {
     }
   }
 
-  const fetchUsers = async () => {
-    try {
-      const response = await fetch('/api/users')
-      const data = await response.json()
-      if (data.success) {
-        setUsers(data.users)
-      }
-    } catch (error) {
-      console.error('Błąd pobierania użytkowników:', error)
-    }
-  }
-
-  // Funkcja otwierająca modal z oceną
   const handleOpenRating = (transport) => {
     setSelectedTransport(transport)
     setShowRatingModal(true)
   }
 
-  // Funkcja zamykająca modal z oceną
   const handleCloseRating = () => {
     setShowRatingModal(false)
     setSelectedTransport(null)
-    setRatingRefreshTrigger(prev => prev + 1) // Odśwież badge'e
+    setRatingRefreshTrigger(prev => prev + 1)
+    fetchArchivedTransports()
   }
 
-  // Funkcja filtrowania
-  useEffect(() => {
-    let filtered = archiwum
+  // filtrowanie transportów
+  const applyFilters = (transports, year, month, warehouse, driver, requester, rating, construction) => {
+    if (!transports) return
 
-    // Filtr roku
-    if (selectedYear) {
-      filtered = filtered.filter(item => {
-        const itemYear = new Date(item.data_utworzenia || item.delivery_date).getFullYear()
-        return itemYear === selectedYear
-      })
-    }
+    const filtered = transports.filter(transport => {
+      const date = new Date(transport.delivery_date)
+      const transportYear = date.getFullYear()
 
-    // Filtr miesiąca
-    if (selectedMonth !== 'all') {
-      filtered = filtered.filter(item => {
-        const itemMonth = new Date(item.data_utworzenia || item.delivery_date).getMonth()
-        return itemMonth === parseInt(selectedMonth)
-      })
-    }
+      if (transportYear !== parseInt(year)) {
+        return false
+      }
 
-    // Filtr magazynu
-    if (selectedWarehouse) {
-      filtered = filtered.filter(item => 
-        (item.zrodlo && item.zrodlo === selectedWarehouse) || 
-        (item.source_warehouse && item.source_warehouse === selectedWarehouse)
-      )
-    }
+      if (month !== 'all') {
+        const transportMonth = date.getMonth()
+        if (transportMonth !== parseInt(month)) {
+          return false
+        }
+      }
 
-    // Filtr kierowcy
-    if (selectedDriver) {
-      filtered = filtered.filter(item => {
-        const driverId = item.kierowca || item.driver_id
-        if (!driverId) return false
-        const kierowca = KIEROWCY.find(k => k.id === parseInt(driverId))
-        return kierowca?.nazwa === selectedDriver || kierowca?.imie === selectedDriver
-      })
-    }
+      if (warehouse && transport.source_warehouse !== warehouse) {
+        return false
+      }
 
-    // Filtr zlecającego
-    if (selectedRequester) {
-      filtered = filtered.filter(item => 
-        (item.email_zlecajacego && item.email_zlecajacego === selectedRequester) ||
-        (item.requester_email && item.requester_email === selectedRequester)
-      )
-    }
+      if (driver && transport.driver_id?.toString() !== driver) {
+        return false
+      }
 
-    // Filtr budowy
-    if (selectedConstruction) {
-      filtered = filtered.filter(item => 
-        (item.budowa && item.budowa.toLowerCase().includes(selectedConstruction.toLowerCase())) ||
-        (item.mpk && item.mpk.toLowerCase().includes(selectedConstruction.toLowerCase()))
-      )
-    }
+      if (requester && transport.requester_email !== requester) {
+        return false
+      }
+
+      if (rating !== 'all') {
+        const hasRating = ratableTransports[transport.id] !== undefined && !ratableTransports[transport.id]
+
+        if (rating === 'positive') {
+          return hasRating && ratingValues[transport.id]?.isPositive === true
+        } else if (rating === 'negative') {
+          return hasRating && ratingValues[transport.id]?.isPositive === false
+        } else if (rating === 'unrated') {
+          return !hasRating || ratableTransports[transport.id]
+        }
+      }
+
+      if (construction) {
+        const selectedCons = constructions.find(c => c.id.toString() === construction)
+        if (selectedCons) {
+          const matchesClientName = transport.client_name &&
+            transport.client_name.toLowerCase().includes(selectedCons.name.toLowerCase())
+          const matchesMpk = transport.mpk && transport.mpk === selectedCons.mpk
+
+          if (!matchesClientName && !matchesMpk) {
+            return false
+          }
+        }
+      }
+
+      return true
+    })
 
     setFilteredArchiwum(filtered)
-    setCurrentPage(1) // Reset paginacji przy filtrowaniu
-  }, [archiwum, selectedYear, selectedMonth, selectedWarehouse, selectedDriver, selectedRequester, selectedRating, selectedConstruction])
+  }
 
-  // Paginacja
+  useEffect(() => {
+    applyFilters(
+      archiwum,
+      selectedYear,
+      selectedMonth,
+      selectedWarehouse,
+      selectedDriver,
+      selectedRequester,
+      selectedRating,
+      selectedConstruction
+    )
+    setCurrentPage(1)
+  }, [selectedYear, selectedMonth, selectedWarehouse, selectedDriver, selectedRequester, selectedRating, selectedConstruction, archiwum, ratableTransports, ratingValues])
+
+  // paginacja
   const totalPages = Math.ceil(filteredArchiwum.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
   const endIndex = startIndex + itemsPerPage
   const currentItems = filteredArchiwum.slice(startIndex, endIndex)
 
-  // Funkcje pomocnicze
   const getKierowcaNazwa = (id) => {
     if (!id) return 'Nieznany kierowca'
     const kierowca = KIEROWCY.find(k => k.id === parseInt(id))
@@ -178,47 +254,117 @@ export default function ArchiwumPage() {
     }))
   }
 
-  // Funkcja eksportu
+  const handleCanBeRatedChange = (transportId, canBeRated, isPositive = null) => {
+    setRatableTransports(prev => {
+      if (prev[transportId] === canBeRated) return prev
+      return {
+        ...prev,
+        [transportId]: canBeRated
+      }
+    })
+
+    if (isPositive !== null) {
+      setRatingValues(prev => ({
+        ...prev,
+        [transportId]: { isPositive }
+      }))
+    }
+  }
+
+  const renderRatingBadge = (transportId) => (
+    <TransportRatingBadge
+      transportId={transportId}
+      refreshTrigger={ratingRefreshTrigger}
+      onCanBeRatedChange={(canBeRated, isPositive) =>
+        handleCanBeRatedChange(transportId, canBeRated, isPositive)
+      }
+    />
+  )
+
+  const paginate = (pageNumber) => {
+    const filterState = {
+      selectedYear,
+      selectedMonth,
+      selectedWarehouse,
+      showAdvancedFilters,
+      selectedDriver,
+      selectedRequester,
+      selectedRating,
+      selectedConstruction,
+      currentPage: pageNumber
+    }
+    sessionStorage.setItem('archiveFilters', JSON.stringify(filterState))
+    setCurrentPage(pageNumber)
+  }
+
+  // eksport danych
   const handleExport = () => {
     if (filteredArchiwum.length === 0) {
       alert('Brak danych do eksportu')
       return
     }
 
-    // Przygotuj dane do eksportu
     const dataToExport = filteredArchiwum.map(transport => {
-      const driverId = transport.kierowca || transport.driver_id
-      const driver = KIEROWCY.find(k => k.id === parseInt(driverId))
-      
+      const driver = KIEROWCY.find(k => k.id === parseInt(transport.driver_id))
+
       return {
-        'Data': format(new Date(transport.data_utworzenia || transport.delivery_date), 'dd.MM.yyyy', { locale: pl }),
-        'Źródło': transport.zrodlo || transport.source_warehouse,
-        'Cel': transport.cel || transport.destination_city,
-        'Kierowca': driver ? (driver.nazwa || driver.imie) : 'Brak danych',
-        'Status': transport.status === 'completed' ? 'Ukończony' : 'W trakcie',
+        'Data transportu': format(new Date(transport.delivery_date), 'dd.MM.yyyy', { locale: pl }),
+        'Miasto': transport.destination_city,
+        'Kod pocztowy': transport.postal_code || '',
+        'Ulica': transport.street || '',
+        'Magazyn': transport.source_warehouse === 'bialystok' ? 'Białystok' :
+                   transport.source_warehouse === 'zielonka' ? 'Zielonka' :
+                   transport.source_warehouse,
+        'Odległość (km)': transport.distance || '',
+        'Firma': transport.client_name || '',
         'MPK': transport.mpk || '',
-        'Odległość (km)': transport.odleglosc || transport.distance || '',
-        'Zlecający': transport.email_zlecajacego || transport.requester_email || ''
+        'Kierowca': driver ? driver.imie : '',
+        'Nr rejestracyjny': driver ? driver.tabliceRej : '',
+        'Status': transport.status || '',
+        'Data zakończenia': transport.completed_at ? format(new Date(transport.completed_at), 'dd.MM.yyyy HH:mm', { locale: pl }) : '',
+        'Osoba zlecająca': transport.requester_name || '',
+        'Ocena': ratingValues[transport.id]
+          ? (ratingValues[transport.id].isPositive ? 'Pozytywna' : 'Negatywna')
+          : 'Brak oceny'
       }
     })
 
-    if (exportFormat === 'xlsx') {
-      const ws = XLSX.utils.json_to_sheet(dataToExport)
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, 'Archiwum Transportów')
-      XLSX.writeFile(wb, `archiwum_transportow_${format(new Date(), 'yyyy-MM-dd')}.xlsx`)
-    } else {
-      const ws = XLSX.utils.json_to_sheet(dataToExport)
-      const csv = XLSX.utils.sheet_to_csv(ws)
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const monthLabel = selectedMonth === 'all'
+      ? 'wszystkie_miesiace'
+      : format(new Date(2023, parseInt(selectedMonth)), 'LLLL', { locale: pl }).toLowerCase()
+
+    const fileName = `transporty_${selectedYear}_${monthLabel}`
+
+    if (exportFormat === 'csv') {
+      const headers = Object.keys(dataToExport[0])
+      let csvContent = headers.join(';') + '\n'
+      dataToExport.forEach(item => {
+        const row = headers.map(header => {
+          let cell = item[header] !== undefined && item[header] !== null ? item[header] : ''
+          if (cell.toString().includes(',') || cell.toString().includes(';') || cell.toString().includes('\n')) {
+            cell = `"${cell}"`
+          }
+          return cell
+        }).join(';')
+        csvContent += row + '\n'
+      })
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' })
       const link = document.createElement('a')
       link.href = URL.createObjectURL(blob)
-      link.download = `archiwum_transportow_${format(new Date(), 'yyyy-MM-dd')}.csv`
+      link.download = `${fileName}.csv`
+      document.body.appendChild(link)
       link.click()
+      document.body.removeChild(link)
+    } else {
+      const ws = XLSX.utils.json_to_sheet(dataToExport)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Transporty')
+      XLSX.writeFile(wb, `${fileName}.xlsx`)
     }
   }
 
-  // Funkcja usuwania transportu (dla adminów)
+  // usuwanie transportu
   const handleDeleteTransport = async (transportId) => {
     if (!confirm('Czy na pewno chcesz usunąć ten transport? Ta operacja jest nieodwracalna.')) {
       return
@@ -233,7 +379,7 @@ export default function ArchiwumPage() {
 
       if (data.success) {
         setDeleteStatus('success')
-        fetchArchiwum() // Odśwież listę
+        fetchArchivedTransports()
         setTimeout(() => setDeleteStatus(null), 3000)
       } else {
         setDeleteStatus('error')
@@ -294,7 +440,6 @@ export default function ArchiwumPage() {
           </div>
         </div>
 
-        {/* Panel filtrów */}
         {showAdvancedFilters && (
           <div className="bg-gray-50 p-4 rounded-md mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Filtry roku i miesiąca */}
@@ -377,14 +522,34 @@ export default function ArchiwumPage() {
 
             {/* Filtr budowy */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Budowa/MPK</label>
-              <input
-                type="text"
+              <label className="block text-sm font-medium text-gray-700 mb-1">Budowa</label>
+              <select
                 value={selectedConstruction}
                 onChange={(e) => setSelectedConstruction(e.target.value)}
-                placeholder="Wpisz nazwę budowy lub MPK..."
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
-              />
+              >
+                <option value="">Wszystkie budowy</option>
+                {constructions.map(construction => (
+                  <option key={construction.id} value={construction.id}>
+                    {construction.name} ({construction.mpk})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filtr oceny */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Ocena</label>
+              <select
+                value={selectedRating}
+                onChange={(e) => setSelectedRating(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+              >
+                <option value="all">Wszystkie oceny</option>
+                <option value="positive">Pozytywne</option>
+                <option value="negative">Negatywne</option>
+                <option value="unrated">Nieocenione</option>
+              </select>
             </div>
           </div>
         )}
@@ -394,6 +559,11 @@ export default function ArchiwumPage() {
           Znaleziono {filteredArchiwum.length} transportów
           {selectedYear && ` w roku ${selectedYear}`}
           {selectedMonth !== 'all' && ` w miesiącu ${format(new Date(2023, parseInt(selectedMonth)), 'LLLL', { locale: pl })}`}
+          {filteredArchiwum.length > 0 && (
+            <span className="ml-2">
+              <span className="font-medium">Całkowita odległość:</span> {filteredArchiwum.reduce((sum, t) => sum + (t.distance || 0), 0).toLocaleString('pl-PL')} km
+            </span>
+          )}
         </div>
 
         {/* Tabela transportów */}
@@ -442,20 +612,15 @@ export default function ArchiwumPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                        transport.status === 'completed' 
-                          ? 'bg-green-100 text-green-800' 
+                        transport.status === 'completed'
+                          ? 'bg-green-100 text-green-800'
                           : 'bg-yellow-100 text-yellow-800'
                       }`}>
                         {transport.status === 'completed' ? 'Ukończony' : 'W trakcie'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {transport.status === 'completed' && (
-                        <TransportRatingBadge 
-                          transportId={transport.id} 
-                          refreshTrigger={ratingRefreshTrigger}
-                        />
-                      )}
+                      {transport.status === 'completed' && renderRatingBadge(transport.id)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex space-x-2">
@@ -488,7 +653,6 @@ export default function ArchiwumPage() {
                     </td>
                   </tr>
 
-                  {/* Rozwinięty wiersz ze szczegółami */}
                   {expandedRows[transport.id] && (
                     <tr>
                       <td colSpan="6" className="px-6 py-4 bg-gray-50">
@@ -554,22 +718,21 @@ export default function ArchiwumPage() {
           </table>
         </div>
 
-        {/* Paginacja */}
         {totalPages > 1 && (
           <div className="flex justify-center items-center space-x-2 mt-6">
             <button
-              onClick={() => setCurrentPage(Math.max(currentPage - 1, 1))}
+              onClick={() => paginate(Math.max(1, currentPage - 1))}
               disabled={currentPage === 1}
               className="px-3 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            
+
             <div className="flex space-x-1">
               {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
                 <button
                   key={page}
-                  onClick={() => setCurrentPage(page)}
+                  onClick={() => paginate(page)}
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentPage === page
                       ? 'bg-blue-600 text-white'
@@ -580,9 +743,9 @@ export default function ArchiwumPage() {
                 </button>
               ))}
             </div>
-            
+
             <button
-              onClick={() => setCurrentPage(Math.min(currentPage + 1, totalPages))}
+              onClick={() => paginate(Math.min(totalPages, currentPage + 1))}
               disabled={currentPage === totalPages}
               className="px-3 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -592,7 +755,6 @@ export default function ArchiwumPage() {
         )}
       </div>
 
-      {/* Modal ze szczegółowymi ocenami */}
       {showRatingModal && selectedTransport && (
         <TransportRating
           transportId={selectedTransport.id}
