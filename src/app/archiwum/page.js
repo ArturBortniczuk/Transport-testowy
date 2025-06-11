@@ -227,7 +227,7 @@ export default function ArchiwumPage() {
     try {
       const response = await fetch(`/api/transports/delete?id=${transportId}`, {
         method: 'DELETE'
-      })␊
+      })
 
       const data = await response.json()
 
