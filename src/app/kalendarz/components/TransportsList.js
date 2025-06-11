@@ -4,8 +4,8 @@ import { pl } from 'date-fns/locale';
 import { KIEROWCY, POJAZDY } from '../constants';
 import { useState, useEffect } from 'react';
 import { Link2, ArrowRight, ArrowLeft, CheckCircle, Link, Star } from 'lucide-react';
-import TransportDetailedRatingBadge from '@/components/TransportDetailedRatingBadge';
-import TransportDetailedRating from '@/components/TransportDetailedRating';
+import TransportRatingBadge from '@/components/TransportRatingBadge';
+import TransportRating from '@/components/TransportRating';
 
 export default function TransportsList({
   selectedDate,
