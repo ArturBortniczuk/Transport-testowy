@@ -49,8 +49,8 @@ export default function ArchiwumPage() {
       const data = await response.json()
       
       if (data.success) {
-        setArchiwum(data.archiwum)
-        setFilteredArchiwum(data.archiwum)
+        setArchiwum(data.transports)
+        setFilteredArchiwum(data.transports)
         setIsAdmin(data.isAdmin)
       } else {
         setError(data.error)
