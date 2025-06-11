@@ -311,7 +311,7 @@ export default function TransportsList({
                       {/* Ocena transportu - tylko dla ukończonych */}
                       {isCompleted && (
                         <div className="flex flex-col items-end space-y-2">
-                          <TransportDetailedRatingBadge 
+                          <TransportRatingBadge 
                             transportId={transport.id} 
                             refreshTrigger={ratingRefreshTrigger}
                           />
@@ -397,7 +397,7 @@ export default function TransportsList({
 
       {/* Modal ze szczegółowymi ocenami */}
       {showRatingModal && selectedTransport && (
-        <TransportDetailedRating
+        <TransportRating
           transportId={selectedTransport.id}
           onClose={handleCloseRating}
         />
