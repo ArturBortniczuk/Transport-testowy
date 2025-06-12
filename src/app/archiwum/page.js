@@ -46,9 +46,10 @@ export default function ArchiwumPage() {
   const [selectedTransport, setSelectedTransport] = useState(null)
   const [showRatingModal, setShowRatingModal] = useState(false)
   const [expandedRows, setExpandedRows] = useState({})
-  const [ratableTransports, setRatableTransports] = useState({})
-  const [ratingValues, setRatingValues] = useState({})
-  
+  // USUNIĘTE - nie potrzebujemy już callbacków które powodowały miganie
+  // const [ratableTransports, setRatableTransports] = useState({})
+  // const [ratingValues, setRatingValues] = useState({})
+
   // Filtry
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [selectedMonth, setSelectedMonth] = useState('all')
@@ -89,23 +90,8 @@ export default function ArchiwumPage() {
     }))
   }
 
-  // Funkcja aktualizująca informację o możliwości oceny transportu i jego ocenie
-  const handleCanBeRatedChange = (transportId, canBeRated, isPositive = null) => {
-    setRatableTransports(prev => {
-      if (prev[transportId] === canBeRated) return prev
-      return {
-        ...prev,
-        [transportId]: canBeRated
-      }
-    })
-    
-    if (isPositive !== null) {
-      setRatingValues(prev => ({
-        ...prev,
-        [transportId]: { isPositive }
-      }))
-    }
-  }
+  // USUNIĘTE - funkcja która powodowała nieskończone re-rendery
+  // const handleCanBeRatedChange = (transportId, canBeRated, isPositive = null) => { ... }
 
   useEffect(() => {
     // Sprawdź czy użytkownik jest administratorem
@@ -176,7 +162,7 @@ export default function ArchiwumPage() {
     }
   }
   
-  // Funkcja filtrująca transporty
+  // UPROSZCZONE filtrowanie - bez skomplikowanych warunków na oceny
   const applyFilters = (transports, year, month, warehouse, driver, requester, rating, construction) => {
     if (!transports) return
     
@@ -207,17 +193,8 @@ export default function ArchiwumPage() {
         return false
       }
       
-      if (rating !== 'all') {
-        const hasRating = ratableTransports[transport.id] !== undefined && !ratableTransports[transport.id];
-        
-        if (rating === 'positive') {
-          return hasRating && ratingValues[transport.id]?.isPositive === true;
-        } else if (rating === 'negative') {
-          return hasRating && ratingValues[transport.id]?.isPositive === false;
-        } else if (rating === 'unrated') {
-          return !hasRating || ratableTransports[transport.id];
-        }
-      }
+      // USUNIĘTE - skomplikowane filtrowanie po ocenach które powodowało problemy
+      // if (rating !== 'all') { ... }
       
       if (construction) {
         const selectedConstruction = constructions.find(c => c.id.toString() === construction);
@@ -238,10 +215,10 @@ export default function ArchiwumPage() {
     setFilteredArchiwum(filtered)
   }
 
-  // Obsługa zmiany filtrów
+  // UPROSZCZONE - bez skomplikowanych zależności
   useEffect(() => {
     applyFilters(archiwum, selectedYear, selectedMonth, selectedWarehouse, selectedDriver, selectedRequester, selectedRating, selectedConstruction)
-  }, [selectedYear, selectedMonth, selectedWarehouse, selectedDriver, selectedRequester, selectedRating, selectedConstruction, archiwum, ratableTransports, ratingValues])
+  }, [selectedYear, selectedMonth, selectedWarehouse, selectedDriver, selectedRequester, selectedRating, selectedConstruction, archiwum])
 
   // Funkcja do usuwania transportu
   const handleDeleteTransport = async (id) => {
@@ -669,33 +646,18 @@ export default function ArchiwumPage() {
                     <TransportRatingBadge 
                       transportId={transport.id} 
                       refreshTrigger={0}
-                      onCanBeRatedChange={(canBeRated, isPositive) => handleCanBeRatedChange(transport.id, canBeRated, isPositive)}
                     />
                     
-                    {/* Przycisk oceny - kompaktowy */}
-                    {ratableTransports[transport.id] !== undefined && (
-                      ratableTransports[transport.id] ? (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenRatingModal(transport);
-                          }}
-                          className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                        >
-                          Oceń
-                        </button>
-                      ) : (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenRatingModal(transport);
-                          }}
-                          className="px-2 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
-                        >
-                          Zobacz
-                        </button>
-                      )
-                    )}
+                    {/* STAŁY przycisk oceny - bez migania */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenRatingModal(transport);
+                      }}
+                      className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                    >
+                      Oceń
+                    </button>
                     
                     <ChevronDown 
                       size={16} 
@@ -831,34 +793,21 @@ export default function ArchiwumPage() {
                           <TransportRatingBadge 
                             transportId={transport.id} 
                             refreshTrigger={0}
-                            onCanBeRatedChange={(canBeRated, isPositive) => handleCanBeRatedChange(transport.id, canBeRated, isPositive)}
                           />
                           <span className="text-sm text-gray-600">
-                            {ratableTransports[transport.id] ? 'Możesz ocenić ten transport' : 'Transport został oceniony'}
+                            Kliknij "Oceń transport" aby dodać ocenę
                           </span>
                         </div>
                         
-                        {/* Przyciski akcji */}
+                        {/* STAŁE przyciski akcji - bez migania */}
                         <div className="flex gap-2">
-                          {ratableTransports[transport.id] !== undefined && (
-                            ratableTransports[transport.id] ? (
-                              <button
-                                onClick={() => handleOpenRatingModal(transport)}
-                                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm font-medium"
-                              >
-                                <Star size={16} className="mr-2" />
-                                Oceń transport
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleOpenRatingModal(transport)}
-                                className="flex items-center px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors text-sm font-medium"
-                              >
-                                <Eye size={16} className="mr-2" />
-                                Zobacz oceny
-                              </button>
-                            )
-                          )}
+                          <button
+                            onClick={() => handleOpenRatingModal(transport)}
+                            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm font-medium"
+                          >
+                            <Star size={16} className="mr-2" />
+                            Oceń transport
+                          </button>
                           
                           {/* Przycisk usuwania dla adminów */}
                           {isAdmin && (
