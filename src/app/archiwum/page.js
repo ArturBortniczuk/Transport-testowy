@@ -517,8 +517,8 @@ export default function ArchiwumPage() {
                   className="block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="all">Wszystkie oceny</option>
-                  <option value="positive">Pozytywne</option>
-                  <option value="negative">Negatywne</option>
+                  <option value="perfect">100% pozytywne</option>
+                  <option value="not_perfect">Nie 100% pozytywne</option>
                   <option value="unrated">Nieocenione</option>
                 </select>
               </div>
