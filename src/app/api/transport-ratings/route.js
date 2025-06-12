@@ -1,9 +1,9 @@
-// src/app/api/transport-ratings/route.js - POPRAWIONA WERSJA BEZ ANONIMIZACJI
+// src/app/api/transport-ratings/route.js - KOMPLETNIE NAPRAWIONA WERSJA
 import { NextResponse } from 'next/server'
 import db from '@/database/db'
 
-// Funkcja pomocnicza do weryfikacji sesji
-const validateSession = async (authToken) => {
+// Funkcja pomocnicza do weryfikacji sesji i pobrania emaila
+const getUserEmailFromToken = async (authToken) => {
   if (!authToken) {
     return null;
   }
@@ -15,7 +15,17 @@ const validateSession = async (authToken) => {
       .select('user_id')
       .first();
     
-    return session?.user_id;
+    if (!session) {
+      return null;
+    }
+
+    // Pobierz email użytkownika
+    const user = await db('users')
+      .where('id', session.user_id)
+      .select('email')
+      .first();
+    
+    return user?.email || null;
   } catch (error) {
     console.error('Błąd walidacji sesji:', error)
     return null
@@ -45,20 +55,9 @@ export async function GET(request) {
       }, { status: 400 })
     }
 
-    // Sprawdzenie tokenu
+    // Sprawdzenie tokenu i pobranie emaila
     const authToken = request.cookies.get('authToken')?.value
-    let currentUserEmail = null
-    
-    if (authToken) {
-      const userId = await validateSession(authToken);
-      if (userId) {
-        const user = await db('users')
-          .where('id', userId)
-          .select('email')
-          .first();
-        currentUserEmail = user?.email;
-      }
-    }
+    const currentUserEmail = await getUserEmailFromToken(authToken);
 
     // Sprawdzenie transportu
     const transport = await db('transports')
@@ -96,8 +95,10 @@ export async function GET(request) {
           .select('*');
 
         // Sprawdź czy użytkownik już ocenił
-        userRating = ratings.find(rating => rating.rater_email === currentUserEmail)
-        hasUserRated = !!userRating
+        if (currentUserEmail) {
+          userRating = ratings.find(rating => rating.rater_email === currentUserEmail)
+          hasUserRated = !!userRating
+        }
 
         // Oblicz statystyki
         if (ratings.length > 0) {
@@ -195,25 +196,13 @@ export async function POST(request) {
       }, { status: 401 })
     }
 
-    const userId = await validateSession(authToken);
-    if (!userId) {
+    // Pobierz email użytkownika
+    const userEmail = await getUserEmailFromToken(authToken);
+    if (!userEmail) {
       return NextResponse.json({ 
         success: false, 
         error: 'Nieprawidłowa sesja' 
       }, { status: 401 })
-    }
-
-    // Pobierz email użytkownika
-    const user = await db('users')
-      .where('id', userId)
-      .select('email')
-      .first();
-    
-    if (!user) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Użytkownik nie istnieje' 
-      }, { status: 404 })
     }
 
     const { transportId, ratings, comment } = await request.json()
@@ -270,12 +259,12 @@ export async function POST(request) {
     // Sprawdź czy użytkownik już ocenił ten transport
     const existingRating = await db('transport_detailed_ratings')
       .where('transport_id', transportId)
-      .where('rater_email', user.email)
+      .where('rater_email', userEmail)
       .first();
 
     const ratingData = {
       transport_id: transportId,
-      rater_email: user.email,
+      rater_email: userEmail,
       driver_professional: ratings.driverProfessional,
       driver_tasks_completed: ratings.driverTasksCompleted,
       cargo_complete: ratings.cargoComplete,
