@@ -1,4 +1,4 @@
-// src/app/kalendarz/components/TransportsList.js - KOMPLETNY POPRAWIONY KOD
+// src/app/kalendarz/components/TransportsList.js - POPRAWIONA WERSJA
 import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
 import { KIEROWCY, POJAZDY } from '../constants';
@@ -24,18 +24,6 @@ export default function TransportsList({
   const [userPermissions, setUserPermissions] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   
-  // WALIDACJA selectedDate - to naprawia błąd React #310
-  if (!selectedDate || !(selectedDate instanceof Date)) {
-    return (
-      <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-        <p className="text-gray-500 text-center">Wybierz datę aby zobaczyć transporty</p>
-      </div>
-    );
-  }
-
-  const dateKey = format(selectedDate, 'yyyy-MM-dd');
-  const transportyNaDzien = transporty[dateKey] || [];
-  
   // Pobierz uprawnienia z API zamiast localStorage
   useEffect(() => {
     async function fetchUserPermissions() {
@@ -58,6 +46,18 @@ export default function TransportsList({
     fetchUserPermissions();
   }, []);
   
+  // PRZENIESIENIE WALIDACJI selectedDate PO HOOKACH - naprawia błąd React #310
+  if (!selectedDate || !(selectedDate instanceof Date)) {
+    return (
+      <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+        <p className="text-gray-500 text-center">Wybierz datę aby zobaczyć transporty</p>
+      </div>
+    );
+  }
+
+  const dateKey = format(selectedDate, 'yyyy-MM-dd');
+  const transportyNaDzien = transporty[dateKey] || [];
+  
   const canEdit = userPermissions?.calendar?.edit === true || userRole === 'admin';
   const canMarkAsCompleted = userPermissions?.transport?.markAsCompleted === true || userRole === 'admin';
   
@@ -74,36 +74,10 @@ export default function TransportsList({
     setRatingRefreshTrigger(prev => prev + 1);
   };
   
-  // Filtrujemy według aktywnych filtrów
-  const filtrowaneTransporty = transportyNaDzien.filter(transport => {
-    // Sprawdź czy transport jest zrealizowany
-    const isCompleted = transport.status === 'completed' || transport.status === 'zakończony';
-    
-    // Jeśli transport jest zrealizowany i nie chcemy pokazywać zrealizowanych, odfiltrowujemy
-    if (isCompleted && !filtryAktywne.pokazZrealizowane) {
-      return false;
-    }
-    
-    const pasujeMagazyn = !filtryAktywne.magazyn || transport.zrodlo === filtryAktywne.magazyn;
-    const pasujeKierowca = !filtryAktywne.kierowca || parseInt(transport.kierowcaId) === filtryAktywne.kierowca;
-    const pasujePojazd = !filtryAktywne.pojazd || 
-                         parseInt(transport.pojazdId) === filtryAktywne.pojazd || 
-                         (!transport.pojazdId && parseInt(transport.kierowcaId) === filtryAktywne.pojazd);
-    const pasujeRynek = !filtryAktywne.rynek || transport.rynek === filtryAktywne.rynek;
-    
-    return pasujeMagazyn && pasujeKierowca && pasujePojazd && pasujeRynek;
-  });
-
-  // POPRAWIONA funkcja sprawdzająca czy użytkownik może edytować transport
+  // Funkcja sprawdzająca czy użytkownik może edytować transport
   const canEditTransport = (transport) => {
-    // Admin może zawsze edytować
+    // Admin może wszystko
     if (userRole === 'admin') return true;
-    
-    // Sprawdź czy użytkownik ma rolę magazynu
-    const isMagazynRole = userRole === 'magazyn' || 
-                         userRole?.startsWith('magazyn_') ||
-                         userRole === 'magazyn_bialystok' ||
-                         userRole === 'magazyn_zielonka';
     
     // Sprawdzamy czy użytkownik ma odpowiednie uprawnienia
     const hasPermission = userPermissions?.calendar?.edit === true;
@@ -180,245 +154,234 @@ export default function TransportsList({
     // Najpierw sprawdzamy, czy mamy pojazdId
     if (pojazdId) {
       const pojazd = POJAZDY.find(p => p.id === parseInt(pojazdId));
-      return pojazd ? pojazd.tabliceRej : 'Brak danych';
+      return pojazd ? pojazd.nazwa : 'Nieznany pojazd';
     }
     
-    // Jeśli nie mamy pojazdId, ale mamy kierowcaId, użyjmy starego mapowania
+    // Jeśli nie ma pojazdId, sprawdzamy czy kierowca ma przypisany pojazd
     if (kierowcaId) {
-      // W starym systemie id kierowcy odpowiadało id pojazdu
-      const pojazd = POJAZDY.find(p => p.id === parseInt(kierowcaId));
-      return pojazd ? pojazd.tabliceRej : 'Brak danych';
+      const kierowca = KIEROWCY.find(k => k.id === parseInt(kierowcaId));
+      if (kierowca && kierowca.pojazdId) {
+        const pojazd = POJAZDY.find(p => p.id === kierowca.pojazdId);
+        return pojazd ? pojazd.nazwa : 'Brak pojazdu';
+      }
     }
     
-    return 'Brak danych';
-  };
-  
-  // Sprawdź, czy transport może być połączony (nie jest już połączony i jest aktywny)
-  const canBeConnected = (transport) => {
-    return !isConnectedTransport(transport) && transport.status === 'active' && canEdit;
+    return 'Brak pojazdu';
   };
 
-  if (isLoading) {
-    return (
-      <div className="mt-8 bg-white rounded-xl shadow-lg p-6">
-        <div className="text-center text-gray-500">
-          Ładowanie uprawnień...
-        </div>
-      </div>
-    );
-  }
+  // Filtrowanie transportów
+  const filtrowaneTransporty = transportyNaDzien.filter(transport => {
+    const pasujeMagazyn = !filtryAktywne.magazyn || transport.zrodlo === filtryAktywne.magazyn;
+    const pasujeKierowca = !filtryAktywne.kierowca || transport.kierowcaId === filtryAktywne.kierowca;
+    const pasujeRynek = !filtryAktywne.rynek || transport.rynek === filtryAktywne.rynek;
+    const pasujeStatus = !filtryAktywne.status || transport.status === filtryAktywne.status;
+    
+    return pasujeMagazyn && pasujeKierowca && pasujeRynek && pasujeStatus;
+  });
 
   if (filtrowaneTransporty.length === 0) {
     return (
-      <div className="mt-8 bg-white rounded-xl shadow-lg p-6">
-        <div className="text-center text-gray-500">
-          Brak transportów na ten dzień
-        </div>
+      <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+        <p className="text-gray-500 text-center">
+          Brak transportów na {format(selectedDate, 'd MMMM yyyy', { locale: pl })}
+        </p>
       </div>
     );
   }
 
   return (
-    <>
-      <div className="mt-8 bg-white rounded-xl shadow-lg overflow-hidden">
-        <div className="bg-gradient-to-r from-blue-600 to-blue-800 px-6 py-4">
-          <h2 className="text-xl font-bold text-white">
-            Transporty na {format(selectedDate, 'd MMMM yyyy', { locale: pl })}
-          </h2>
-        </div>
-
-        <div className="p-6">     
-          <div className="space-y-4">
-            {filtrowaneTransporty.map(transport => {
-              const kierowca = KIEROWCY.find(k => k.id === parseInt(transport.kierowcaId));
-              
-              // Sprawdź, czy transport jest połączony
-              const isConnected = isConnectedTransport(transport);
-              const isSource = transportyNaDzien.some(t => t.connected_transport_id === transport.id);
-              const isTarget = transport.connected_transport_id !== null;
-              
-              // Sprawdź czy transport jest zrealizowany
-              const isCompleted = transport.status === 'completed' || transport.status === 'zakończony';
-              
-              // Znajdź połączony transport, jeśli istnieje
-              const connectedTransport = isConnected ? findConnectedTransport(transport) : null;
-              
-              return (
-                <div 
-                  key={transport.id} 
-                  className={`
-                    border rounded-lg p-4 hover:shadow-md transition-all duration-200
-                    ${isConnected ? 'border-l-4 border-blue-500' : ''}
-                    ${isCompleted ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'}
-                  `}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      {/* Nagłówek transportu */}
-                      <div className="flex items-center space-x-3 mb-2">
-                        <h3 className="text-lg font-semibold text-gray-900">
-                          {transport.miasto} ({transport.kodPocztowy})
-                        </h3>
-                        
-                        {/* Status badges */}
-                        {isCompleted && (
-                          <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full flex items-center">
-                            <CheckCircle className="w-3 h-3 mr-1" />
-                            Zrealizowany
-                          </span>
-                        )}
-                        
-                        {isConnected && (
-                          <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full flex items-center">
-                            <Link className="w-3 h-3 mr-1" />
-                            Połączony
-                          </span>
-                        )}
-                      </div>
-
-                      {transport.ulica && (
-                        <p className="text-gray-600 mb-2">{transport.ulica}</p>
-                      )}
-
-                      {/* Szczegółowe informacje */}
-                      <div className="text-sm text-gray-500 space-y-1 mt-3">
-                        <p><strong>Klient:</strong> {transport.nazwaKlienta}</p>
-                        
-                        {transport.osobaZlecajaca && (
-                          <p><strong>Osoba zlecająca:</strong> {transport.osobaZlecajaca}</p>
-                        )}
-                        
-                        {transport.mpk && (
-                          <p><strong>MPK:</strong> {transport.mpk}</p>
-                        )}
-                        
-                        <p><strong>Kierowca:</strong> {getDriverInfo(transport.kierowcaId)}</p>
-                        <p><strong>Pojazd:</strong> {getVehicleInfo(transport.pojazdId, transport.kierowcaId)}</p>
-                        <p><strong>Magazyn:</strong> {transport.zrodlo}</p>
-                        <p><strong>Odległość:</strong> {transport.odleglosc} km</p>
-                        <p><strong>Poziom załadunku:</strong> {transport.poziomZaladunku}</p>
-                        <p><strong>WZ:</strong> {transport.numerWZ}</p>
-                        {transport.rynek && (
-                          <p><strong>Rynek:</strong> {transport.rynek}</p>
-                        )}
-                      </div>
-
-                      {/* Informacje o połączeniu */}
-                      {isConnected && connectedTransport && (
-                        <div className="mt-3 p-3 bg-blue-50 rounded-md">
-                          <p className="text-sm text-blue-800">
-                            <strong>Połączony z:</strong> {connectedTransport.miasto} ({connectedTransport.kodPocztowy})
-                          </p>
-                          {isSource && (
-                            <p className="text-xs text-blue-600 mt-1">
-                              Ten transport jest źródłem dla połączonej trasy
-                            </p>
-                          )}
-                          {isTarget && (
-                            <p className="text-xs text-blue-600 mt-1">
-                              Ten transport jest częścią połączonej trasy
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Panel akcji */}
-                    <div className="flex flex-col space-y-2 ml-4">
-                      {/* Ocena transportu - tylko dla ukończonych */}
-                      {isCompleted && (
-                        <div className="flex flex-col items-end space-y-2">
-                          <TransportRatingBadge 
-                            transportId={transport.id} 
-                            refreshTrigger={ratingRefreshTrigger}
-                          />
-                          <button
-                            onClick={() => handleOpenRating(transport)}
-                            className="text-yellow-600 hover:text-yellow-900 p-1"
-                            title="Pokaż/Dodaj ocenę"
-                          >
-                            <Star className="w-4 h-4" />
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Przyciski akcji tylko dla aktywnych transportów */}
-                      {!isCompleted && (
-                        <>
-                          {canMarkAsCompleted && (
-                            <button
-                              onClick={() => {
-                                console.log('Kliknięto Zrealizuj dla transportu ID:', transport.id);
-                                onZakonczTransport(dateKey, transport.id);
-                              }}
-                              className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center"
-                              title="Oznacz jako zrealizowany"
-                            >
-                              <CheckCircle className="w-4 h-4 mr-1" />
-                              Zrealizuj
-                            </button>
-                          )}
-
-                          {canEditTransport(transport) && (
-                            <button
-                              onClick={() => onEditTransport(transport)}
-                              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm font-medium"
-                              title="Edytuj transport"
-                            >
-                              Edytuj
-                            </button>
-                          )}
-
-                          {canEdit && (
-                            <button
-                              onClick={() => onPrzeniesDoPrzenoszenia(transport)}
-                              className="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1.5 rounded text-sm font-medium"
-                              title="Przenieś na inny dzień"
-                            >
-                              Przenieś
-                            </button>
-                          )}
-
-                          {/* Przycisk łączenia/rozłączania */}
-                          {isConnected ? (
-                            <button
-                              onClick={() => handleDisconnectTransport(transport.id)}
-                              className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center"
-                              title="Rozłącz transport"
-                            >
-                              <ArrowLeft className="w-4 h-4 mr-1" />
-                              Rozłącz
-                            </button>
-                          ) : (
-                            canBeConnected(transport) && onConnectTransport && (
-                              <button
-                                onClick={() => onConnectTransport(transport)}
-                                className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center"
-                                title="Połącz z innym transportem"
-                              >
-                                <Link2 className="w-4 h-4 mr-1" />
-                                Połącz
-                              </button>
-                            )
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
+    <div className="mt-4">
+      <h3 className="text-lg font-medium text-gray-900 mb-4">
+        Transporty na {format(selectedDate, 'd MMMM yyyy', { locale: pl })}
+      </h3>
+      
+      <div className="space-y-4">
+        {filtrowaneTransporty.map((transport, index) => {
+          const isConnected = isConnectedTransport(transport);
+          const connectedTransport = findConnectedTransport(transport);
+          
+          return (
+            <div 
+              key={transport.id} 
+              className={`
+                border rounded-lg p-4 transition-all duration-200
+                ${isConnected ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-white hover:shadow-md'}
+              `}
+            >
+              {/* Nagłówek transportu */}
+              <div className="flex justify-between items-start mb-3">
+                <div className="flex-1">
+                  <h4 className="font-semibold text-lg text-gray-900">
+                    {transport.miasto}
+                  </h4>
+                  <p className="text-gray-600">
+                    {transport.kodPocztowy} {transport.ulica ? `- ${transport.ulica}` : ''}
+                  </p>
                 </div>
-              );
-            })}
-          </div>
-        </div>
+                
+                {/* Status badge */}
+                <div className="flex items-center gap-2">
+                  {isConnected && (
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      <Link className="w-3 h-3 mr-1" />
+                      Połączony
+                    </span>
+                  )}
+                  <span className={`
+                    inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
+                    ${transport.status === 'completed' ? 'bg-green-100 text-green-800' : 
+                      transport.status === 'active' ? 'bg-yellow-100 text-yellow-800' : 
+                      'bg-gray-100 text-gray-800'}
+                  `}>
+                    {transport.status === 'completed' ? 'Zrealizowany' : 
+                     transport.status === 'active' ? 'Aktywny' : 
+                     transport.status}
+                  </span>
+                </div>
+              </div>
+
+              {/* Szczegóły transportu */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <p className="text-sm text-gray-500">Kierowca</p>
+                  <p className="font-medium">
+                    {transport.kierowcaId ? getDriverInfo(transport.kierowcaId) : 'Nie przypisano'}
+                  </p>
+                </div>
+                
+                <div>
+                  <p className="text-sm text-gray-500">Pojazd</p>
+                  <p className="font-medium">
+                    {getVehicleInfo(transport.pojazdId, transport.kierowcaId)}
+                  </p>
+                </div>
+                
+                <div>
+                  <p className="text-sm text-gray-500">Źródło</p>
+                  <p className="font-medium capitalize">{transport.zrodlo}</p>
+                </div>
+                
+                {transport.rynek && (
+                  <div>
+                    <p className="text-sm text-gray-500">Rynek</p>
+                    <p className="font-medium">{transport.rynek}</p>
+                  </div>
+                )}
+                
+                {transport.uwagi && (
+                  <div className="md:col-span-2">
+                    <p className="text-sm text-gray-500">Uwagi</p>
+                    <p className="font-medium">{transport.uwagi}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Informacja o połączeniu */}
+              {isConnected && connectedTransport && (
+                <div className="mb-4 p-3 bg-blue-100 rounded-lg border border-blue-200">
+                  <div className="flex items-center gap-2">
+                    <Link className="w-4 h-4 text-blue-600" />
+                    <span className="text-sm font-medium text-blue-800">
+                      Połączony z transportem do: {connectedTransport.miasto}
+                    </span>
+                  </div>
+                  <p className="text-xs text-blue-600 mt-1">
+                    {connectedTransport.kodPocztowy} {connectedTransport.ulica}
+                  </p>
+                </div>
+              )}
+
+              {/* Ocena transportu */}
+              <div className="mb-4">
+                <TransportRatingBadge 
+                  transportId={transport.id} 
+                  refreshTrigger={ratingRefreshTrigger}
+                />
+              </div>
+
+              {/* Przyciski akcji */}
+              <div className="flex flex-wrap gap-2">
+                {transport.status === 'active' && canMarkAsCompleted && (
+                  <button
+                    onClick={() => {
+                      console.log('Kliknięto Zrealizuj dla transportu ID:', transport.id);
+                      onZakonczTransport(dateKey, transport.id);
+                    }}
+                    className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center"
+                    title="Oznacz jako zrealizowany"
+                  >
+                    <CheckCircle className="w-4 h-4 mr-1" />
+                    Zrealizuj
+                  </button>
+                )}
+
+                {canEditTransport(transport) && (
+                  <button
+                    onClick={() => onEditTransport(transport)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm font-medium"
+                    title="Edytuj transport"
+                  >
+                    Edytuj
+                  </button>
+                )}
+
+                {canEdit && (
+                  <button
+                    onClick={() => onPrzeniesDoPrzenoszenia(transport)}
+                    className="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1.5 rounded text-sm font-medium"
+                    title="Przenieś na inny dzień"
+                  >
+                    Przenieś
+                  </button>
+                )}
+
+                {/* Przycisk łączenia/rozłączania */}
+                {isConnected ? (
+                  <button
+                    onClick={() => handleDisconnectTransport(transport.id)}
+                    className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center"
+                    title="Rozłącz transport"
+                  >
+                    <Link className="w-4 h-4 mr-1" />
+                    Rozłącz
+                  </button>
+                ) : (
+                  canEdit && transport.status === 'active' && (
+                    <button
+                      onClick={() => onConnectTransport(transport)}
+                      className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center"
+                      title="Połącz z innym transportem"
+                    >
+                      <Link className="w-4 h-4 mr-1" />
+                      Połącz
+                    </button>
+                  )
+                )}
+
+                {/* Przycisk oceny - tylko dla zrealizowanych transportów */}
+                {transport.status === 'completed' && (
+                  <button
+                    onClick={() => handleOpenRating(transport)}
+                    className="bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center"
+                    title="Oceń transport"
+                  >
+                    <Star className="w-4 h-4 mr-1" />
+                    Oceń
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Modal ze szczegółowymi ocenami */}
+      {/* Modal z oceną transportu */}
       {showRatingModal && selectedTransport && (
         <TransportRating
-          transportId={selectedTransport.id}
+          transport={selectedTransport}
           onClose={handleCloseRating}
         />
       )}
-    </>
+    </div>
   );
 }
