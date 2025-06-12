@@ -1,18 +1,26 @@
-// src/components/TransportDetailedRating.js
+// src/components/TransportRating.js - NAPRAWIONA WERSJA (używa istniejące API)
 'use client'
 import { useState, useEffect } from 'react'
-import { X, Truck, Package, Calendar, ThumbsUp, ThumbsDown, MessageSquare } from 'lucide-react'
+import { 
+  X, 
+  ThumbsUp, 
+  ThumbsDown, 
+  Star, 
+  Truck, 
+  Package, 
+  Calendar, 
+  MessageSquare 
+} from 'lucide-react'
 
-export default function TransportDetailedRating({ transportId, onClose }) {
+export default function TransportRating({ transportId, onClose }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(null)
   const [submitSuccess, setSubmitSuccess] = useState(false)
-  const [comment, setComment] = useState('')
   
-  // Stan dla formularza oceniania
+  // Stan formularza oceny
   const [ratings, setRatings] = useState({
     driverProfessional: null,
     driverTasksCompleted: null,
@@ -21,13 +29,14 @@ export default function TransportDetailedRating({ transportId, onClose }) {
     deliveryNotified: null,
     deliveryOnTime: null
   })
+  const [comment, setComment] = useState('')
 
-  // Definicje kategorii i kryteriów
+  // Kategorie ocen
   const categories = [
     {
       id: 'driver',
       icon: <Truck size={24} className="text-blue-600" />,
-      title: '🚛 Kierowca',
+      title: '👨‍💼 Kierowca',
       criteria: [
         {
           key: 'driverProfessional',
@@ -35,14 +44,14 @@ export default function TransportDetailedRating({ transportId, onClose }) {
         },
         {
           key: 'driverTasksCompleted',
-          text: 'Kierowca zrealizował wszystkie ustalone zadania (np. odbiór zwrotów).'
+          text: 'Kierowca zrealizował wszystkie ustalone zadania.'
         }
       ]
     },
     {
       id: 'cargo',
       icon: <Package size={24} className="text-green-600" />,
-      title: '🏷️ Towar',
+      title: '📦 Towar',
       criteria: [
         {
           key: 'cargoComplete',
@@ -76,7 +85,8 @@ export default function TransportDetailedRating({ transportId, onClose }) {
     const fetchData = async () => {
       try {
         setLoading(true)
-        const response = await fetch(`/api/transport-detailed-ratings?transportId=${transportId}`)
+        // ZMIANA: używamy istniejące API transport-ratings
+        const response = await fetch(`/api/transport-ratings?transportId=${transportId}`)
         const result = await response.json()
         
         if (result.success) {
@@ -118,7 +128,8 @@ export default function TransportDetailedRating({ transportId, onClose }) {
       setSubmitting(true)
       setSubmitError(null)
       
-      const response = await fetch('/api/transport-detailed-ratings', {
+      // ZMIANA: używamy istniejące API transport-ratings
+      const response = await fetch('/api/transport-ratings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -136,7 +147,7 @@ export default function TransportDetailedRating({ transportId, onClose }) {
         setSubmitSuccess(true)
         
         // Odśwież dane
-        const refreshResponse = await fetch(`/api/transport-detailed-ratings?transportId=${transportId}`)
+        const refreshResponse = await fetch(`/api/transport-ratings?transportId=${transportId}`)
         const refreshResult = await refreshResponse.json()
         
         if (refreshResult.success) {
@@ -230,42 +241,25 @@ export default function TransportDetailedRating({ transportId, onClose }) {
         </div>
         
         {error ? (
-          <div className="bg-red-50 text-red-700 p-4 rounded-md mb-4">
+          <div className="bg-red-50 text-red-700 p-4 rounded-md">
             {error}
           </div>
         ) : (
           <>
-            {/* Ogólne statystyki */}
-            {data?.stats?.totalRatings > 0 && (
-              <div className="bg-blue-50 p-4 rounded-md mb-6">
-                <h3 className="font-semibold mb-2">Podsumowanie ocen</h3>
-                <div className="flex items-center space-x-4">
-                  <span className="text-sm text-gray-600">
-                    Liczba ocen: <strong>{data.stats.totalRatings}</strong>
-                  </span>
-                  {data.stats.overallRatingPercentage !== null && (
-                    <span className="text-sm text-gray-600">
-                      Ogólna ocena: <strong>{data.stats.overallRatingPercentage}%</strong>
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Formularz oceniania */}
+            {/* Formularz oceny - tylko dla użytkowników którzy mogą ocenić */}
             {data?.canBeRated && (
-              <div className="bg-gray-50 p-6 rounded-md mb-6">
-                <h3 className="font-semibold mb-4">Oceń transport</h3>
-                <form onSubmit={handleSubmitRating}>
+              <div className="mb-8">
+                <h3 className="font-semibold text-lg mb-4">Oceń ten transport</h3>
+                <form onSubmit={handleSubmitRating} className="space-y-6">
                   {categories.map(category => (
-                    <div key={category.id} className="mb-6">
+                    <div key={category.id} className="border border-gray-200 rounded-md p-4">
                       <div className="flex items-center mb-4">
                         {category.icon}
                         <h4 className="font-medium text-lg ml-2">{category.title}</h4>
                       </div>
                       
                       {category.criteria.map(criteria => (
-                        <div key={criteria.key} className="mb-4 pl-8">
+                        <div key={criteria.key} className="mb-4">
                           <p className="text-gray-700 mb-2">{criteria.text}</p>
                           <div className="flex space-x-2">
                             {renderRatingButton(criteria.key, true, 'Tak')}
@@ -276,7 +270,7 @@ export default function TransportDetailedRating({ transportId, onClose }) {
                     </div>
                   ))}
                   
-                  <div className="mb-4">
+                  <div>
                     <label htmlFor="comment" className="block text-sm font-medium text-gray-700 mb-2">
                       Dodatkowy komentarz (opcjonalnie)
                     </label>
