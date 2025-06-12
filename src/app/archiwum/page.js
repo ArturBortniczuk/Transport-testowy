@@ -1,4 +1,4 @@
-// src/app/archiwum/page.js - NOWY ZAJEBISTY DESIGN
+// src/app/archiwum/page.js - POPRAWIONA WERSJA Z LISTĄ
 'use client'
 import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
@@ -19,12 +19,15 @@ import {
   Calendar, 
   Trash2,
   Filter,
-  TrendingUp,
   Package,
   Route,
   Eye,
   ThumbsUp,
-  ThumbsDown
+  ThumbsDown,
+  FileText,
+  Phone,
+  Hash,
+  MessageSquare
 } from 'lucide-react'
 import TransportRating from '@/components/TransportRating'
 import TransportRatingBadge from '@/components/TransportRatingBadge'
@@ -39,9 +42,10 @@ export default function ArchiwumPage() {
   const [exportFormat, setExportFormat] = useState('xlsx')
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage] = useState(12)
+  const [itemsPerPage] = useState(10)
   const [selectedTransport, setSelectedTransport] = useState(null)
   const [showRatingModal, setShowRatingModal] = useState(false)
+  const [expandedRows, setExpandedRows] = useState({})
   const [ratableTransports, setRatableTransports] = useState({})
   const [ratingValues, setRatingValues] = useState({})
   
@@ -76,6 +80,14 @@ export default function ArchiwumPage() {
     { value: '10', label: 'Listopad' },
     { value: '11', label: 'Grudzień' }
   ]
+
+  // Funkcja przełączania rozwinięcia wiersza
+  const toggleRowExpand = (id) => {
+    setExpandedRows(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }))
+  }
 
   // Funkcja aktualizująca informację o możliwości oceny transportu i jego ocenie
   const handleCanBeRatedChange = (transportId, canBeRated, isPositive = null) => {
@@ -311,11 +323,16 @@ export default function ArchiwumPage() {
         'Odległość (km)': transport.distance || '',
         'Firma': transport.client_name || '',
         'MPK': transport.mpk || '',
+        'Nr WZ': transport.wz_number || '',
         'Kierowca': driver ? driver.imie : '',
         'Nr rejestracyjny': driver ? driver.tabliceRej : '',
         'Status': transport.status || '',
         'Data zakończenia': transport.completed_at ? format(new Date(transport.completed_at), 'dd.MM.yyyy HH:mm', { locale: pl }) : '',
         'Osoba zlecająca': transport.requester_name || '',
+        'Email zlecającego': transport.requester_email || '',
+        'Rynek': transport.market || '',
+        'Poziom załadunku': transport.loading_level || '',
+        'Uwagi': transport.notes || '',
         'Ocena': ratingValues[transport.id] 
           ? (ratingValues[transport.id].isPositive ? 'Pozytywna' : 'Negatywna') 
           : 'Brak oceny'
@@ -380,484 +397,531 @@ export default function ArchiwumPage() {
 
   // Statystyki
   const totalDistance = filteredArchiwum.reduce((sum, t) => sum + (t.distance || 0), 0)
-  const averageDistance = filteredArchiwum.length > 0 ? (totalDistance / filteredArchiwum.length).toFixed(1) : 0
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-        </div>
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
       </div>
     )
   }
 
   if (error) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-        <div className="text-red-500 text-center p-4 bg-red-50 rounded-lg">{error}</div>
-      </div>
-    )
+    return <div className="text-red-500 text-center p-4 bg-red-50 rounded-lg">{error}</div>
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        {/* Header z gradientem */}
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 mb-8 text-white shadow-xl">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-4xl font-bold mb-2">
-                📦 Archiwum Transportów
-              </h1>
-              <p className="text-blue-100 text-lg">
-                Przeglądaj, filtruj i oceniaj zrealizowane transporty
-              </p>
-            </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold">{filteredArchiwum.length}</div>
-              <div className="text-blue-100">transportów</div>
-            </div>
-          </div>
+    <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+      {/* Header */}
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          Archiwum Transportów
+        </h1>
+        <p className="text-gray-600">
+          Przeglądaj, filtruj i oceniaj zrealizowane transporty
+        </p>
+      </div>
+
+      {/* Panel filtrów */}
+      <div className="mb-8 bg-white rounded-lg shadow p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Filtry</h3>
+          <button
+            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+            className="flex items-center text-blue-600 hover:text-blue-700 font-medium"
+          >
+            <span>Filtry zaawansowane</span>
+            <ChevronDown 
+              size={16} 
+              className={`ml-1 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} 
+            />
+          </button>
         </div>
-
-        {/* Statystyki w kartach */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-100">
-            <div className="flex items-center">
-              <div className="p-3 bg-blue-100 rounded-full">
-                <Package className="w-6 h-6 text-blue-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Transporty</p>
-                <p className="text-2xl font-bold text-gray-900">{filteredArchiwum.length}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-100">
-            <div className="flex items-center">
-              <div className="p-3 bg-green-100 rounded-full">
-                <Route className="w-6 h-6 text-green-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Łączna odległość</p>
-                <p className="text-2xl font-bold text-gray-900">{totalDistance.toLocaleString('pl-PL')} km</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-100">
-            <div className="flex items-center">
-              <div className="p-3 bg-orange-100 rounded-full">
-                <TrendingUp className="w-6 h-6 text-orange-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Średnia odległość</p>
-                <p className="text-2xl font-bold text-gray-900">{averageDistance} km</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-100">
-            <div className="flex items-center">
-              <div className="p-3 bg-purple-100 rounded-full">
-                <Star className="w-6 h-6 text-purple-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Ocenione</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {Object.keys(ratingValues).length}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Panel filtrów */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-8 border border-gray-100">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center">
-              <Filter className="w-5 h-5 text-gray-600 mr-2" />
-              <h3 className="text-lg font-semibold text-gray-900">Filtry</h3>
-            </div>
-            <button
-              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-              className="flex items-center text-blue-600 hover:text-blue-700 font-medium transition-colors"
+        
+        {/* Podstawowe filtry */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Rok</label>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+              className="block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              <span>Filtry zaawansowane</span>
-              <ChevronDown 
-                className={`ml-1 w-4 h-4 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} 
-              />
-            </button>
+              {years.map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
           </div>
           
-          {/* Podstawowe filtry */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Rok</label>
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                {years.map(year => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Miesiąc</label>
-              <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                {months.map(month => (
-                  <option key={month.value} value={month.value}>{month.label}</option>
-                ))}
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Magazyn</label>
-              <select
-                value={selectedWarehouse}
-                onChange={(e) => setSelectedWarehouse(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">Wszystkie magazyny</option>
-                <option value="bialystok">Magazyn Białystok</option>
-                <option value="zielonka">Magazyn Zielonka</option>
-              </select>
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Miesiąc</label>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              {months.map(month => (
+                <option key={month.value} value={month.value}>{month.label}</option>
+              ))}
+            </select>
           </div>
-      
-          {/* Filtry zaawansowane */}
-          {showAdvancedFilters && (
-            <div className="space-y-4 border-t pt-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Kierowca</label>
-                  <select
-                    value={selectedDriver}
-                    onChange={(e) => setSelectedDriver(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="">Wszyscy kierowcy</option>
-                    {KIEROWCY.map(kierowca => (
-                      <option key={kierowca.id} value={kierowca.id}>
-                        {kierowca.imie}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Osoba zlecająca</label>
-                  <select
-                    value={selectedRequester}
-                    onChange={(e) => setSelectedRequester(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="">Wszyscy zlecający</option>
-                    {users.map(user => (
-                      <option key={user.email} value={user.email}>
-                        {user.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Budowa</label>
-                  <select
-                    value={selectedConstruction}
-                    onChange={(e) => setSelectedConstruction(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="">Wszystkie budowy</option>
-                    {constructions.map(construction => (
-                      <option key={construction.id} value={construction.id}>
-                        {construction.name} ({construction.mpk})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Ocena</label>
-                  <select
-                    value={selectedRating}
-                    onChange={(e) => setSelectedRating(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="all">Wszystkie oceny</option>
-                    <option value="positive">Pozytywne</option>
-                    <option value="negative">Negatywne</option>
-                    <option value="unrated">Nieocenione</option>
-                  </select>
-                </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Magazyn</label>
+            <select
+              value={selectedWarehouse}
+              onChange={(e) => setSelectedWarehouse(e.target.value)}
+              className="block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">Wszystkie magazyny</option>
+              <option value="bialystok">Magazyn Białystok</option>
+              <option value="zielonka">Magazyn Zielonka</option>
+            </select>
+          </div>
+        </div>
+    
+        {/* Filtry zaawansowane */}
+        {showAdvancedFilters && (
+          <div className="space-y-4 border-t pt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Kierowca</label>
+                <select
+                  value={selectedDriver}
+                  onChange={(e) => setSelectedDriver(e.target.value)}
+                  className="block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Wszyscy kierowcy</option>
+                  {KIEROWCY.map(kierowca => (
+                    <option key={kierowca.id} value={kierowca.id}>
+                      {kierowca.imie}
+                    </option>
+                  ))}
+                </select>
               </div>
               
-              {/* Eksport */}
-              <div className="flex flex-col sm:flex-row gap-4 items-end border-t pt-4">
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Format eksportu</label>
-                  <select
-                    value={exportFormat}
-                    onChange={(e) => setExportFormat(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="xlsx">Excel (XLSX)</option>
-                    <option value="csv">CSV</option>
-                  </select>
-                </div>
-                
-                <button
-                  onClick={exportData}
-                  disabled={filteredArchiwum.length === 0}
-                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Osoba zlecająca</label>
+                <select
+                  value={selectedRequester}
+                  onChange={(e) => setSelectedRequester(e.target.value)}
+                  className="block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
-                  <Download size={18} />
-                  <span>Eksportuj</span>
-                </button>
+                  <option value="">Wszyscy zlecający</option>
+                  {users.map(user => (
+                    <option key={user.email} value={user.email}>
+                      {user.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Budowa</label>
+                <select
+                  value={selectedConstruction}
+                  onChange={(e) => setSelectedConstruction(e.target.value)}
+                  className="block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Wszystkie budowy</option>
+                  {constructions.map(construction => (
+                    <option key={construction.id} value={construction.id}>
+                      {construction.name} ({construction.mpk})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ocena</label>
+                <select
+                  value={selectedRating}
+                  onChange={(e) => setSelectedRating(e.target.value)}
+                  className="block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="all">Wszystkie oceny</option>
+                  <option value="positive">Pozytywne</option>
+                  <option value="negative">Negatywne</option>
+                  <option value="unrated">Nieocenione</option>
+                </select>
               </div>
             </div>
+            
+            {/* Eksport */}
+            <div className="flex flex-col sm:flex-row gap-4 items-end border-t pt-4">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Format eksportu</label>
+                <select
+                  value={exportFormat}
+                  onChange={(e) => setExportFormat(e.target.value)}
+                  className="block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="xlsx">Excel (XLSX)</option>
+                  <option value="csv">CSV</option>
+                </select>
+              </div>
+              
+              <button
+                onClick={exportData}
+                disabled={filteredArchiwum.length === 0}
+                className="w-full sm:w-auto py-2 px-6 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+              >
+                <Download size={18} />
+                <span>Eksportuj</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Podsumowanie i status */}
+      <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="text-sm text-gray-700">
+          <span className="font-medium">Znaleziono:</span> {filteredArchiwum.length} transportów
+          {filteredArchiwum.length > 0 && (
+            <span className="ml-4">
+              <span className="font-medium">Całkowita odległość:</span> {totalDistance.toLocaleString('pl-PL')} km
+            </span>
           )}
         </div>
-
-        {/* Status usuwania */}
+        
         {deleteStatus && (
-          <div className={`mb-6 p-4 rounded-lg ${
-            deleteStatus.type === 'loading' ? 'bg-blue-50 text-blue-700' :
-            deleteStatus.type === 'success' ? 'bg-green-50 text-green-700' :
-            'bg-red-50 text-red-700'
+          <div className={`text-sm px-3 py-1 rounded ${
+            deleteStatus.type === 'loading' ? 'bg-blue-100 text-blue-700' :
+            deleteStatus.type === 'success' ? 'bg-green-100 text-green-700' :
+            'bg-red-100 text-red-700'
           }`}>
             {deleteStatus.message}
           </div>
         )}
+      </div>
 
-        {/* Grid transportów */}
+      {/* Lista transportów */}
+      <div className="space-y-4">
         {currentItems.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-            {currentItems.map((transport) => (
-              <div key={transport.id} className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
-                {/* Header karty */}
-                <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-4 text-white">
-                  <div className="flex justify-between items-start">
+          currentItems.map((transport) => (
+            <div key={transport.id} className="bg-white shadow rounded-lg overflow-hidden">
+              {/* Nagłówek karty transportu */}
+              <div 
+                className="flex items-center justify-between px-6 py-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
+                onClick={() => toggleRowExpand(transport.id)}
+              >
+                <div className="flex items-center space-x-6">
+                  {/* Data */}
+                  <div className="flex items-center text-gray-700">
+                    <Calendar size={16} className="mr-2" />
+                    <span className="font-medium">
+                      {format(new Date(transport.delivery_date), 'dd.MM.yyyy', { locale: pl })}
+                    </span>
+                  </div>
+                  
+                  {/* Miejsce docelowe */}
+                  <div className="flex items-center">
+                    <MapPin size={16} className="mr-2 text-blue-600" />
                     <div>
-                      <h3 className="font-bold text-lg flex items-center">
-                        <MapPin className="w-5 h-5 mr-2" />
-                        {transport.destination_city}
-                      </h3>
-                      <p className="text-blue-100 text-sm">
+                      <div className="font-medium text-gray-900">{transport.destination_city}</div>
+                      <div className="text-sm text-gray-600">
                         {transport.postal_code} {transport.street && `• ${transport.street}`}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm opacity-90">
-                        {format(new Date(transport.delivery_date), 'd MMM', { locale: pl })}
-                      </div>
-                      <div className="text-xs opacity-75">
-                        {format(new Date(transport.delivery_date), 'yyyy', { locale: pl })}
                       </div>
                     </div>
                   </div>
-                </div>
-
-                {/* Zawartość karty */}
-                <div className="p-4">
-                  {/* Informacje główne */}
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div className="flex items-center text-sm text-gray-600">
-                      <Building className={`w-4 h-4 mr-2 ${transport.source_warehouse === 'bialystok' ? 'text-red-500' : 'text-blue-500'}`} />
-                      <span className="truncate">
-                        {transport.source_warehouse === 'bialystok' ? 'Białystok' : 'Zielonka'}
-                      </span>
-                    </div>
-                    <div className="flex items-center text-sm text-gray-600">
-                      <Route className="w-4 h-4 mr-2 text-green-500" />
-                      <span>{transport.distance || 0} km</span>
-                    </div>
+                  
+                  {/* Magazyn */}
+                  <div className="hidden md:flex items-center text-gray-700">
+                    <Building size={16} className={`mr-2 ${transport.source_warehouse === 'bialystok' ? 'text-red-500' : 'text-blue-500'}`} />
+                    <span>
+                      {transport.source_warehouse === 'bialystok' ? 'Białystok' : 'Zielonka'}
+                    </span>
                   </div>
-
-                  {/* Klient i MPK */}
-                  <div className="mb-4">
-                    <p className="font-medium text-gray-900 truncate" title={transport.client_name}>
-                      {transport.client_name || 'Brak nazwy klienta'}
-                    </p>
-                    {transport.mpk && (
-                      <p className="text-sm text-gray-600">MPK: {transport.mpk}</p>
-                    )}
+                  
+                  {/* Odległość */}
+                  <div className="hidden lg:flex items-center text-gray-600">
+                    <Route size={16} className="mr-1 text-green-600" />
+                    <span>{transport.distance ? `${transport.distance} km` : 'N/A'}</span>
                   </div>
-
+                  
                   {/* Kierowca */}
-                  <div className="flex items-center mb-4">
-                    <Truck className="w-4 h-4 mr-2 text-gray-500" />
-                    <span className="text-sm text-gray-600 truncate">
+                  <div className="hidden xl:flex items-center text-gray-700">
+                    <Truck size={16} className="mr-2 text-green-500" />
+                    <span className="truncate max-w-32">
                       {getDriverInfo(transport.driver_id)}
                     </span>
                   </div>
-
-                  {/* Osoba zlecająca */}
-                  {transport.requester_name && (
-                    <div className="flex items-center mb-4">
-                      <User className="w-4 h-4 mr-2 text-gray-500" />
-                      <span className="text-sm text-gray-600 truncate">
-                        {transport.requester_name}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Data zakończenia */}
-                  {transport.completed_at && (
-                    <div className="flex items-center mb-4">
-                      <Calendar className="w-4 h-4 mr-2 text-gray-500" />
-                      <span className="text-sm text-gray-600">
-                        Zakończono: {format(new Date(transport.completed_at), 'd MMM yyyy, HH:mm', { locale: pl })}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Ocena transportu */}
-                  <div className="mb-4">
-                    <TransportRatingBadge 
-                      transportId={transport.id} 
-                      refreshTrigger={0}
-                      onCanBeRatedChange={(canBeRated, isPositive) => handleCanBeRatedChange(transport.id, canBeRated, isPositive)}
-                    />
-                  </div>
                 </div>
-
-                {/* Footer z przyciskami */}
-                <div className="bg-gray-50 px-4 py-3 border-t border-gray-100">
-                  <div className="flex justify-between items-center">
-                    {/* Przycisk oceny */}
-                    <div>
-                      {ratableTransports[transport.id] !== undefined && (
-                        ratableTransports[transport.id] ? (
-                          <button
-                            onClick={() => handleOpenRatingModal(transport)}
-                            className="flex items-center px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
-                          >
-                            <Star className="w-4 h-4 mr-1" />
-                            Oceń
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleOpenRatingModal(transport)}
-                            className="flex items-center px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
-                          >
-                            <Eye className="w-4 h-4 mr-1" />
-                            Zobacz oceny
-                          </button>
-                        )
-                      )}
-                    </div>
-
-                    {/* Przycisk usuwania dla adminów */}
-                    {isAdmin && (
+                
+                {/* Ocena i przyciski */}
+                <div className="flex items-center space-x-3">
+                  <TransportRatingBadge 
+                    transportId={transport.id} 
+                    refreshTrigger={0}
+                    onCanBeRatedChange={(canBeRated, isPositive) => handleCanBeRatedChange(transport.id, canBeRated, isPositive)}
+                  />
+                  
+                  {/* Przycisk oceny */}
+                  {ratableTransports[transport.id] !== undefined && (
+                    ratableTransports[transport.id] ? (
                       <button
-                        onClick={() => handleDeleteTransport(transport.id)}
-                        className="flex items-center px-3 py-1.5 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium"
-                        title="Usuń transport"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenRatingModal(transport);
+                        }}
+                        className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        Oceń
                       </button>
-                    )}
-                  </div>
+                    ) : (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenRatingModal(transport);
+                        }}
+                        className="px-3 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                      >
+                        Zobacz oceny
+                      </button>
+                    )
+                  )}
+                  
+                  <ChevronDown 
+                    size={20} 
+                    className={`text-gray-500 transition-transform ${expandedRows[transport.id] ? 'rotate-180' : ''}`} 
+                  />
                 </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-12">
-            <div className="text-center">
-              <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Brak transportów</h3>
-              <p className="text-gray-600">
-                Nie znaleziono transportów spełniających wybrane kryteria filtrowania.
-              </p>
-              <p className="text-gray-500 mt-2">
-                Spróbuj zmienić filtry lub wybierz inny okres.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Paginacja */}
-        {totalPages > 1 && (
-          <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-6">
-            <div className="flex flex-col sm:flex-row justify-between items-center">
-              <div className="text-sm text-gray-700 mb-4 sm:mb-0">
-                <span className="font-medium">Strona {currentPage} z {totalPages}</span>
-                <span className="mx-2">•</span>
-                <span>Łącznie {filteredArchiwum.length} transportów</span>
               </div>
               
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => paginate(Math.max(1, currentPage - 1))}
-                  disabled={currentPage === 1}
-                  className="flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronLeft className="w-4 h-4 mr-1" />
-                  Poprzednia
-                </button>
-                
-                {/* Numery stron */}
-                <div className="hidden sm:flex space-x-1">
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    let pageNum;
-                    if (totalPages <= 5) {
-                      pageNum = i + 1;
-                    } else if (currentPage <= 3) {
-                      pageNum = i + 1;
-                    } else if (currentPage >= totalPages - 2) {
-                      pageNum = totalPages - 4 + i;
-                    } else {
-                      pageNum = currentPage - 2 + i;
-                    }
-                    
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => paginate(pageNum)}
-                        className={`w-10 h-10 flex items-center justify-center text-sm font-medium rounded-lg transition-colors ${
-                          currentPage === pageNum
-                            ? 'bg-blue-600 text-white shadow-lg'
-                            : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
+              {/* Szczegóły transportu - widoczne po rozwinięciu */}
+              {expandedRows[transport.id] && (
+                <div className="px-6 py-4 border-t bg-white">
+                  {/* Sekcja 1: Informacje o kliencie i zamówieniu */}
+                  <div className="mb-6">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                      <Package className="w-4 h-4 mr-2 text-blue-600" />
+                      Informacje o zamówieniu
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Klient</label>
+                        <p className="mt-1 text-gray-900 font-medium">{transport.client_name || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">MPK</label>
+                        <p className="mt-1 text-gray-900">{transport.mpk || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Nr WZ</label>
+                        <p className="mt-1 text-gray-900">{transport.wz_number || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Rynek</label>
+                        <p className="mt-1 text-gray-900">{transport.market || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Poziom załadunku</label>
+                        <p className="mt-1 text-gray-900">{transport.loading_level || 'N/A'}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sekcja 2: Transport i logistyka */}
+                  <div className="mb-6">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                      <Truck className="w-4 h-4 mr-2 text-green-600" />
+                      Transport i logistyka
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Kierowca</label>
+                        <p className="mt-1 text-gray-900">{getDriverInfo(transport.driver_id)}</p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Magazyn źródłowy</label>
+                        <p className="mt-1 text-gray-900">
+                          {transport.source_warehouse === 'bialystok' ? 'Magazyn Białystok' : 'Magazyn Zielonka'}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Odległość</label>
+                        <p className="mt-1 text-gray-900">{transport.distance || 0} km</p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Data dostawy</label>
+                        <p className="mt-1 text-gray-900">
+                          {format(new Date(transport.delivery_date), 'dd.MM.yyyy', { locale: pl })}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Data zakończenia</label>
+                        <p className="mt-1 text-gray-900">
+                          {transport.completed_at 
+                            ? format(new Date(transport.completed_at), 'dd.MM.yyyy HH:mm', { locale: pl })
+                            : 'N/A'
+                          }
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sekcja 3: Osoby odpowiedzialne */}
+                  <div className="mb-6">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                      <User className="w-4 h-4 mr-2 text-purple-600" />
+                      Osoby odpowiedzialne
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Osoba zlecająca</label>
+                        <p className="mt-1 text-gray-900">{transport.requester_name || 'N/A'}</p>
+                        {transport.requester_email && (
+                          <p className="text-sm text-gray-600">{transport.requester_email}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sekcja 4: Uwagi (jeśli istnieją) */}
+                  {transport.notes && (
+                    <div className="mb-6">
+                      <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                        <MessageSquare className="w-4 h-4 mr-2 text-orange-600" />
+                        Uwagi
+                      </h4>
+                      <div className="bg-gray-50 rounded-lg p-3">
+                        <p className="text-gray-800">{transport.notes}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sekcja 5: Ocena transportu (pełna) */}
+                  <div className="mb-6">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                      <Star className="w-4 h-4 mr-2 text-yellow-600" />
+                      Ocena transportu
+                    </h4>
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="flex items-center justify-between">
+                        <TransportRatingBadge 
+                          transportId={transport.id} 
+                          refreshTrigger={0}
+                          onCanBeRatedChange={(canBeRated, isPositive) => handleCanBeRatedChange(transport.id, canBeRated, isPositive)}
+                        />
+                        
+                        {/* Przyciski akcji oceny */}
+                        <div className="flex gap-2">
+                          {ratableTransports[transport.id] !== undefined && (
+                            ratableTransports[transport.id] ? (
+                              <button
+                                onClick={() => handleOpenRatingModal(transport)}
+                                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm font-medium"
+                              >
+                                <Star size={16} className="mr-2" />
+                                Oceń transport
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleOpenRatingModal(transport)}
+                                className="flex items-center px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors text-sm font-medium"
+                              >
+                                <Eye size={16} className="mr-2" />
+                                Zobacz oceny
+                              </button>
+                            )
+                          )}
+                          
+                          {/* Przycisk usuwania dla adminów */}
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleDeleteTransport(transport.id)}
+                              className="flex items-center px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-sm font-medium"
+                            >
+                              <Trash2 size={16} className="mr-2" />
+                              Usuń
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                
-                <button
-                  onClick={() => paginate(Math.min(totalPages, currentPage + 1))}
-                  disabled={currentPage === totalPages}
-                  className="flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  Następna
-                  <ChevronRight className="w-4 h-4 ml-1" />
-                </button>
-              </div>
+              )}
+            </div>
+          ))
+        ) : (
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="flex flex-col items-center justify-center py-12">
+              <FileText size={48} className="text-gray-400 mb-4" />
+              <p className="text-gray-500 text-lg font-medium">Brak transportów w wybranym okresie</p>
+              <p className="text-gray-400 mt-2">Spróbuj zmienić kryteria filtrowania</p>
             </div>
           </div>
         )}
-
-        {/* Modal oceniania transportu */}
-        {showRatingModal && selectedTransport && (
-          <TransportRating
-            transportId={selectedTransport.id}
-            onClose={handleCloseRating}
-          />
-        )}
       </div>
+      
+      {/* Paginacja */}
+      {totalPages > 1 && (
+        <div className="mt-8 bg-white rounded-lg shadow px-6 py-4 flex flex-col sm:flex-row justify-between items-center">
+          <div className="text-sm text-gray-700 mb-4 sm:mb-0">
+            <span className="font-medium">Strona {currentPage} z {totalPages}</span>
+            <span className="mx-2">•</span>
+            <span>Łącznie {filteredArchiwum.length} transportów</span>
+          </div>
+          
+          <div className="flex justify-center items-center space-x-2">
+            <button
+              onClick={() => paginate(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className="p-2 rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronLeft size={20} />
+            </button>
+            
+            {/* Wyświetlanie numerów stron */}
+            <div className="flex space-x-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => paginate(pageNum)}
+                    className={`w-10 h-10 flex items-center justify-center rounded-md text-sm font-medium transition-colors ${
+                      currentPage === pageNum
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+            
+            <button
+              onClick={() => paginate(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+              className="p-2 rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronRight size={20} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal oceniania transportu */}
+      {showRatingModal && selectedTransport && (
+        <TransportRating
+          transportId={selectedTransport.id}
+          onClose={handleCloseRating}
+        />
+      )}
     </div>
   );
 }
