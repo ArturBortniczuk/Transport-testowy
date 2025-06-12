@@ -1,4 +1,4 @@
-// src/app/archiwum/page.js - POPRAWIONA WERSJA
+// src/app/archiwum/page.js - KOMPLETNIE NAPRAWIONA WERSJA BEZ BŁĘDÓW SKŁADNI
 'use client'
 import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
@@ -54,7 +54,7 @@ export default function ArchiwumPage() {
   const [selectedWarehouse, setSelectedWarehouse] = useState('')
   const [selectedDriver, setSelectedDriver] = useState('')
   const [selectedRequester, setSelectedRequester] = useState('')
-  const [selectedRating, setSelectedRating] = useState('all') // POPRAWKA: Uproszczony filtr ocen
+  const [selectedRating, setSelectedRating] = useState('all')
   const [selectedConstruction, setSelectedConstruction] = useState('')
   
   // Lista użytkowników, budów i innych danych do filtrowania
@@ -366,18 +366,6 @@ export default function ArchiwumPage() {
   // Statystyki
   const totalDistance = filteredArchiwum.reduce((sum, t) => sum + (t.distance || 0), 0)
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return <div className="text-red-500 text-center p-4 bg-red-50 rounded-lg">{error}</div>
-  }
-
   // POPRAWKA: Komponent do wyświetlania przycisku oceny
   const RatingButton = ({ transport }) => {
     const [ratingInfo, setRatingInfo] = useState(null)
@@ -448,6 +436,18 @@ export default function ArchiwumPage() {
         Oceń
       </button>
     )
+  }
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return <div className="text-red-500 text-center p-4 bg-red-50 rounded-lg">{error}</div>
   }
 
   return (
