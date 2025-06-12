@@ -914,6 +914,8 @@ export default function ArchiwumPage() {
                 </div>
               )}
             </div>
+              )}
+            </div>
           ))
         ) : (
           <div className="bg-white rounded-lg shadow overflow-hidden">
