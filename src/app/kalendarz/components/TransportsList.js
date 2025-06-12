@@ -24,7 +24,16 @@ export default function TransportsList({
   
   if (!selectedDate) return null;
 
-  const dateKey = format(selectedDate, 'yyyy-MM-dd');
+  if (!selectedDate || !(selectedDate instanceof Date)) {
+    return (
+      <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+        <p className="text-gray-500 text-center">Wybierz datę aby zobaczyć transporty</p>
+      </div>
+    );
+  }
+
+  
+  const dateKey = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : null;
   const transportyNaDzien = transporty[dateKey] || [];
   
   // Pobierz uprawnienia użytkownika z localStorage
