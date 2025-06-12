@@ -1,4 +1,4 @@
-// src/app/archiwum/page.js - POPRAWIONA WERSJA Z LISTĄ
+// src/app/archiwum/page.js - NAPRAWIONY BEZ BŁĘDÓW SKŁADNI
 'use client'
 import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
@@ -703,47 +703,10 @@ export default function ArchiwumPage() {
                     />
                   </div>
                 </div>
-                
-                {/* Ocena i przyciski */}
-                <div className="flex items-center space-x-3">
-                  <TransportRatingBadge 
-                    transportId={transport.id} 
-                    refreshTrigger={0}
-                    onCanBeRatedChange={(canBeRated, isPositive) => handleCanBeRatedChange(transport.id, canBeRated, isPositive)}
-                  />
-                  
-                  {/* Przycisk oceny */}
-                  {ratableTransports[transport.id] !== undefined && (
-                    ratableTransports[transport.id] ? (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenRatingModal(transport);
-                        }}
-                        className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                      >
-                        Oceń
-                      </button>
-                    ) : (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenRatingModal(transport);
-                        }}
-                        className="px-3 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
-                      >
-                        Zobacz oceny
-                      </button>
-                    )
-                  )}
-                  
-                  <ChevronDown 
-                    size={20} 
-                    className={`text-gray-500 transition-transform ${expandedRows[transport.id] ? 'rotate-180' : ''}`} 
-                  />
-                </div>
               </div>
               
+              {/* Szczegóły transportu - widoczne po rozwinięciu */}
+              {expandedRows[transport.id] && (
                 <div className="px-6 py-6 border-t bg-white">
                   {/* Tabelka z podstawowymi informacjami */}
                   <div className="bg-gray-50 rounded-lg p-4 mb-6">
@@ -912,8 +875,6 @@ export default function ArchiwumPage() {
                     </div>
                   </div>
                 </div>
-              )}
-            </div>
               )}
             </div>
           ))
