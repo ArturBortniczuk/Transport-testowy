@@ -1,4 +1,4 @@
-// src/app/kalendarz/components/TransportsList.js - zaktualizowany fragment
+// src/app/kalendarz/components/TransportsList.js - KOMPLETNY POPRAWIONY KOD
 import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
 import { KIEROWCY, POJAZDY } from '../constants';
@@ -21,9 +21,10 @@ export default function TransportsList({
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [selectedTransport, setSelectedTransport] = useState(null);
   const [ratingRefreshTrigger, setRatingRefreshTrigger] = useState(0);
+  const [userPermissions, setUserPermissions] = useState({});
+  const [isLoading, setIsLoading] = useState(true);
   
-  if (!selectedDate) return null;
-
+  // WALIDACJA selectedDate - to naprawia błąd React #310
   if (!selectedDate || !(selectedDate instanceof Date)) {
     return (
       <div className="mt-4 p-4 bg-gray-50 rounded-lg">
@@ -32,24 +33,33 @@ export default function TransportsList({
     );
   }
 
-  
-  const dateKey = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : null;
+  const dateKey = format(selectedDate, 'yyyy-MM-dd');
   const transportyNaDzien = transporty[dateKey] || [];
   
-  // Pobierz uprawnienia użytkownika z localStorage
-  const [userPermissions, setUserPermissions] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  
+  // Pobierz uprawnienia z API zamiast localStorage
   useEffect(() => {
-    const permissions = localStorage.getItem('userPermissions');
-    if (permissions) {
-      setUserPermissions(JSON.parse(permissions));
+    async function fetchUserPermissions() {
+      try {
+        const response = await fetch('/api/user');
+        const data = await response.json();
+        
+        console.log('Dane użytkownika z API:', data);
+        if (data.isAuthenticated && data.user) {
+          setUserPermissions(data.user.permissions || {});
+          console.log('Pobrane uprawnienia:', data.user.permissions);
+        }
+      } catch (error) {
+        console.error('Błąd pobierania uprawnień użytkownika:', error);
+      } finally {
+        setIsLoading(false);
+      }
     }
-    setIsLoading(false);
+
+    fetchUserPermissions();
   }, []);
   
-  const canEdit = userPermissions?.calendar?.edit === true;
-  const canMarkAsCompleted = userPermissions?.calendar?.edit === true;
+  const canEdit = userPermissions?.calendar?.edit === true || userRole === 'admin';
+  const canMarkAsCompleted = userPermissions?.transport?.markAsCompleted === true || userRole === 'admin';
   
   // Funkcja otwierająca modal z oceną
   const handleOpenRating = (transport) => {
@@ -61,10 +71,10 @@ export default function TransportsList({
   const handleCloseRating = () => {
     setShowRatingModal(false);
     setSelectedTransport(null);
-    setRatingRefreshTrigger(prev => prev + 1); // Odśwież badge'e
+    setRatingRefreshTrigger(prev => prev + 1);
   };
   
-  // Filtrujemy według aktywnych filtrów, ale nie filtrujemy po statusie
+  // Filtrujemy według aktywnych filtrów
   const filtrowaneTransporty = transportyNaDzien.filter(transport => {
     // Sprawdź czy transport jest zrealizowany
     const isCompleted = transport.status === 'completed' || transport.status === 'zakończony';
@@ -84,9 +94,19 @@ export default function TransportsList({
     return pasujeMagazyn && pasujeKierowca && pasujePojazd && pasujeRynek;
   });
 
-  // Sprawdź uprawnienia do edycji konkretnego transportu
+  // POPRAWIONA funkcja sprawdzająca czy użytkownik może edytować transport
   const canEditTransport = (transport) => {
-    if (!canEdit) return false;
+    // Admin może zawsze edytować
+    if (userRole === 'admin') return true;
+    
+    // Sprawdź czy użytkownik ma rolę magazynu
+    const isMagazynRole = userRole === 'magazyn' || 
+                         userRole?.startsWith('magazyn_') ||
+                         userRole === 'magazyn_bialystok' ||
+                         userRole === 'magazyn_zielonka';
+    
+    // Sprawdzamy czy użytkownik ma odpowiednie uprawnienia
+    const hasPermission = userPermissions?.calendar?.edit === true;
     
     // Dla roli magazynu sprawdzamy, czy to jego magazyn
     const isCorrectMagazyn = transport.zrodlo === 'bialystok' && 
@@ -237,12 +257,13 @@ export default function TransportsList({
                       {/* Nagłówek transportu */}
                       <div className="flex items-center space-x-3 mb-2">
                         <h3 className="text-lg font-semibold text-gray-900">
-                          Transport #{transport.id}
+                          {transport.miasto} ({transport.kodPocztowy})
                         </h3>
                         
                         {/* Status badges */}
                         {isCompleted && (
-                          <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                          <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full flex items-center">
+                            <CheckCircle className="w-3 h-3 mr-1" />
                             Zrealizowany
                           </span>
                         )}
@@ -255,25 +276,9 @@ export default function TransportsList({
                         )}
                       </div>
 
-                      {/* Główne informacje */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                        <div>
-                          <p className="text-sm text-gray-600">
-                            <strong>Trasa:</strong> {transport.zrodlo} → {transport.cel}
-                          </p>
-                          <p className="text-sm text-gray-600">
-                            <strong>Data:</strong> {format(new Date(transport.data), 'dd.MM.yyyy', { locale: pl })}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-600">
-                            <strong>Kierowca:</strong> {getDriverInfo(transport.kierowcaId)}
-                          </p>
-                          <p className="text-sm text-gray-600">
-                            <strong>Pojazd:</strong> {getVehicleInfo(transport.pojazdId, transport.kierowcaId)}
-                          </p>
-                        </div>
-                      </div>
+                      {transport.ulica && (
+                        <p className="text-gray-600 mb-2">{transport.ulica}</p>
+                      )}
 
                       {/* Szczegółowe informacje */}
                       <div className="text-sm text-gray-500 space-y-1 mt-3">
@@ -287,6 +292,9 @@ export default function TransportsList({
                           <p><strong>MPK:</strong> {transport.mpk}</p>
                         )}
                         
+                        <p><strong>Kierowca:</strong> {getDriverInfo(transport.kierowcaId)}</p>
+                        <p><strong>Pojazd:</strong> {getVehicleInfo(transport.pojazdId, transport.kierowcaId)}</p>
+                        <p><strong>Magazyn:</strong> {transport.zrodlo}</p>
                         <p><strong>Odległość:</strong> {transport.odleglosc} km</p>
                         <p><strong>Poziom załadunku:</strong> {transport.poziomZaladunku}</p>
                         <p><strong>WZ:</strong> {transport.numerWZ}</p>
@@ -299,7 +307,7 @@ export default function TransportsList({
                       {isConnected && connectedTransport && (
                         <div className="mt-3 p-3 bg-blue-50 rounded-md">
                           <p className="text-sm text-blue-800">
-                            <strong>Połączony z:</strong> Transport #{connectedTransport.id} - {connectedTransport.cel}
+                            <strong>Połączony z:</strong> {connectedTransport.miasto} ({connectedTransport.kodPocztowy})
                           </p>
                           {isSource && (
                             <p className="text-xs text-blue-600 mt-1">
@@ -382,7 +390,7 @@ export default function TransportsList({
                               Rozłącz
                             </button>
                           ) : (
-                            canBeConnected(transport) && (
+                            canBeConnected(transport) && onConnectTransport && (
                               <button
                                 onClick={() => onConnectTransport(transport)}
                                 className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center"
