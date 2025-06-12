@@ -1,4 +1,4 @@
-// src/app/archiwum/page.js - NAPRAWIONY BEZ BŁĘDÓW SKŁADNI
+// src/app/archiwum/page.js - POPRAWIONA WERSJA
 'use client'
 import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
@@ -27,7 +27,8 @@ import {
   FileText,
   Phone,
   Hash,
-  MessageSquare
+  MessageSquare,
+  Edit
 } from 'lucide-react'
 import TransportRating from '@/components/TransportRating'
 import TransportRatingBadge from '@/components/TransportRatingBadge'
@@ -46,9 +47,6 @@ export default function ArchiwumPage() {
   const [selectedTransport, setSelectedTransport] = useState(null)
   const [showRatingModal, setShowRatingModal] = useState(false)
   const [expandedRows, setExpandedRows] = useState({})
-  // USUNIĘTE - nie potrzebujemy już callbacków które powodowały miganie
-  // const [ratableTransports, setRatableTransports] = useState({})
-  // const [ratingValues, setRatingValues] = useState({})
 
   // Filtry
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
@@ -56,57 +54,52 @@ export default function ArchiwumPage() {
   const [selectedWarehouse, setSelectedWarehouse] = useState('')
   const [selectedDriver, setSelectedDriver] = useState('')
   const [selectedRequester, setSelectedRequester] = useState('')
-  const [selectedRating, setSelectedRating] = useState('all')
+  const [selectedRating, setSelectedRating] = useState('all') // POPRAWKA: Uproszczony filtr ocen
   const [selectedConstruction, setSelectedConstruction] = useState('')
   
-  // Lista użytkowników (handlowców) do filtrowania
+  // Lista użytkowników, budów i innych danych do filtrowania
   const [users, setUsers] = useState([])
   const [constructions, setConstructions] = useState([])
-  
+
   // Lista dostępnych lat i miesięcy
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
   const months = [
     { value: 'all', label: 'Wszystkie miesiące' },
-    { value: '0', label: 'Styczeń' },
-    { value: '1', label: 'Luty' },
-    { value: '2', label: 'Marzec' },
-    { value: '3', label: 'Kwiecień' },
-    { value: '4', label: 'Maj' },
-    { value: '5', label: 'Czerwiec' },
-    { value: '6', label: 'Lipiec' },
-    { value: '7', label: 'Sierpień' },
-    { value: '8', label: 'Wrzesień' },
-    { value: '9', label: 'Październik' },
-    { value: '10', label: 'Listopad' },
-    { value: '11', label: 'Grudzień' }
+    { value: 0, label: 'Styczeń' },
+    { value: 1, label: 'Luty' },
+    { value: 2, label: 'Marzec' },
+    { value: 3, label: 'Kwiecień' },
+    { value: 4, label: 'Maj' },
+    { value: 5, label: 'Czerwiec' },
+    { value: 6, label: 'Lipiec' },
+    { value: 7, label: 'Sierpień' },
+    { value: 8, label: 'Wrzesień' },
+    { value: 9, label: 'Październik' },
+    { value: 10, label: 'Listopad' },
+    { value: 11, label: 'Grudzień' }
   ]
 
-  // Funkcja przełączania rozwinięcia wiersza
-  const toggleRowExpand = (id) => {
-    setExpandedRows(prev => ({
-      ...prev,
-      [id]: !prev[id]
-    }))
-  }
-
-  // USUNIĘTE - funkcja która powodowała nieskończone re-rendery
-  // const handleCanBeRatedChange = (transportId, canBeRated, isPositive = null) => { ... }
+  // POPRAWKA: Opcje filtra ocen - uproszczone
+  const ratingOptions = [
+    { value: 'all', label: 'Wszystkie transporty' },
+    { value: 'rated', label: 'Tylko ocenione' },
+    { value: 'unrated', label: 'Tylko nieocenione' }
+  ]
 
   useEffect(() => {
-    // Sprawdź czy użytkownik jest administratorem
     const checkAdmin = async () => {
       try {
-        const response = await fetch('/api/check-admin')
-        const data = await response.json()
-        setIsAdmin(data.isAdmin)
+        const response = await fetch('/api/auth/check')
+        if (response.ok) {
+          const data = await response.json()
+          setIsAdmin(data.isAdmin)
+        }
       } catch (error) {
-        console.error('Błąd sprawdzania uprawnień administratora:', error)
-        setIsAdmin(false)
+        console.error('Błąd sprawdzania uprawnień:', error)
       }
     }
-    
-    // Pobierz listę użytkowników (handlowców)
+
     const fetchUsers = async () => {
       try {
         const response = await fetch('/api/users/list')
@@ -119,7 +112,6 @@ export default function ArchiwumPage() {
       }
     }
 
-    // Pobierz listę budów do filtrowania
     const fetchConstructions = async () => {
       try {
         const response = await fetch('/api/constructions')
@@ -138,7 +130,6 @@ export default function ArchiwumPage() {
     fetchArchivedTransports()
   }, [])
 
-  // Pobierz dane archiwum z API
   const fetchArchivedTransports = async () => {
     try {
       setLoading(true)
@@ -162,11 +153,11 @@ export default function ArchiwumPage() {
     }
   }
   
-  // UPROSZCZONE filtrowanie - bez skomplikowanych warunków na oceny
-  const applyFilters = (transports, year, month, warehouse, driver, requester, rating, construction) => {
+  // POPRAWKA: Uproszony system filtrowania
+  const applyFilters = async (transports, year, month, warehouse, driver, requester, rating, construction) => {
     if (!transports) return
     
-    const filtered = transports.filter(transport => {
+    let filtered = transports.filter(transport => {
       const date = new Date(transport.delivery_date)
       const transportYear = date.getFullYear()
       
@@ -193,9 +184,6 @@ export default function ArchiwumPage() {
         return false
       }
       
-      // USUNIĘTE - skomplikowane filtrowanie po ocenach które powodowało problemy
-      // if (rating !== 'all') { ... }
-      
       if (construction) {
         const selectedConstruction = constructions.find(c => c.id.toString() === construction);
         if (selectedConstruction) {
@@ -211,16 +199,37 @@ export default function ArchiwumPage() {
       
       return true
     })
+
+    // POPRAWKA: Filtrowanie po ocenach - teraz async żeby sprawdzić oceny
+    if (rating !== 'all') {
+      const ratingsPromises = filtered.map(async (transport) => {
+        try {
+          const response = await fetch(`/api/transport-simple-rating?transportId=${transport.id}`)
+          const data = await response.json()
+          
+          if (rating === 'rated') {
+            return data.success && data.totalRatings > 0 ? transport : null
+          } else if (rating === 'unrated') {
+            return data.success && data.totalRatings === 0 ? transport : null
+          }
+          return transport
+        } catch (error) {
+          console.error('Błąd sprawdzania oceny transportu:', error)
+          return transport // W przypadku błędu, zachowaj transport
+        }
+      })
+
+      const ratingsResults = await Promise.all(ratingsPromises)
+      filtered = ratingsResults.filter(transport => transport !== null)
+    }
     
     setFilteredArchiwum(filtered)
   }
 
-  // UPROSZCZONE - bez skomplikowanych zależności
   useEffect(() => {
     applyFilters(archiwum, selectedYear, selectedMonth, selectedWarehouse, selectedDriver, selectedRequester, selectedRating, selectedConstruction)
-  }, [selectedYear, selectedMonth, selectedWarehouse, selectedDriver, selectedRequester, selectedRating, selectedConstruction, archiwum])
+  }, [selectedYear, selectedMonth, selectedWarehouse, selectedDriver, selectedRequester, selectedRating, selectedConstruction, archiwum, constructions])
 
-  // Funkcja do usuwania transportu
   const handleDeleteTransport = async (id) => {
     if (!confirm('Czy na pewno chcesz usunąć ten transport?')) {
       return
@@ -254,21 +263,17 @@ export default function ArchiwumPage() {
     }
   }
 
-  // Funkcja do otwierania modalu ocen
   const handleOpenRatingModal = (transport) => {
     setSelectedTransport(transport)
     setShowRatingModal(true)
   }
 
-  // Funkcja do zamykania modalu ocen
   const handleCloseRating = () => {
     setShowRatingModal(false)
     setSelectedTransport(null)
-    // Odświeżenie po zamknięciu modalu
-    fetchArchivedTransports()
+    fetchArchivedTransports() // Odśwież dane po zamknięciu modalu
   }
 
-  // Funkcja pomocnicza do znajdowania danych kierowcy
   const getDriverInfo = (driverId) => {
     const driver = KIEROWCY.find(k => k.id === parseInt(driverId))
     if (!driver) return 'Brak danych'
@@ -279,7 +284,6 @@ export default function ArchiwumPage() {
     return `${driver.imie} (${vehicleInfo})`
   }
 
-  // Funkcja eksportująca dane do pliku
   const exportData = () => {
     if (filteredArchiwum.length === 0) {
       alert('Brak danych do eksportu')
@@ -302,24 +306,13 @@ export default function ArchiwumPage() {
         'MPK': transport.mpk || '',
         'Nr WZ': transport.wz_number || '',
         'Kierowca': driver ? driver.imie : '',
-        'Nr rejestracyjny': driver ? driver.tabliceRej : '',
-        'Status': transport.status || '',
-        'Data zakończenia': transport.completed_at ? format(new Date(transport.completed_at), 'dd.MM.yyyy HH:mm', { locale: pl }) : '',
-        'Osoba zlecająca': transport.requester_name || '',
-        'Email zlecającego': transport.requester_email || '',
-        'Rynek': transport.market || '',
-        'Poziom załadunku': transport.loading_level || '',
-        'Uwagi': transport.notes || '',
-        'Ocena': ratingValues[transport.id] 
-          ? (ratingValues[transport.id].isPositive ? 'Pozytywna' : 'Negatywna') 
-          : 'Brak oceny'
+        'Nr rejestracyjny': driver ? POJAZDY.find(p => p.id === parseInt(transport.driver_id))?.tabliceRej || '' : '',
+        'Zamówił': transport.requester_email || '',
+        'Uwagi': transport.notes || ''
       }
     })
     
-    const monthLabel = selectedMonth === 'all' ? 'wszystkie_miesiace' : 
-                     months.find(m => m.value === selectedMonth)?.label.toLowerCase() || selectedMonth
-    
-    const fileName = `transporty_${selectedYear}_${monthLabel}`
+    const fileName = `archiwum_transportow_${format(new Date(), 'yyyy-MM-dd')}`
     
     if (exportFormat === 'csv') {
       exportToCSV(dataToExport, fileName)
@@ -327,15 +320,14 @@ export default function ArchiwumPage() {
       exportToXLSX(dataToExport, fileName)
     }
   }
-  
-  // Eksport do CSV
+
   const exportToCSV = (data, fileName) => {
     const headers = Object.keys(data[0])
-    
     let csvContent = headers.join(';') + '\n'
+    
     data.forEach(item => {
       const row = headers.map(header => {
-        let cell = item[header] !== undefined && item[header] !== null ? item[header] : ''
+        let cell = item[header] ? item[header] : ''
         if (cell.toString().includes(',') || cell.toString().includes(';') || cell.toString().includes('\n')) {
           cell = `"${cell}"`
         }
@@ -354,7 +346,6 @@ export default function ArchiwumPage() {
     document.body.removeChild(link)
   }
 
-  // Eksport do XLSX
   const exportToXLSX = (data, fileName) => {
     const ws = XLSX.utils.json_to_sheet(data)
     const wb = XLSX.utils.book_new()
@@ -387,6 +378,78 @@ export default function ArchiwumPage() {
     return <div className="text-red-500 text-center p-4 bg-red-50 rounded-lg">{error}</div>
   }
 
+  // POPRAWKA: Komponent do wyświetlania przycisku oceny
+  const RatingButton = ({ transport }) => {
+    const [ratingInfo, setRatingInfo] = useState(null)
+    const [loading, setLoading] = useState(true)
+
+    useEffect(() => {
+      const fetchRatingInfo = async () => {
+        try {
+          // POPRAWKA: Sprawdzamy pełne API które ma informację o hasUserRated
+          const response = await fetch(`/api/transport-ratings?transportId=${transport.id}`)
+          const data = await response.json()
+          if (data.success) {
+            setRatingInfo({
+              canBeRated: data.canBeRated,
+              hasUserRated: data.hasUserRated,
+              totalRatings: data.stats?.totalRatings || 0
+            })
+          }
+        } catch (error) {
+          console.error('Błąd pobierania informacji o ocenie:', error)
+          // W przypadku błędu - zakładamy że transport można ocenić
+          setRatingInfo({
+            canBeRated: true,
+            hasUserRated: false,
+            totalRatings: 0
+          })
+        } finally {
+          setLoading(false)
+        }
+      }
+
+      fetchRatingInfo()
+    }, [transport.id])
+
+    if (loading) {
+      return <div className="w-20 h-8 bg-gray-100 rounded animate-pulse"></div>
+    }
+
+    // POPRAWKA: Jeśli transport nie można ocenić i użytkownik nie ocenił
+    if (!ratingInfo?.canBeRated && !ratingInfo?.hasUserRated) {
+      return (
+        <span className="text-gray-400 text-sm">
+          Nie można ocenić
+        </span>
+      )
+    }
+
+    // POPRAWKA: Jeśli użytkownik już ocenił - przycisk do edycji/przeglądania
+    if (ratingInfo?.hasUserRated) {
+      return (
+        <button
+          onClick={() => handleOpenRatingModal(transport)}
+          className="flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors text-sm"
+        >
+          <Edit size={14} className="mr-1" />
+          Zobacz/Edytuj
+        </button>
+      )
+    }
+
+    // POPRAWKA: Jeśli użytkownik nie ocenił ale może ocenić - przycisk do oceny
+    return (
+      <button
+        onClick={() => handleOpenRatingModal(transport)}
+        className="flex items-center px-3 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors text-sm"
+      >
+        <Star size={14} className="mr-1" />
+        Oceń
+      </button>
+    )
+  }
+
   return (
     <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
       {/* Header */}
@@ -395,9 +458,20 @@ export default function ArchiwumPage() {
           Archiwum Transportów
         </h1>
         <p className="text-gray-600">
-          Przeglądaj, filtruj i oceniaj zrealizowane transporty
+          Zarządzaj zakończonymi transportami i ich ocenami
         </p>
       </div>
+
+      {/* Status usuwania */}
+      {deleteStatus && (
+        <div className={`mb-4 p-4 rounded-lg ${
+          deleteStatus.type === 'loading' ? 'bg-blue-50 text-blue-700' :
+          deleteStatus.type === 'success' ? 'bg-green-50 text-green-700' :
+          'bg-red-50 text-red-700'
+        }`}>
+          {deleteStatus.message}
+        </div>
+      )}
 
       {/* Panel filtrów */}
       <div className="mb-8 bg-white rounded-lg shadow p-6">
@@ -414,496 +488,459 @@ export default function ArchiwumPage() {
             />
           </button>
         </div>
-        
+
         {/* Podstawowe filtry */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Rok</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Rok
+            </label>
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-              className="block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {years.map(year => (
                 <option key={year} value={year}>{year}</option>
               ))}
             </select>
           </div>
-          
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Miesiąc</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Miesiąc
+            </label>
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {months.map(month => (
-                <option key={month.value} value={month.value}>{month.label}</option>
+                <option key={month.value} value={month.value}>
+                  {month.label}
+                </option>
               ))}
             </select>
           </div>
-          
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Magazyn</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Magazyn
+            </label>
             <select
               value={selectedWarehouse}
               onChange={(e) => setSelectedWarehouse(e.target.value)}
-              className="block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Wszystkie magazyny</option>
-              <option value="bialystok">Magazyn Białystok</option>
-              <option value="zielonka">Magazyn Zielonka</option>
+              <option value="bialystok">Białystok</option>
+              <option value="zielonka">Zielonka</option>
+            </select>
+          </div>
+
+          {/* POPRAWKA: Uproszczony filtr ocen */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Status oceny
+            </label>
+            <select
+              value={selectedRating}
+              onChange={(e) => setSelectedRating(e.target.value)}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {ratingOptions.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>
-    
-        {/* Filtry zaawansowane */}
+
+        {/* Zaawansowane filtry */}
         {showAdvancedFilters && (
-          <div className="space-y-4 border-t pt-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Kierowca</label>
-                <select
-                  value={selectedDriver}
-                  onChange={(e) => setSelectedDriver(e.target.value)}
-                  className="block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Wszyscy kierowcy</option>
-                  {KIEROWCY.map(kierowca => (
-                    <option key={kierowca.id} value={kierowca.id}>
-                      {kierowca.imie}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Osoba zlecająca</label>
-                <select
-                  value={selectedRequester}
-                  onChange={(e) => setSelectedRequester(e.target.value)}
-                  className="block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Wszyscy zlecający</option>
-                  {users.map(user => (
-                    <option key={user.email} value={user.email}>
-                      {user.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Budowa</label>
-                <select
-                  value={selectedConstruction}
-                  onChange={(e) => setSelectedConstruction(e.target.value)}
-                  className="block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Wszystkie budowy</option>
-                  {constructions.map(construction => (
-                    <option key={construction.id} value={construction.id}>
-                      {construction.name} ({construction.mpk})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Ocena</label>
-                <select
-                  value={selectedRating}
-                  onChange={(e) => setSelectedRating(e.target.value)}
-                  className="block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="all">Wszystkie oceny</option>
-                  <option value="perfect">100% pozytywne</option>
-                  <option value="not_perfect">Nie 100% pozytywne</option>
-                  <option value="unrated">Nieocenione</option>
-                </select>
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-gray-200">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Kierowca
+              </label>
+              <select
+                value={selectedDriver}
+                onChange={(e) => setSelectedDriver(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Wszyscy kierowcy</option>
+                {KIEROWCY.map(driver => (
+                  <option key={driver.id} value={driver.id}>
+                    {driver.imie}
+                  </option>
+                ))}
+              </select>
             </div>
-            
-            {/* Eksport */}
-            <div className="flex flex-col sm:flex-row gap-4 items-end border-t pt-4">
-              <div className="flex-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Format eksportu</label>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Zamówił
+              </label>
+              <select
+                value={selectedRequester}
+                onChange={(e) => setSelectedRequester(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Wszyscy użytkownicy</option>
+                {users.map(user => (
+                  <option key={user.email} value={user.email}>
+                    {user.name || user.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Budowa
+              </label>
+              <select
+                value={selectedConstruction}
+                onChange={(e) => setSelectedConstruction(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Wszystkie budowy</option>
+                {constructions.map(construction => (
+                  <option key={construction.id} value={construction.id}>
+                    {construction.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Statystyki */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <Truck className="h-8 w-8 text-blue-600" />
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Liczba transportów</p>
+              <p className="text-2xl font-bold text-gray-900">{filteredArchiwum.length}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <Route className="h-8 w-8 text-green-600" />
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Łączna odległość</p>
+              <p className="text-2xl font-bold text-gray-900">{totalDistance.toLocaleString()} km</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <Download className="h-8 w-8 text-purple-600" />
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Eksport danych</p>
+              <div className="flex items-center mt-2">
                 <select
                   value={exportFormat}
                   onChange={(e) => setExportFormat(e.target.value)}
-                  className="block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="mr-2 border border-gray-300 rounded px-2 py-1 text-sm"
                 >
-                  <option value="xlsx">Excel (XLSX)</option>
+                  <option value="xlsx">Excel</option>
                   <option value="csv">CSV</option>
                 </select>
+                <button
+                  onClick={exportData}
+                  className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700"
+                >
+                  Eksportuj
+                </button>
               </div>
-              
-              <button
-                onClick={exportData}
-                disabled={filteredArchiwum.length === 0}
-                className="w-full sm:w-auto py-2 px-6 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-              >
-                <Download size={18} />
-                <span>Eksportuj</span>
-              </button>
             </div>
           </div>
-        )}
-      </div>
-
-      {/* Podsumowanie i status */}
-      <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="text-sm text-gray-700">
-          <span className="font-medium">Znaleziono:</span> {filteredArchiwum.length} transportów
-          {filteredArchiwum.length > 0 && (
-            <span className="ml-4">
-              <span className="font-medium">Całkowita odległość:</span> {totalDistance.toLocaleString('pl-PL')} km
-            </span>
-          )}
         </div>
-        
-        {deleteStatus && (
-          <div className={`text-sm px-3 py-1 rounded ${
-            deleteStatus.type === 'loading' ? 'bg-blue-100 text-blue-700' :
-            deleteStatus.type === 'success' ? 'bg-green-100 text-green-700' :
-            'bg-red-100 text-red-700'
-          }`}>
-            {deleteStatus.message}
-          </div>
-        )}
       </div>
 
       {/* Lista transportów */}
-      <div className="space-y-4">
-        {currentItems.length > 0 ? (
-          currentItems.map((transport) => (
-            <div key={transport.id} className="bg-white shadow rounded-lg overflow-hidden">
-              {/* Nagłówek karty transportu - kompaktowy grid */}
-              <div 
-                className="px-6 py-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
-                onClick={() => toggleRowExpand(transport.id)}
-              >
-                <div className="grid grid-cols-12 gap-4 items-center">
-                  {/* Data - 2 kolumny */}
-                  <div className="col-span-2 flex items-center text-gray-700">
-                    <Calendar size={14} className="mr-2 text-blue-600" />
-                    <span className="font-medium text-sm">
-                      {format(new Date(transport.delivery_date), 'dd.MM.yy', { locale: pl })}
-                    </span>
-                  </div>
-                  
-                  {/* Miejsce docelowe - 3 kolumny */}
-                  <div className="col-span-3">
-                    <div className="flex items-center">
-                      <MapPin size={14} className="mr-2 text-blue-600 flex-shrink-0" />
-                      <div className="min-w-0">
-                        <div className="font-medium text-gray-900 truncate">{transport.destination_city}</div>
-                        <div className="text-xs text-gray-600 truncate">
-                          {transport.postal_code}
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Data / Trasa
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Klient / MPK
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Kierowca
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Ocena
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Akcje
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {currentItems.map((transport) => (
+                <tr key={transport.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4">
+                    <div className="flex items-start">
+                      <Calendar size={16} className="text-gray-400 mt-1 mr-2" />
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {format(new Date(transport.delivery_date), 'dd.MM.yyyy', { locale: pl })}
+                        </div>
+                        <div className="text-sm text-gray-500 flex items-center mt-1">
+                          <MapPin size={12} className="mr-1" />
+                          {transport.destination_city}
+                          {transport.distance && (
+                            <span className="ml-2 text-blue-600">
+                              ({transport.distance} km)
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
-                  </div>
-                  
-                  {/* Klient - 2 kolumny */}
-                  <div className="col-span-2 hidden sm:block">
-                    <div className="text-sm font-medium text-gray-900 truncate" title={transport.client_name}>
-                      {transport.client_name || 'Brak nazwy'}
-                    </div>
-                    <div className="text-xs text-gray-600">
-                      {transport.mpk || 'Brak MPK'}
-                    </div>
-                  </div>
-                  
-                  {/* Magazyn - 1 kolumna */}
-                  <div className="col-span-1 hidden md:block text-center">
-                    <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                      transport.source_warehouse === 'bialystok' 
-                        ? 'bg-red-100 text-red-700' 
-                        : 'bg-blue-100 text-blue-700'
-                    }`}>
-                      {transport.source_warehouse === 'bialystok' ? 'BIA' : 'ZIE'}
-                    </div>
-                  </div>
-                  
-                  {/* Kierowca - 2 kolumny */}
-                  <div className="col-span-2 hidden lg:block">
-                    <div className="flex items-center">
-                      <Truck size={14} className="mr-2 text-green-600 flex-shrink-0" />
-                      <div className="min-w-0">
-                        <div className="text-sm text-gray-900 truncate">
-                          {KIEROWCY.find(k => k.id === parseInt(transport.driver_id))?.imie || 'Nieznany'}
+                  </td>
+
+                  <td className="px-6 py-4">
+                    <div className="flex items-start">
+                      <Building size={16} className="text-gray-400 mt-1 mr-2" />
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {transport.client_name || 'Brak nazwy'}
                         </div>
-                        <div className="text-xs text-gray-600">
-                          {transport.distance || 0} km
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Ocena i przyciski - 2 kolumny */}
-                  <div className="col-span-2 flex items-center justify-end space-x-2">
-                    <TransportRatingBadge 
-                      transportId={transport.id} 
-                      refreshTrigger={0}
-                    />
-                    
-                    {/* STAŁY przycisk oceny - bez migania */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenRatingModal(transport);
-                      }}
-                      className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                    >
-                      Oceń
-                    </button>
-                    
-                    <ChevronDown 
-                      size={16} 
-                      className={`text-gray-500 transition-transform ${expandedRows[transport.id] ? 'rotate-180' : ''}`} 
-                    />
-                  </div>
-                </div>
-              </div>
-              
-              {/* Szczegóły transportu - widoczne po rozwinięciu */}
-              {expandedRows[transport.id] && (
-                <div className="px-6 py-6 border-t bg-white">
-                  {/* Tabelka z podstawowymi informacjami */}
-                  <div className="bg-gray-50 rounded-lg p-4 mb-6">
-                    <table className="w-full">
-                      <tbody>
-                        <tr className="border-b border-gray-200 last:border-b-0">
-                          <td className="py-2 pr-4 text-sm font-medium text-gray-500 w-1/4">Pełny adres:</td>
-                          <td className="py-2 text-sm text-gray-900">
-                            {transport.destination_city}, {transport.postal_code}
-                            {transport.street && `, ${transport.street}`}
-                          </td>
-                        </tr>
-                        <tr className="border-b border-gray-200 last:border-b-0">
-                          <td className="py-2 pr-4 text-sm font-medium text-gray-500">Kierowca (pojazd):</td>
-                          <td className="py-2 text-sm text-gray-900">{getDriverInfo(transport.driver_id)}</td>
-                        </tr>
-                        <tr className="border-b border-gray-200 last:border-b-0">
-                          <td className="py-2 pr-4 text-sm font-medium text-gray-500">Magazyn → Odległość:</td>
-                          <td className="py-2 text-sm text-gray-900">
-                            {transport.source_warehouse === 'bialystok' ? 'Magazyn Białystok' : 'Magazyn Zielonka'} 
-                            → {transport.distance || 0} km
-                          </td>
-                        </tr>
-                        <tr className="border-b border-gray-200 last:border-b-0">
-                          <td className="py-2 pr-4 text-sm font-medium text-gray-500">Data dostawy:</td>
-                          <td className="py-2 text-sm text-gray-900">
-                            {format(new Date(transport.delivery_date), 'dd MMMM yyyy', { locale: pl })}
-                          </td>
-                        </tr>
-                        {transport.completed_at && (
-                          <tr className="border-b border-gray-200 last:border-b-0">
-                            <td className="py-2 pr-4 text-sm font-medium text-gray-500">Zakończono:</td>
-                            <td className="py-2 text-sm text-gray-900">
-                              {format(new Date(transport.completed_at), 'dd MMMM yyyy, HH:mm', { locale: pl })}
-                            </td>
-                          </tr>
+                        {transport.mpk && (
+                          <div className="text-sm text-gray-500 flex items-center mt-1">
+                            <Hash size={12} className="mr-1" />
+                            MPK: {transport.mpk}
+                          </div>
                         )}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Sekcja: Informacje o zamówieniu */}
-                  <div className="mb-6">
-                    <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
-                      <Package className="w-4 h-4 mr-2 text-blue-600" />
-                      Informacje o zamówieniu
-                    </h4>
-                    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                      <table className="w-full">
-                        <tbody>
-                          <tr className="border-b border-gray-100 last:border-b-0">
-                            <td className="px-4 py-3 text-sm font-medium text-gray-500 bg-gray-50 w-1/3">Klient</td>
-                            <td className="px-4 py-3 text-sm text-gray-900">{transport.client_name || 'N/A'}</td>
-                          </tr>
-                          <tr className="border-b border-gray-100 last:border-b-0">
-                            <td className="px-4 py-3 text-sm font-medium text-gray-500 bg-gray-50">MPK</td>
-                            <td className="px-4 py-3 text-sm text-gray-900">{transport.mpk || 'N/A'}</td>
-                          </tr>
-                          <tr className="border-b border-gray-100 last:border-b-0">
-                            <td className="px-4 py-3 text-sm font-medium text-gray-500 bg-gray-50">Nr WZ</td>
-                            <td className="px-4 py-3 text-sm text-gray-900">{transport.wz_number || 'N/A'}</td>
-                          </tr>
-                          <tr className="border-b border-gray-100 last:border-b-0">
-                            <td className="px-4 py-3 text-sm font-medium text-gray-500 bg-gray-50">Rynek</td>
-                            <td className="px-4 py-3 text-sm text-gray-900">{transport.market || 'N/A'}</td>
-                          </tr>
-                          <tr className="border-b border-gray-100 last:border-b-0">
-                            <td className="px-4 py-3 text-sm font-medium text-gray-500 bg-gray-50">Poziom załadunku</td>
-                            <td className="px-4 py-3 text-sm text-gray-900">{transport.loading_level || 'N/A'}</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Sekcja: Osoby odpowiedzialne */}
-                  <div className="mb-6">
-                    <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
-                      <User className="w-4 h-4 mr-2 text-purple-600" />
-                      Osoby odpowiedzialne
-                    </h4>
-                    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                      <table className="w-full">
-                        <tbody>
-                          <tr className="border-b border-gray-100 last:border-b-0">
-                            <td className="px-4 py-3 text-sm font-medium text-gray-500 bg-gray-50 w-1/3">Osoba zlecająca</td>
-                            <td className="px-4 py-3 text-sm text-gray-900">{transport.requester_name || 'N/A'}</td>
-                          </tr>
-                          {transport.requester_email && (
-                            <tr className="border-b border-gray-100 last:border-b-0">
-                              <td className="px-4 py-3 text-sm font-medium text-gray-500 bg-gray-50">Email</td>
-                              <td className="px-4 py-3 text-sm text-gray-900">{transport.requester_email}</td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Sekcja: Uwagi (jeśli istnieją) */}
-                  {transport.notes && (
-                    <div className="mb-6">
-                      <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
-                        <MessageSquare className="w-4 h-4 mr-2 text-orange-600" />
-                        Uwagi
-                      </h4>
-                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                        <p className="text-gray-800 text-sm">{transport.notes}</p>
+                        {transport.wz_number && (
+                          <div className="text-sm text-gray-500 flex items-center mt-1">
+                            <FileText size={12} className="mr-1" />
+                            WZ: {transport.wz_number}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  )}
+                  </td>
 
-                  {/* Sekcja: Ocena transportu */}
-                  <div className="mb-6">
-                    <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
-                      <Star className="w-4 h-4 mr-2 text-yellow-600" />
-                      Ocena transportu
-                    </h4>
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <TransportRatingBadge 
-                            transportId={transport.id} 
-                            refreshTrigger={0}
-                          />
-                          <span className="text-sm text-gray-600">
-                            Kliknij "Oceń transport" aby dodać ocenę
-                          </span>
+                  <td className="px-6 py-4">
+                    <div className="flex items-start">
+                      <User size={16} className="text-gray-400 mt-1 mr-2" />
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {getDriverInfo(transport.driver_id)}
                         </div>
-                        
-                        {/* STAŁE przyciski akcji - bez migania */}
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleOpenRatingModal(transport)}
-                            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm font-medium"
-                          >
-                            <Star size={16} className="mr-2" />
-                            Oceń transport
-                          </button>
-                          
-                          {/* Przycisk usuwania dla adminów */}
-                          {isAdmin && (
-                            <button
-                              onClick={() => handleDeleteTransport(transport.id)}
-                              className="flex items-center px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-sm font-medium"
-                            >
-                              <Trash2 size={16} className="mr-2" />
-                              Usuń
-                            </button>
-                          )}
+                        <div className="text-sm text-gray-500">
+                          {transport.source_warehouse === 'bialystok' ? 'Białystok' : 
+                           transport.source_warehouse === 'zielonka' ? 'Zielonka' : 
+                           transport.source_warehouse}
                         </div>
                       </div>
                     </div>
-                  </div>
-                </div>
-              )}
+                  </td>
+
+                  <td className="px-6 py-4">
+                    <div className="flex items-center">
+                      <TransportRatingBadge transportId={transport.id} />
+                    </div>
+                  </td>
+
+                  <td className="px-6 py-4">
+                    <div className="flex items-center space-x-2">
+                      <RatingButton transport={transport} />
+                      
+                      <button
+                        onClick={() => setExpandedRows(prev => ({
+                          ...prev,
+                          [transport.id]: !prev[transport.id]
+                        }))}
+                        className="flex items-center px-2 py-1 text-gray-600 hover:text-gray-900 rounded-md hover:bg-gray-100 transition-colors text-sm"
+                      >
+                        <Eye size={14} className="mr-1" />
+                        {expandedRows[transport.id] ? 'Ukryj' : 'Szczegóły'}
+                      </button>
+
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleDeleteTransport(transport.id)}
+                          className="flex items-center px-2 py-1 text-red-600 hover:text-red-900 rounded-md hover:bg-red-100 transition-colors text-sm"
+                        >
+                          <Trash2 size={14} className="mr-1" />
+                          Usuń
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+
+                {/* Rozwinięte szczegóły */}
+                {expandedRows[transport.id] && (
+                  <tr>
+                    <td colSpan="5" className="px-6 py-4 bg-gray-50">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <h4 className="font-medium text-gray-900 mb-2">Szczegóły transportu</h4>
+                          <div className="space-y-2 text-sm">
+                            {transport.street && (
+                              <div className="flex items-center">
+                                <MapPin size={14} className="text-gray-400 mr-2" />
+                                <span className="text-gray-600">Adres:</span>
+                                <span className="ml-1">{transport.street}</span>
+                              </div>
+                            )}
+                            {transport.postal_code && (
+                              <div className="flex items-center">
+                                <span className="text-gray-600 ml-6">Kod:</span>
+                                <span className="ml-1">{transport.postal_code}</span>
+                              </div>
+                            )}
+                            {transport.phone && (
+                              <div className="flex items-center">
+                                <Phone size={14} className="text-gray-400 mr-2" />
+                                <span className="text-gray-600">Telefon:</span>
+                                <span className="ml-1">{transport.phone}</span>
+                              </div>
+                            )}
+                            {transport.requester_email && (
+                              <div className="flex items-center">
+                                <User size={14} className="text-gray-400 mr-2" />
+                                <span className="text-gray-600">Zamówił:</span>
+                                <span className="ml-1">{transport.requester_email}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 className="font-medium text-gray-900 mb-2">Dodatkowe informacje</h4>
+                          <div className="space-y-2 text-sm">
+                            {transport.notes && (
+                              <div className="flex items-start">
+                                <MessageSquare size={14} className="text-gray-400 mr-2 mt-1" />
+                                <div>
+                                  <span className="text-gray-600">Uwagi:</span>
+                                  <p className="mt-1 text-gray-900">{transport.notes}</p>
+                                </div>
+                              </div>
+                            )}
+                            <div className="flex items-center">
+                              <Calendar size={14} className="text-gray-400 mr-2" />
+                              <span className="text-gray-600">Utworzono:</span>
+                              <span className="ml-1">
+                                {format(new Date(transport.created_at), 'dd.MM.yyyy HH:mm', { locale: pl })}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              ))}
+            </tbody>
+          </table>
+
+          {/* Brak wyników */}
+          {filteredArchiwum.length === 0 && (
+            <div className="text-center py-12">
+              <Package size={48} className="mx-auto text-gray-300 mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Brak transportów</h3>
+              <p className="text-gray-500">
+                Nie znaleziono transportów spełniających wybrane kryteria.
+              </p>
             </div>
-          ))
-        ) : (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="flex flex-col items-center justify-center py-12">
-              <FileText size={48} className="text-gray-400 mb-4" />
-              <p className="text-gray-500 text-lg font-medium">Brak transportów w wybranym okresie</p>
-              <p className="text-gray-400 mt-2">Spróbuj zmienić kryteria filtrowania</p>
+          )}
+        </div>
+
+        {/* Paginacja */}
+        {totalPages > 1 && (
+          <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+            <div className="flex-1 flex justify-between sm:hidden">
+              <button
+                onClick={() => paginate(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Poprzednie
+              </button>
+              <button
+                onClick={() => paginate(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Następne
+              </button>
+            </div>
+            <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm text-gray-700">
+                  Pokazano <span className="font-medium">{indexOfFirstItem + 1}</span> do{' '}
+                  <span className="font-medium">
+                    {Math.min(indexOfLastItem, filteredArchiwum.length)}
+                  </span>{' '}
+                  z <span className="font-medium">{filteredArchiwum.length}</span> wyników
+                </p>
+              </div>
+              <div>
+                <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
+                  <button
+                    onClick={() => paginate(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                    <button
+                      key={page}
+                      onClick={() => paginate(page)}
+                      className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                        currentPage === page
+                          ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                          : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                  
+                  <button
+                    onClick={() => paginate(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </nav>
+              </div>
             </div>
           </div>
         )}
       </div>
-      
-      {/* Paginacja */}
-      {totalPages > 1 && (
-        <div className="mt-8 bg-white rounded-lg shadow px-6 py-4 flex flex-col sm:flex-row justify-between items-center">
-          <div className="text-sm text-gray-700 mb-4 sm:mb-0">
-            <span className="font-medium">Strona {currentPage} z {totalPages}</span>
-            <span className="mx-2">•</span>
-            <span>Łącznie {filteredArchiwum.length} transportów</span>
-          </div>
-          
-          <div className="flex justify-center items-center space-x-2">
-            <button
-              onClick={() => paginate(Math.max(1, currentPage - 1))}
-              disabled={currentPage === 1}
-              className="p-2 rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <ChevronLeft size={20} />
-            </button>
-            
-            {/* Wyświetlanie numerów stron */}
-            <div className="flex space-x-1">
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                let pageNum;
-                if (totalPages <= 5) {
-                  pageNum = i + 1;
-                } else if (currentPage <= 3) {
-                  pageNum = i + 1;
-                } else if (currentPage >= totalPages - 2) {
-                  pageNum = totalPages - 4 + i;
-                } else {
-                  pageNum = currentPage - 2 + i;
-                }
-                
-                return (
-                  <button
-                    key={pageNum}
-                    onClick={() => paginate(pageNum)}
-                    className={`w-10 h-10 flex items-center justify-center rounded-md text-sm font-medium transition-colors ${
-                      currentPage === pageNum
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    {pageNum}
-                  </button>
-                );
-              })}
-            </div>
-            
-            <button
-              onClick={() => paginate(Math.min(totalPages, currentPage + 1))}
-              disabled={currentPage === totalPages}
-              className="p-2 rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <ChevronRight size={20} />
-            </button>
+
+      {/* Modal oceny transportu */}
+      {showRatingModal && selectedTransport && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <TransportRating
+              transportId={selectedTransport.id}
+              onClose={handleCloseRating}
+            />
           </div>
         </div>
       )}
-
-      {/* Modal oceniania transportu */}
-      {showRatingModal && selectedTransport && (
-        <TransportRating
-          transportId={selectedTransport.id}
-          onClose={handleCloseRating}
-        />
-      )}
     </div>
-  );
+  )
 }
