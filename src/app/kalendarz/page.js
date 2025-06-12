@@ -920,39 +920,49 @@ export default function KalendarzPage() {
            filtryAktywne={filtryAktywne}
          />
   
-         {selectedDate && (
-           <>
-             <div>
-               <div className="space-y-2">
-                 {selectedDate && transporty[format(selectedDate, 'yyyy-MM-dd')]?.filter(t => {
-                   const pasujeMagazyn = !filtryAktywne.magazyn || t.zrodlo === filtryAktywne.magazyn;
-                   const pasujeKierowca = !filtryAktywne.kierowca || t.kierowcaId === filtryAktywne.kierowca;
-                   const pasujeRynek = !filtryAktywne.rynek || t.rynek === filtryAktywne.rynek;
-                   return pasujeMagazyn && pasujeKierowca && pasujeRynek && t.status === 'aktywny';
-                 }).map(t => (
-                   <div key={t.id} className="border p-2 rounded">
-                     {t.miasto} - {t.kodPocztowy}
-                   </div>
-                 ))}
-               </div>
-             </div>
-             
-             <TransportForm
-               selectedDate={selectedDate}
-               nowyTransport={nowyTransport}
-               handleInputChange={handleInputChange}
-               handleSubmit={handleSubmit}
-               edytowanyTransport={edytowanyTransport}
-               handleUpdateTransport={handleUpdateTransport}
-               setEdytowanyTransport={setEdytowanyTransport}
-               setNowyTransport={setNowyTransport}
-               userPermissions={userPermissions}
-               transporty={transporty}
-               currentUserEmail={userEmail}
-               userName={userName || localStorage.getItem('userName') || userEmail}
-             />
-           </>
-         )}
+        {(() => {
+          if (!selectedDate || !(selectedDate instanceof Date)) {
+            return null;
+          }
+          
+          const dateKey = format(selectedDate, 'yyyy-MM-dd');
+          const transportyNaDzien = transporty[dateKey] || [];
+          const filtrowaneTransporty = transportyNaDzien.filter(t => {
+            const pasujeMagazyn = !filtryAktywne.magazyn || t.zrodlo === filtryAktywne.magazyn;
+            const pasujeKierowca = !filtryAktywne.kierowca || t.kierowcaId === filtryAktywne.kierowca;
+            const pasujeRynek = !filtryAktywne.rynek || t.rynek === filtryAktywne.rynek;
+            return pasujeMagazyn && pasujeKierowca && pasujeRynek && t.status === 'aktywny';
+          });
+          
+          return (
+            <>
+              <div>
+                <div className="space-y-2">
+                  {filtrowaneTransporty.map(t => (
+                    <div key={t.id} className="border p-2 rounded">
+                      {t.miasto} - {t.kodPocztowy}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+               <TransportForm
+                 selectedDate={selectedDate}
+                 nowyTransport={nowyTransport}
+                 handleInputChange={handleInputChange}
+                 handleSubmit={handleSubmit}
+                 edytowanyTransport={edytowanyTransport}
+                 handleUpdateTransport={handleUpdateTransport}
+                 setEdytowanyTransport={setEdytowanyTransport}
+                 setNowyTransport={setNowyTransport}
+                 userPermissions={userPermissions}
+                 transporty={transporty}
+                 currentUserEmail={userEmail}
+                 userName={userName || localStorage.getItem('userName') || userEmail}
+               />
+             </>
+           );
+         })()}
          
          {przenoszonyTransport && (
            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
