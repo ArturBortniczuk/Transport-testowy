@@ -601,51 +601,106 @@ export default function ArchiwumPage() {
         {currentItems.length > 0 ? (
           currentItems.map((transport) => (
             <div key={transport.id} className="bg-white shadow rounded-lg overflow-hidden">
-              {/* Nagłówek karty transportu */}
+              {/* Nagłówek karty transportu - kompaktowy grid */}
               <div 
-                className="flex items-center justify-between px-6 py-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
+                className="px-6 py-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
                 onClick={() => toggleRowExpand(transport.id)}
               >
-                <div className="flex items-center space-x-6">
-                  {/* Data */}
-                  <div className="flex items-center text-gray-700">
-                    <Calendar size={16} className="mr-2" />
-                    <span className="font-medium">
-                      {format(new Date(transport.delivery_date), 'dd.MM.yyyy', { locale: pl })}
+                <div className="grid grid-cols-12 gap-4 items-center">
+                  {/* Data - 2 kolumny */}
+                  <div className="col-span-2 flex items-center text-gray-700">
+                    <Calendar size={14} className="mr-2 text-blue-600" />
+                    <span className="font-medium text-sm">
+                      {format(new Date(transport.delivery_date), 'dd.MM.yy', { locale: pl })}
                     </span>
                   </div>
                   
-                  {/* Miejsce docelowe */}
-                  <div className="flex items-center">
-                    <MapPin size={16} className="mr-2 text-blue-600" />
-                    <div>
-                      <div className="font-medium text-gray-900">{transport.destination_city}</div>
-                      <div className="text-sm text-gray-600">
-                        {transport.postal_code} {transport.street && `• ${transport.street}`}
+                  {/* Miejsce docelowe - 3 kolumny */}
+                  <div className="col-span-3">
+                    <div className="flex items-center">
+                      <MapPin size={14} className="mr-2 text-blue-600 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <div className="font-medium text-gray-900 truncate">{transport.destination_city}</div>
+                        <div className="text-xs text-gray-600 truncate">
+                          {transport.postal_code}
+                        </div>
                       </div>
                     </div>
                   </div>
                   
-                  {/* Magazyn */}
-                  <div className="hidden md:flex items-center text-gray-700">
-                    <Building size={16} className={`mr-2 ${transport.source_warehouse === 'bialystok' ? 'text-red-500' : 'text-blue-500'}`} />
-                    <span>
-                      {transport.source_warehouse === 'bialystok' ? 'Białystok' : 'Zielonka'}
-                    </span>
+                  {/* Klient - 2 kolumny */}
+                  <div className="col-span-2 hidden sm:block">
+                    <div className="text-sm font-medium text-gray-900 truncate" title={transport.client_name}>
+                      {transport.client_name || 'Brak nazwy'}
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      {transport.mpk || 'Brak MPK'}
+                    </div>
                   </div>
                   
-                  {/* Odległość */}
-                  <div className="hidden lg:flex items-center text-gray-600">
-                    <Route size={16} className="mr-1 text-green-600" />
-                    <span>{transport.distance ? `${transport.distance} km` : 'N/A'}</span>
+                  {/* Magazyn - 1 kolumna */}
+                  <div className="col-span-1 hidden md:block text-center">
+                    <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                      transport.source_warehouse === 'bialystok' 
+                        ? 'bg-red-100 text-red-700' 
+                        : 'bg-blue-100 text-blue-700'
+                    }`}>
+                      {transport.source_warehouse === 'bialystok' ? 'BIA' : 'ZIE'}
+                    </div>
                   </div>
                   
-                  {/* Kierowca */}
-                  <div className="hidden xl:flex items-center text-gray-700">
-                    <Truck size={16} className="mr-2 text-green-500" />
-                    <span className="truncate max-w-32">
-                      {getDriverInfo(transport.driver_id)}
-                    </span>
+                  {/* Kierowca - 2 kolumny */}
+                  <div className="col-span-2 hidden lg:block">
+                    <div className="flex items-center">
+                      <Truck size={14} className="mr-2 text-green-600 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-sm text-gray-900 truncate">
+                          {KIEROWCY.find(k => k.id === parseInt(transport.driver_id))?.imie || 'Nieznany'}
+                        </div>
+                        <div className="text-xs text-gray-600">
+                          {transport.distance || 0} km
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Ocena i przyciski - 2 kolumny */}
+                  <div className="col-span-2 flex items-center justify-end space-x-2">
+                    <TransportRatingBadge 
+                      transportId={transport.id} 
+                      refreshTrigger={0}
+                      onCanBeRatedChange={(canBeRated, isPositive) => handleCanBeRatedChange(transport.id, canBeRated, isPositive)}
+                    />
+                    
+                    {/* Przycisk oceny - kompaktowy */}
+                    {ratableTransports[transport.id] !== undefined && (
+                      ratableTransports[transport.id] ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenRatingModal(transport);
+                          }}
+                          className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                        >
+                          Oceń
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenRatingModal(transport);
+                          }}
+                          className="px-2 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                        >
+                          Zobacz
+                        </button>
+                      )
+                    )}
+                    
+                    <ChevronDown 
+                      size={16} 
+                      className={`text-gray-500 transition-transform ${expandedRows[transport.id] ? 'rotate-180' : ''}`} 
+                    />
                   </div>
                 </div>
                 
@@ -689,123 +744,138 @@ export default function ArchiwumPage() {
                 </div>
               </div>
               
-              {/* Szczegóły transportu - widoczne po rozwinięciu */}
-              {expandedRows[transport.id] && (
-                <div className="px-6 py-4 border-t bg-white">
-                  {/* Sekcja 1: Informacje o kliencie i zamówieniu */}
+                <div className="px-6 py-6 border-t bg-white">
+                  {/* Tabelka z podstawowymi informacjami */}
+                  <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                    <table className="w-full">
+                      <tbody>
+                        <tr className="border-b border-gray-200 last:border-b-0">
+                          <td className="py-2 pr-4 text-sm font-medium text-gray-500 w-1/4">Pełny adres:</td>
+                          <td className="py-2 text-sm text-gray-900">
+                            {transport.destination_city}, {transport.postal_code}
+                            {transport.street && `, ${transport.street}`}
+                          </td>
+                        </tr>
+                        <tr className="border-b border-gray-200 last:border-b-0">
+                          <td className="py-2 pr-4 text-sm font-medium text-gray-500">Kierowca (pojazd):</td>
+                          <td className="py-2 text-sm text-gray-900">{getDriverInfo(transport.driver_id)}</td>
+                        </tr>
+                        <tr className="border-b border-gray-200 last:border-b-0">
+                          <td className="py-2 pr-4 text-sm font-medium text-gray-500">Magazyn → Odległość:</td>
+                          <td className="py-2 text-sm text-gray-900">
+                            {transport.source_warehouse === 'bialystok' ? 'Magazyn Białystok' : 'Magazyn Zielonka'} 
+                            → {transport.distance || 0} km
+                          </td>
+                        </tr>
+                        <tr className="border-b border-gray-200 last:border-b-0">
+                          <td className="py-2 pr-4 text-sm font-medium text-gray-500">Data dostawy:</td>
+                          <td className="py-2 text-sm text-gray-900">
+                            {format(new Date(transport.delivery_date), 'dd MMMM yyyy', { locale: pl })}
+                          </td>
+                        </tr>
+                        {transport.completed_at && (
+                          <tr className="border-b border-gray-200 last:border-b-0">
+                            <td className="py-2 pr-4 text-sm font-medium text-gray-500">Zakończono:</td>
+                            <td className="py-2 text-sm text-gray-900">
+                              {format(new Date(transport.completed_at), 'dd MMMM yyyy, HH:mm', { locale: pl })}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Sekcja: Informacje o zamówieniu */}
                   <div className="mb-6">
                     <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
                       <Package className="w-4 h-4 mr-2 text-blue-600" />
                       Informacje o zamówieniu
                     </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      <div>
-                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Klient</label>
-                        <p className="mt-1 text-gray-900 font-medium">{transport.client_name || 'N/A'}</p>
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">MPK</label>
-                        <p className="mt-1 text-gray-900">{transport.mpk || 'N/A'}</p>
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Nr WZ</label>
-                        <p className="mt-1 text-gray-900">{transport.wz_number || 'N/A'}</p>
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Rynek</label>
-                        <p className="mt-1 text-gray-900">{transport.market || 'N/A'}</p>
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Poziom załadunku</label>
-                        <p className="mt-1 text-gray-900">{transport.loading_level || 'N/A'}</p>
-                      </div>
+                    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                      <table className="w-full">
+                        <tbody>
+                          <tr className="border-b border-gray-100 last:border-b-0">
+                            <td className="px-4 py-3 text-sm font-medium text-gray-500 bg-gray-50 w-1/3">Klient</td>
+                            <td className="px-4 py-3 text-sm text-gray-900">{transport.client_name || 'N/A'}</td>
+                          </tr>
+                          <tr className="border-b border-gray-100 last:border-b-0">
+                            <td className="px-4 py-3 text-sm font-medium text-gray-500 bg-gray-50">MPK</td>
+                            <td className="px-4 py-3 text-sm text-gray-900">{transport.mpk || 'N/A'}</td>
+                          </tr>
+                          <tr className="border-b border-gray-100 last:border-b-0">
+                            <td className="px-4 py-3 text-sm font-medium text-gray-500 bg-gray-50">Nr WZ</td>
+                            <td className="px-4 py-3 text-sm text-gray-900">{transport.wz_number || 'N/A'}</td>
+                          </tr>
+                          <tr className="border-b border-gray-100 last:border-b-0">
+                            <td className="px-4 py-3 text-sm font-medium text-gray-500 bg-gray-50">Rynek</td>
+                            <td className="px-4 py-3 text-sm text-gray-900">{transport.market || 'N/A'}</td>
+                          </tr>
+                          <tr className="border-b border-gray-100 last:border-b-0">
+                            <td className="px-4 py-3 text-sm font-medium text-gray-500 bg-gray-50">Poziom załadunku</td>
+                            <td className="px-4 py-3 text-sm text-gray-900">{transport.loading_level || 'N/A'}</td>
+                          </tr>
+                        </tbody>
+                      </table>
                     </div>
                   </div>
 
-                  {/* Sekcja 2: Transport i logistyka */}
-                  <div className="mb-6">
-                    <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
-                      <Truck className="w-4 h-4 mr-2 text-green-600" />
-                      Transport i logistyka
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      <div>
-                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Kierowca</label>
-                        <p className="mt-1 text-gray-900">{getDriverInfo(transport.driver_id)}</p>
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Magazyn źródłowy</label>
-                        <p className="mt-1 text-gray-900">
-                          {transport.source_warehouse === 'bialystok' ? 'Magazyn Białystok' : 'Magazyn Zielonka'}
-                        </p>
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Odległość</label>
-                        <p className="mt-1 text-gray-900">{transport.distance || 0} km</p>
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Data dostawy</label>
-                        <p className="mt-1 text-gray-900">
-                          {format(new Date(transport.delivery_date), 'dd.MM.yyyy', { locale: pl })}
-                        </p>
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Data zakończenia</label>
-                        <p className="mt-1 text-gray-900">
-                          {transport.completed_at 
-                            ? format(new Date(transport.completed_at), 'dd.MM.yyyy HH:mm', { locale: pl })
-                            : 'N/A'
-                          }
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Sekcja 3: Osoby odpowiedzialne */}
+                  {/* Sekcja: Osoby odpowiedzialne */}
                   <div className="mb-6">
                     <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
                       <User className="w-4 h-4 mr-2 text-purple-600" />
                       Osoby odpowiedzialne
                     </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Osoba zlecająca</label>
-                        <p className="mt-1 text-gray-900">{transport.requester_name || 'N/A'}</p>
-                        {transport.requester_email && (
-                          <p className="text-sm text-gray-600">{transport.requester_email}</p>
-                        )}
-                      </div>
+                    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                      <table className="w-full">
+                        <tbody>
+                          <tr className="border-b border-gray-100 last:border-b-0">
+                            <td className="px-4 py-3 text-sm font-medium text-gray-500 bg-gray-50 w-1/3">Osoba zlecająca</td>
+                            <td className="px-4 py-3 text-sm text-gray-900">{transport.requester_name || 'N/A'}</td>
+                          </tr>
+                          {transport.requester_email && (
+                            <tr className="border-b border-gray-100 last:border-b-0">
+                              <td className="px-4 py-3 text-sm font-medium text-gray-500 bg-gray-50">Email</td>
+                              <td className="px-4 py-3 text-sm text-gray-900">{transport.requester_email}</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
 
-                  {/* Sekcja 4: Uwagi (jeśli istnieją) */}
+                  {/* Sekcja: Uwagi (jeśli istnieją) */}
                   {transport.notes && (
                     <div className="mb-6">
                       <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
                         <MessageSquare className="w-4 h-4 mr-2 text-orange-600" />
                         Uwagi
                       </h4>
-                      <div className="bg-gray-50 rounded-lg p-3">
-                        <p className="text-gray-800">{transport.notes}</p>
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                        <p className="text-gray-800 text-sm">{transport.notes}</p>
                       </div>
                     </div>
                   )}
 
-                  {/* Sekcja 5: Ocena transportu (pełna) */}
+                  {/* Sekcja: Ocena transportu */}
                   <div className="mb-6">
                     <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
                       <Star className="w-4 h-4 mr-2 text-yellow-600" />
                       Ocena transportu
                     </h4>
-                    <div className="bg-gray-50 rounded-lg p-4">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                       <div className="flex items-center justify-between">
-                        <TransportRatingBadge 
-                          transportId={transport.id} 
-                          refreshTrigger={0}
-                          onCanBeRatedChange={(canBeRated, isPositive) => handleCanBeRatedChange(transport.id, canBeRated, isPositive)}
-                        />
+                        <div className="flex items-center space-x-3">
+                          <TransportRatingBadge 
+                            transportId={transport.id} 
+                            refreshTrigger={0}
+                            onCanBeRatedChange={(canBeRated, isPositive) => handleCanBeRatedChange(transport.id, canBeRated, isPositive)}
+                          />
+                          <span className="text-sm text-gray-600">
+                            {ratableTransports[transport.id] ? 'Możesz ocenić ten transport' : 'Transport został oceniony'}
+                          </span>
+                        </div>
                         
-                        {/* Przyciski akcji oceny */}
+                        {/* Przyciski akcji */}
                         <div className="flex gap-2">
                           {ratableTransports[transport.id] !== undefined && (
                             ratableTransports[transport.id] ? (
