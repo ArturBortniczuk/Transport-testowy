@@ -924,7 +924,7 @@ export default function KalendarzPage() {
            <>
              <div>
                <div className="space-y-2">
-                 {transporty[format(selectedDate, 'yyyy-MM-dd')]?.filter(t => {
+                 {selectedDate && transporty[format(selectedDate, 'yyyy-MM-dd')]?.filter(t => {
                    const pasujeMagazyn = !filtryAktywne.magazyn || t.zrodlo === filtryAktywne.magazyn;
                    const pasujeKierowca = !filtryAktywne.kierowca || t.kierowcaId === filtryAktywne.kierowca;
                    const pasujeRynek = !filtryAktywne.rynek || t.rynek === filtryAktywne.rynek;
