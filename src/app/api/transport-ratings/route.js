@@ -1,4 +1,4 @@
-// src/app/api/transport-ratings/route.js
+// src/app/api/transport-ratings/route.js - UPROSZCZONA SZYBKA WERSJA
 import { NextResponse } from 'next/server'
 import db from '@/database/db'
 
@@ -8,16 +8,31 @@ const validateSession = async (authToken) => {
     return null;
   }
   
-  const session = await db('sessions')
-    .where('token', authToken)
-    .whereRaw('expires_at > NOW()')
-    .select('user_id')
-    .first();
-  
-  return session?.user_id;
+  try {
+    const session = await db('sessions')
+      .where('token', authToken)
+      .whereRaw('expires_at > NOW()')
+      .select('user_id')
+      .first();
+    
+    return session?.user_id;
+  } catch (error) {
+    console.error('Błąd walidacji sesji:', error)
+    return null
+  }
 };
 
-// Pobierz szczegółowe oceny transportu
+// SZYBKA funkcja sprawdzania czy tabela istnieje
+const tableExists = async (tableName) => {
+  try {
+    await db.raw(`SELECT 1 FROM ${tableName} LIMIT 1`);
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
+// Pobierz oceny transportu - SZYBKA WERSJA
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -30,28 +45,18 @@ export async function GET(request) {
       }, { status: 400 })
     }
 
-    // Pobierz dane o użytkowniku z tokenu
+    // SZYBKIE sprawdzenie tokenu
     const authToken = request.cookies.get('authToken')?.value
     let currentUserEmail = null
-    let isAdmin = false
     
     if (authToken) {
-      try {
-        const userId = await validateSession(authToken);
-        if (userId) {
-          currentUserEmail = userId;
-          const user = await db('users').where('email', userId).first();
-          isAdmin = user?.is_admin === true || user?.role === 'admin';
-        }
-      } catch (error) {
-        console.error('Błąd weryfikacji tokenu:', error)
-      }
+      currentUserEmail = await validateSession(authToken);
     }
 
-    // Sprawdź czy transport istnieje i czy można go ocenić
+    // SZYBKIE sprawdzenie transportu
     const transport = await db('transports')
       .where('id', transportId)
-      .select('id', 'status', 'delivery_date')
+      .select('id', 'status')
       .first();
     
     if (!transport) {
@@ -64,40 +69,69 @@ export async function GET(request) {
     // Transport można ocenić tylko jeśli ma status 'completed'
     const canBeRated = transport.status === 'completed'
 
-    // Pobierz szczegółowe oceny transportu
-    const ratings = await db('transport_detailed_ratings')
-      .where('transport_id', transportId)
-      .orderBy('rated_at', 'desc')
-      .select('*');
-
-    // Sprawdź czy bieżący użytkownik już ocenił ten transport
-    const userRating = ratings.find(rating => rating.rater_email === currentUserEmail)
-    const hasUserRated = !!userRating
-
-    // Pobierz statystyki z widoku
-    const stats = await db('transport_rating_summary')
-      .where('transport_id', transportId)
-      .first();
-
-    const defaultStats = {
-      total_ratings: 0,
-      driver_professional_positive: 0,
-      driver_professional_negative: 0,
-      driver_tasks_positive: 0,
-      driver_tasks_negative: 0,
-      cargo_complete_positive: 0,
-      cargo_complete_negative: 0,
-      cargo_correct_positive: 0,
-      cargo_correct_negative: 0,
-      delivery_notified_positive: 0,
-      delivery_notified_negative: 0,
-      delivery_on_time_positive: 0,
-      delivery_on_time_negative: 0,
-      overall_rating_percentage: null
+    // Sprawdź czy tabela szczegółowych ocen istnieje
+    const detailedRatingsExist = await tableExists('transport_detailed_ratings');
+    
+    let ratings = []
+    let userRating = null
+    let hasUserRated = false
+    let stats = {
+      totalRatings: 0,
+      overallRatingPercentage: null
     }
 
-    const finalStats = stats || defaultStats;
+    if (detailedRatingsExist) {
+      try {
+        // Pobierz oceny z tabeli szczegółowej
+        ratings = await db('transport_detailed_ratings')
+          .where('transport_id', transportId)
+          .orderBy('rated_at', 'desc')
+          .select('*');
 
+        // Sprawdź czy użytkownik już ocenił
+        userRating = ratings.find(rating => rating.rater_email === currentUserEmail)
+        hasUserRated = !!userRating
+
+        // Oblicz statystyki SZYBKO
+        if (ratings.length > 0) {
+          const totalPositive = ratings.reduce((sum, rating) => {
+            const positiveCount = [
+              rating.driver_professional,
+              rating.driver_tasks_completed,
+              rating.cargo_complete,
+              rating.cargo_correct,
+              rating.delivery_notified,
+              rating.delivery_on_time
+            ].filter(val => val === true).length
+            return sum + positiveCount
+          }, 0)
+          
+          const totalCriteria = ratings.length * 6 // 6 kryteriów na ocenę
+          stats.totalRatings = ratings.length
+          stats.overallRatingPercentage = totalCriteria > 0 ? Math.round((totalPositive / totalCriteria) * 100) : null
+        }
+      } catch (error) {
+        console.error('Błąd pobierania szczegółowych ocen:', error)
+        // Kontynuuj z pustymi danymi
+      }
+    } else {
+      // Sprawdź starą tabelę transport_ratings
+      try {
+        const oldRatings = await db('transport_ratings')
+          .where('transport_id', transportId)
+          .select('*');
+        
+        if (oldRatings.length > 0) {
+          stats.totalRatings = oldRatings.length
+          const avgRating = oldRatings.reduce((sum, r) => sum + (r.is_positive ? 1 : 0), 0) / oldRatings.length
+          stats.overallRatingPercentage = Math.round(avgRating * 100)
+        }
+      } catch (error) {
+        console.error('Błąd pobierania starych ocen:', error)
+      }
+    }
+
+    // SZYBKA odpowiedź
     return NextResponse.json({
       success: true,
       canBeRated: canBeRated && !hasUserRated,
@@ -116,7 +150,7 @@ export async function GET(request) {
       } : null,
       ratings: ratings.map(rating => ({
         id: rating.id,
-        raterEmail: isAdmin ? rating.rater_email : rating.rater_email.replace(/(.{2}).*(@.*)/, '$1***$2'),
+        raterEmail: rating.rater_email?.replace(/(.{2}).*(@.*)/, '$1***$2') || 'Anonim',
         ratedAt: rating.rated_at,
         ratings: {
           driverProfessional: rating.driver_professional,
@@ -129,45 +163,18 @@ export async function GET(request) {
         comment: rating.comment
       })),
       stats: {
-        totalRatings: finalStats.total_ratings,
+        totalRatings: stats.totalRatings,
+        overallRatingPercentage: stats.overallRatingPercentage,
         categories: {
-          driver: {
-            professional: {
-              positive: finalStats.driver_professional_positive,
-              negative: finalStats.driver_professional_negative
-            },
-            tasksCompleted: {
-              positive: finalStats.driver_tasks_positive,
-              negative: finalStats.driver_tasks_negative
-            }
-          },
-          cargo: {
-            complete: {
-              positive: finalStats.cargo_complete_positive,
-              negative: finalStats.cargo_complete_negative
-            },
-            correct: {
-              positive: finalStats.cargo_correct_positive,
-              negative: finalStats.cargo_correct_negative
-            }
-          },
-          delivery: {
-            notified: {
-              positive: finalStats.delivery_notified_positive,
-              negative: finalStats.delivery_notified_negative
-            },
-            onTime: {
-              positive: finalStats.delivery_on_time_positive,
-              negative: finalStats.delivery_on_time_negative
-            }
-          }
-        },
-        overallRatingPercentage: finalStats.overall_rating_percentage
+          driver: { professional: { positive: 0, negative: 0 }, tasksCompleted: { positive: 0, negative: 0 } },
+          cargo: { complete: { positive: 0, negative: 0 }, correct: { positive: 0, negative: 0 } },
+          delivery: { notified: { positive: 0, negative: 0 }, onTime: { positive: 0, negative: 0 } }
+        }
       }
     })
 
   } catch (error) {
-    console.error('Błąd pobierania szczegółowych ocen:', error)
+    console.error('Błąd pobierania ocen:', error)
     return NextResponse.json({ 
       success: false, 
       error: 'Wystąpił błąd serwera' 
@@ -175,10 +182,9 @@ export async function GET(request) {
   }
 }
 
-// Dodaj szczegółową ocenę transportu
+// Dodaj ocenę transportu - SZYBKA WERSJA
 export async function POST(request) {
   try {
-    // Pobierz dane o użytkowniku z tokenu
     const authToken = request.cookies.get('authToken')?.value
     
     if (!authToken) {
@@ -197,11 +203,7 @@ export async function POST(request) {
     }
 
     const body = await request.json()
-    const { 
-      transportId, 
-      ratings, 
-      comment 
-    } = body
+    const { transportId, ratings, comment } = body
 
     if (!transportId || !ratings) {
       return NextResponse.json({ 
@@ -210,27 +212,41 @@ export async function POST(request) {
       }, { status: 400 })
     }
 
-    // Sprawdź czy transport istnieje i ma status 'completed'
+    // Sprawdź transport
     const transport = await db('transports')
       .where('id', transportId)
       .select('id', 'status')
       .first();
     
-    if (!transport) {
+    if (!transport || transport.status !== 'completed') {
       return NextResponse.json({ 
         success: false, 
-        error: 'Transport nie istnieje' 
-      }, { status: 404 })
-    }
-    
-    if (transport.status !== 'completed') {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Można ocenić tylko ukończone transporty' 
+        error: 'Transport nie istnieje lub nie jest ukończony' 
       }, { status: 400 })
     }
 
-    // Sprawdź czy użytkownik już ocenił ten transport
+    // Sprawdź czy tabela szczegółowych ocen istnieje, jeśli nie - utwórz
+    const detailedRatingsExist = await tableExists('transport_detailed_ratings');
+    
+    if (!detailedRatingsExist) {
+      await db.schema.createTable('transport_detailed_ratings', table => {
+        table.increments('id').primary();
+        table.integer('transport_id').notNullable();
+        table.string('rater_email').notNullable();
+        table.timestamp('rated_at').defaultTo(db.fn.now());
+        table.boolean('driver_professional');
+        table.boolean('driver_tasks_completed');
+        table.boolean('cargo_complete');
+        table.boolean('cargo_correct');
+        table.boolean('delivery_notified');
+        table.boolean('delivery_on_time');
+        table.text('comment');
+        table.unique(['transport_id', 'rater_email']);
+        table.index('transport_id');
+      });
+    }
+
+    // Sprawdź czy użytkownik już ocenił
     const existingRating = await db('transport_detailed_ratings')
       .where('transport_id', transportId)
       .where('rater_email', userEmail)
@@ -243,16 +259,16 @@ export async function POST(request) {
       }, { status: 400 })
     }
 
-    // Dodaj nową ocenę
+    // Dodaj ocenę
     const result = await db('transport_detailed_ratings').insert({
       transport_id: transportId,
       rater_email: userEmail,
-      driver_professional: ratings.driverProfessional !== undefined ? ratings.driverProfessional : null,
-      driver_tasks_completed: ratings.driverTasksCompleted !== undefined ? ratings.driverTasksCompleted : null,
-      cargo_complete: ratings.cargoComplete !== undefined ? ratings.cargoComplete : null,
-      cargo_correct: ratings.cargoCorrect !== undefined ? ratings.cargoCorrect : null,
-      delivery_notified: ratings.deliveryNotified !== undefined ? ratings.deliveryNotified : null,
-      delivery_on_time: ratings.deliveryOnTime !== undefined ? ratings.deliveryOnTime : null,
+      driver_professional: ratings.driverProfessional,
+      driver_tasks_completed: ratings.driverTasksCompleted,
+      cargo_complete: ratings.cargoComplete,
+      cargo_correct: ratings.cargoCorrect,
+      delivery_notified: ratings.deliveryNotified,
+      delivery_on_time: ratings.deliveryOnTime,
       comment: comment || null
     }).returning('id');
 
@@ -263,79 +279,7 @@ export async function POST(request) {
     })
 
   } catch (error) {
-    console.error('Błąd dodawania szczegółowej oceny:', error)
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Wystąpił błąd serwera' 
-    }, { status: 500 })
-  }
-}
-
-// Usuń szczegółową ocenę transportu
-export async function DELETE(request) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const ratingId = searchParams.get('id')
-    
-    if (!ratingId) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Brak ID oceny' 
-      }, { status: 400 })
-    }
-
-    // Pobierz dane o użytkowniku z tokenu
-    const authToken = request.cookies.get('authToken')?.value
-    
-    if (!authToken) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Brak autoryzacji' 
-      }, { status: 401 })
-    }
-
-    const userEmail = await validateSession(authToken);
-    if (!userEmail) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Nieprawidłowy token' 
-      }, { status: 401 })
-    }
-
-    const user = await db('users').where('email', userEmail).first();
-    const isAdmin = user?.is_admin === true || user?.role === 'admin';
-
-    // Sprawdź czy ocena istnieje i czy użytkownik ma prawo ją usunąć
-    const rating = await db('transport_detailed_ratings')
-      .where('id', ratingId)
-      .select('id', 'rater_email')
-      .first();
-
-    if (!rating) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Ocena nie istnieje' 
-      }, { status: 404 })
-    }
-    
-    // Użytkownik może usunąć tylko własną ocenę, admin może usunąć każdą
-    if (!isAdmin && rating.rater_email !== userEmail) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Brak uprawnień do usunięcia tej oceny' 
-      }, { status: 403 })
-    }
-
-    // Usuń ocenę
-    await db('transport_detailed_ratings').where('id', ratingId).del();
-
-    return NextResponse.json({
-      success: true,
-      message: 'Ocena została usunięta'
-    })
-
-  } catch (error) {
-    console.error('Błąd usuwania szczegółowej oceny:', error)
+    console.error('Błąd dodawania oceny:', error)
     return NextResponse.json({ 
       success: false, 
       error: 'Wystąpił błąd serwera' 
