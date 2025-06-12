@@ -1,4 +1,4 @@
-// src/app/archiwum/page.js - PROSTA DZIAŁAJĄCA WERSJA
+// src/app/archiwum/page.js - OSTATECZNA POPRAWKA
 'use client'
 import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
@@ -675,163 +675,166 @@ export default function ArchiwumPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {currentItems.map((transport) => (
-                <tr key={transport.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4">
-                    <div className="flex items-start">
-                      <Calendar size={16} className="text-gray-400 mt-1 mr-2" />
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {format(new Date(transport.delivery_date), 'dd.MM.yyyy', { locale: pl })}
-                        </div>
-                        <div className="text-sm text-gray-500 flex items-center mt-1">
-                          <MapPin size={12} className="mr-1" />
-                          {transport.destination_city}
-                          {transport.distance && (
-                            <span className="ml-2 text-blue-600">
-                              ({transport.distance} km)
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-
-                  <td className="px-6 py-4">
-                    <div className="flex items-start">
-                      <Building size={16} className="text-gray-400 mt-1 mr-2" />
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {transport.client_name || 'Brak nazwy'}
-                        </div>
-                        {transport.mpk && (
-                          <div className="text-sm text-gray-500 flex items-center mt-1">
-                            <Hash size={12} className="mr-1" />
-                            MPK: {transport.mpk}
-                          </div>
-                        )}
-                        {transport.wz_number && (
-                          <div className="text-sm text-gray-500 flex items-center mt-1">
-                            <FileText size={12} className="mr-1" />
-                            WZ: {transport.wz_number}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-
-                  <td className="px-6 py-4">
-                    <div className="flex items-start">
-                      <User size={16} className="text-gray-400 mt-1 mr-2" />
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {getDriverInfo(transport.driver_id)}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {transport.source_warehouse === 'bialystok' ? 'Białystok' : 
-                           transport.source_warehouse === 'zielonka' ? 'Zielonka' : 
-                           transport.source_warehouse}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-
-                  <td className="px-6 py-4">
-                    <div className="flex items-center">
-                      <TransportRatingBadge transportId={transport.id} />
-                    </div>
-                  </td>
-
-                  <td className="px-6 py-4">
-                    <div className="flex items-center space-x-2">
-                      <RatingButton transport={transport} />
-                      
-                      <button
-                        onClick={() => setExpandedRows(prev => ({
-                          ...prev,
-                          [transport.id]: !prev[transport.id]
-                        }))}
-                        className="flex items-center px-2 py-1 text-gray-600 hover:text-gray-900 rounded-md hover:bg-gray-100 transition-colors text-sm"
-                      >
-                        <Eye size={14} className="mr-1" />
-                        {expandedRows[transport.id] ? 'Ukryj' : 'Szczegóły'}
-                      </button>
-
-                      {isAdmin && (
-                        <button
-                          onClick={() => handleDeleteTransport(transport.id)}
-                          className="flex items-center px-2 py-1 text-red-600 hover:text-red-900 rounded-md hover:bg-red-100 transition-colors text-sm"
-                        >
-                          <Trash2 size={14} className="mr-1" />
-                          Usuń
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-
-                {/* Rozwinięte szczegóły */}
-                {expandedRows[transport.id] && (
-                  <tr>
-                    <td colSpan="5" className="px-6 py-4 bg-gray-50">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <h4 className="font-medium text-gray-900 mb-2">Szczegóły transportu</h4>
-                          <div className="space-y-2 text-sm">
-                            {transport.street && (
-                              <div className="flex items-center">
-                                <MapPin size={14} className="text-gray-400 mr-2" />
-                                <span className="text-gray-600">Adres:</span>
-                                <span className="ml-1">{transport.street}</span>
-                              </div>
-                            )}
-                            {transport.postal_code && (
-                              <div className="flex items-center">
-                                <span className="text-gray-600 ml-6">Kod:</span>
-                                <span className="ml-1">{transport.postal_code}</span>
-                              </div>
-                            )}
-                            {transport.phone && (
-                              <div className="flex items-center">
-                                <span className="text-gray-600">Telefon:</span>
-                                <span className="ml-1">{transport.phone}</span>
-                              </div>
-                            )}
-                            {transport.requester_email && (
-                              <div className="flex items-center">
-                                <span className="text-gray-600">Zamówił:</span>
-                                <span className="ml-1">{transport.requester_email}</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        <div>
-                          <h4 className="font-medium text-gray-900 mb-2">Dodatkowe informacje</h4>
-                          <div className="space-y-2 text-sm">
-                            {transport.notes && (
-                              <div className="flex items-start">
-                                <MessageSquare size={14} className="text-gray-400 mr-2 mt-1" />
-                                <div>
-                                  <span className="text-gray-600">Uwagi:</span>
-                                  <p className="mt-1 text-gray-900">{transport.notes}</p>
-                                </div>
-                              </div>
-                            )}
-                            <div className="flex items-center">
-                              <Calendar size={14} className="text-gray-400 mr-2" />
-                              <span className="text-gray-600">Utworzono:</span>
-                              <span className="ml-1">
-                                {format(new Date(transport.created_at), 'dd.MM.yyyy HH:mm', { locale: pl })}
-                              </span>
+              {currentItems.map((transport) => {
+                return (
+                  <React.Fragment key={transport.id}>
+                    <tr className="hover:bg-gray-50">
+                      <td className="px-6 py-4">
+                        <div className="flex items-start">
+                          <Calendar size={16} className="text-gray-400 mt-1 mr-2" />
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {format(new Date(transport.delivery_date), 'dd.MM.yyyy', { locale: pl })}
+                            </div>
+                            <div className="text-sm text-gray-500 flex items-center mt-1">
+                              <MapPin size={12} className="mr-1" />
+                              {transport.destination_city}
+                              {transport.distance && (
+                                <span className="ml-2 text-blue-600">
+                                  ({transport.distance} km)
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              ))}
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <div className="flex items-start">
+                          <Building size={16} className="text-gray-400 mt-1 mr-2" />
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {transport.client_name || 'Brak nazwy'}
+                            </div>
+                            {transport.mpk && (
+                              <div className="text-sm text-gray-500 flex items-center mt-1">
+                                <Hash size={12} className="mr-1" />
+                                MPK: {transport.mpk}
+                              </div>
+                            )}
+                            {transport.wz_number && (
+                              <div className="text-sm text-gray-500 flex items-center mt-1">
+                                <FileText size={12} className="mr-1" />
+                                WZ: {transport.wz_number}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <div className="flex items-start">
+                          <User size={16} className="text-gray-400 mt-1 mr-2" />
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {getDriverInfo(transport.driver_id)}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {transport.source_warehouse === 'bialystok' ? 'Białystok' : 
+                               transport.source_warehouse === 'zielonka' ? 'Zielonka' : 
+                               transport.source_warehouse}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <div className="flex items-center">
+                          <TransportRatingBadge transportId={transport.id} />
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <div className="flex items-center space-x-2">
+                          <RatingButton transport={transport} />
+                          
+                          <button
+                            onClick={() => setExpandedRows(prev => ({
+                              ...prev,
+                              [transport.id]: !prev[transport.id]
+                            }))}
+                            className="flex items-center px-2 py-1 text-gray-600 hover:text-gray-900 rounded-md hover:bg-gray-100 transition-colors text-sm"
+                          >
+                            <Eye size={14} className="mr-1" />
+                            {expandedRows[transport.id] ? 'Ukryj' : 'Szczegóły'}
+                          </button>
+
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleDeleteTransport(transport.id)}
+                              className="flex items-center px-2 py-1 text-red-600 hover:text-red-900 rounded-md hover:bg-red-100 transition-colors text-sm"
+                            >
+                              <Trash2 size={14} className="mr-1" />
+                              Usuń
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+
+                    {expandedRows[transport.id] && (
+                      <tr>
+                        <td colSpan="5" className="px-6 py-4 bg-gray-50">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <h4 className="font-medium text-gray-900 mb-2">Szczegóły transportu</h4>
+                              <div className="space-y-2 text-sm">
+                                {transport.street && (
+                                  <div className="flex items-center">
+                                    <MapPin size={14} className="text-gray-400 mr-2" />
+                                    <span className="text-gray-600">Adres:</span>
+                                    <span className="ml-1">{transport.street}</span>
+                                  </div>
+                                )}
+                                {transport.postal_code && (
+                                  <div className="flex items-center">
+                                    <span className="text-gray-600 ml-6">Kod:</span>
+                                    <span className="ml-1">{transport.postal_code}</span>
+                                  </div>
+                                )}
+                                {transport.phone && (
+                                  <div className="flex items-center">
+                                    <span className="text-gray-600">Telefon:</span>
+                                    <span className="ml-1">{transport.phone}</span>
+                                  </div>
+                                )}
+                                {transport.requester_email && (
+                                  <div className="flex items-center">
+                                    <span className="text-gray-600">Zamówił:</span>
+                                    <span className="ml-1">{transport.requester_email}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div>
+                              <h4 className="font-medium text-gray-900 mb-2">Dodatkowe informacje</h4>
+                              <div className="space-y-2 text-sm">
+                                {transport.notes && (
+                                  <div className="flex items-start">
+                                    <MessageSquare size={14} className="text-gray-400 mr-2 mt-1" />
+                                    <div>
+                                      <span className="text-gray-600">Uwagi:</span>
+                                      <p className="mt-1 text-gray-900">{transport.notes}</p>
+                                    </div>
+                                  </div>
+                                )}
+                                <div className="flex items-center">
+                                  <Calendar size={14} className="text-gray-400 mr-2" />
+                                  <span className="text-gray-600">Utworzono:</span>
+                                  <span className="ml-1">
+                                    {format(new Date(transport.created_at), 'dd.MM.yyyy HH:mm', { locale: pl })}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                )
+              })}
             </tbody>
           </table>
 
