@@ -1,9 +1,9 @@
-// src/components/TransportRatingBadge.js - NAPRAWIONA WERSJA (używa istniejące API)
+// src/components/TransportRatingBadge.js - PROSTA WERSJA BEZ CALLBACKÓW
 'use client'
 import { useState, useEffect } from 'react'
 import { Star, StarOff } from 'lucide-react'
 
-export default function TransportRatingBadge({ transportId, refreshTrigger = 0, onCanBeRatedChange }) {
+export default function TransportRatingBadge({ transportId, refreshTrigger = 0 }) {
   const [rating, setRating] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -11,44 +11,25 @@ export default function TransportRatingBadge({ transportId, refreshTrigger = 0, 
     const fetchRating = async () => {
       try {
         setLoading(true)
-        // ZMIANA: używamy istniejące API transport-ratings zamiast transport-detailed-ratings
-        const response = await fetch(`/api/transport-ratings?transportId=${transportId}`)
+        // UPROSZCZONE API - tylko sprawdzamy czy transport można ocenić
+        const response = await fetch(`/api/transport-simple-rating?transportId=${transportId}`)
         const data = await response.json()
 
         if (data.success) {
-          const ratingData = {
-            totalRatings: data.stats.totalRatings,
-            overallPercentage: data.stats.overallRatingPercentage,
-            canBeRated: data.canBeRated,
-            hasUserRated: data.hasUserRated
-          }
-          setRating(ratingData)
-
-          // KLUCZOWA CZĘŚĆ - wywołujemy callback z informacją czy można ocenić
-          if (onCanBeRatedChange) {
-            console.log('TransportRatingBadge - wywołuję onCanBeRatedChange:', {
-              transportId,
-              canBeRated: ratingData.canBeRated,
-              totalRatings: ratingData.totalRatings
-            })
-            
-            const hasRating = ratingData.totalRatings > 0
-            const isPositive = hasRating
-              ? ratingData.overallPercentage >= 50
-              : null
-            
-            // Wywołujemy callback - ZAWSZE po pobraniu danych
-            onCanBeRatedChange(ratingData.canBeRated, isPositive)
-          }
+          setRating({
+            totalRatings: data.totalRatings,
+            overallPercentage: data.overallPercentage,
+            canBeRated: data.canBeRated
+          })
         }
       } catch (error) {
         console.error('Błąd pobierania oceny:', error)
-        
-        // W przypadku błędu też wywołujemy callback - może być nieoceniony transport
-        if (onCanBeRatedChange) {
-          console.log('TransportRatingBadge - błąd, wywołuję onCanBeRatedChange z true')
-          onCanBeRatedChange(true, null) // Może być oceniony jeśli nie ma błędu w danych
-        }
+        // W przypadku błędu - zakładamy że można ocenić
+        setRating({
+          totalRatings: 0,
+          overallPercentage: null,
+          canBeRated: true
+        })
       } finally {
         setLoading(false)
       }
@@ -57,11 +38,11 @@ export default function TransportRatingBadge({ transportId, refreshTrigger = 0, 
     if (transportId) {
       fetchRating()
     }
-  }, [transportId, refreshTrigger, onCanBeRatedChange])
+  }, [transportId, refreshTrigger])
 
   if (loading) {
     return (
-      <div className="w-20 h-5 bg-gray-100 rounded animate-pulse"></div>
+      <div className="w-16 h-5 bg-gray-100 rounded animate-pulse"></div>
     )
   }
 
