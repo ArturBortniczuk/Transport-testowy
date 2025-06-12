@@ -1,4 +1,4 @@
-// src/components/TransportRating.js - NAPRAWIONA WERSJA (używa istniejące API)
+// src/components/TransportRating.js - NAPRAWIONA WERSJA
 'use client'
 import { useState, useEffect } from 'react'
 import { 
@@ -85,7 +85,6 @@ export default function TransportRating({ transportId, onClose }) {
     const fetchData = async () => {
       try {
         setLoading(true)
-        // ZMIANA: używamy istniejące API transport-ratings
         const response = await fetch(`/api/transport-ratings?transportId=${transportId}`)
         const result = await response.json()
         
@@ -128,7 +127,6 @@ export default function TransportRating({ transportId, onClose }) {
       setSubmitting(true)
       setSubmitError(null)
       
-      // ZMIANA: używamy istniejące API transport-ratings
       const response = await fetch('/api/transport-ratings', {
         method: 'POST',
         headers: {
@@ -156,7 +154,8 @@ export default function TransportRating({ transportId, onClose }) {
         
         setTimeout(() => {
           setSubmitSuccess(false)
-        }, 3000)
+          onClose() // Zamknij modal po udanym dodaniu oceny
+        }, 2000)
       } else {
         setSubmitError(result.error)
       }
@@ -189,35 +188,6 @@ export default function TransportRating({ transportId, onClose }) {
     )
   }
 
-  // Funkcja renderująca statystyki dla kryterium
-  const renderCriteriaStats = (criteriaKey, category) => {
-    if (!data?.stats?.categories?.[category]) return null
-    
-    const categoryStats = data.stats.categories[category]
-    const criteriaStats = categoryStats[criteriaKey]
-    
-    if (!criteriaStats) return null
-    
-    const total = criteriaStats.positive + criteriaStats.negative
-    if (total === 0) return <span className="text-gray-400 text-sm">Brak ocen</span>
-    
-    const positivePercentage = ((criteriaStats.positive / total) * 100).toFixed(0)
-    
-    return (
-      <div className="flex items-center space-x-2 text-sm">
-        <div className="flex items-center">
-          <ThumbsUp size={14} className="text-green-600 mr-1" />
-          <span className="text-green-600 font-medium">{criteriaStats.positive}</span>
-        </div>
-        <div className="flex items-center">
-          <ThumbsDown size={14} className="text-red-600 mr-1" />
-          <span className="text-red-600 font-medium">{criteriaStats.negative}</span>
-        </div>
-        <span className="text-gray-500">({positivePercentage}% pozytywnych)</span>
-      </div>
-    )
-  }
-
   if (loading) {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -234,7 +204,7 @@ export default function TransportRating({ transportId, onClose }) {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white p-6 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-auto">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-semibold">Szczegółowe oceny transportu</h2>
+          <h2 className="text-2xl font-semibold">Oceń transport</h2>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
             <X size={24} />
           </button>
@@ -246,10 +216,9 @@ export default function TransportRating({ transportId, onClose }) {
           </div>
         ) : (
           <>
-            {/* Formularz oceny - tylko dla użytkowników którzy mogą ocenić */}
-            {data?.canBeRated && (
+            {/* Formularz oceny - dla użytkowników którzy mogą ocenić */}
+            {data?.canBeRated && !data?.hasUserRated && (
               <div className="mb-8">
-                <h3 className="font-semibold text-lg mb-4">Oceń ten transport</h3>
                 <form onSubmit={handleSubmitRating} className="space-y-6">
                   {categories.map(category => (
                     <div key={category.id} className="border border-gray-200 rounded-md p-4">
@@ -310,7 +279,7 @@ export default function TransportRating({ transportId, onClose }) {
             )}
 
             {/* Informacja dla transportów, które nie mogą być ocenione */}
-            {!data?.canBeRated && !data?.hasUserRated && (
+            {!data?.canBeRated && (
               <div className="bg-yellow-50 text-yellow-700 p-4 rounded-md mb-6">
                 <p>Ten transport nie może być obecnie oceniony.</p>
                 <p className="text-sm mt-1">Transport można ocenić dopiero po jego ukończeniu.</p>
@@ -325,36 +294,10 @@ export default function TransportRating({ transportId, onClose }) {
               </div>
             )}
 
-            {/* Statystyki szczegółowe */}
-            {data?.stats?.totalRatings > 0 && (
-              <div className="space-y-6">
-                <h3 className="font-semibold text-lg">Szczegółowe statystyki</h3>
-                
-                {categories.map(category => (
-                  <div key={category.id} className="border border-gray-200 rounded-md p-4">
-                    <div className="flex items-center mb-4">
-                      {category.icon}
-                      <h4 className="font-medium text-lg ml-2">{category.title}</h4>
-                    </div>
-                    
-                    {category.criteria.map(criteria => (
-                      <div key={criteria.key} className="mb-3 pl-8">
-                        <p className="text-gray-700 text-sm mb-1">{criteria.text}</p>
-                        {renderCriteriaStats(
-                          criteria.key.replace('driver', '').replace('cargo', '').replace('delivery', '').toLowerCase(),
-                          category.id
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Lista wszystkich ocen */}
+            {/* Lista wszystkich ocen - BEZ anonimizacji */}
             {data?.ratings?.length > 0 && (
               <div className="mt-6">
-                <h3 className="font-semibold text-lg mb-4">Wszystkie oceny ({data.ratings.length})</h3>
+                <h3 className="font-semibold text-lg mb-4">Wszystkie oceny</h3>
                 <div className="space-y-4">
                   {data.ratings.map((rating, index) => (
                     <div key={rating.id} className="border border-gray-200 rounded-md p-4">
