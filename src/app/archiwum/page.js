@@ -1,16 +1,15 @@
-// src/app/archiwum/page.js - KOMPLETNIE NAPRAWIONA WERSJA BEZ BŁĘDÓW SKŁADNI
+// src/app/archiwum/page.js - PROSTA DZIAŁAJĄCA WERSJA
 'use client'
 import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
 import { pl } from 'date-fns/locale'
-import { KIEROWCY, RYNKI, POJAZDY } from '../kalendarz/constants'
+import { KIEROWCY, POJAZDY } from '../kalendarz/constants'
 import * as XLSX from 'xlsx'
 import { 
   ChevronLeft, 
   ChevronRight, 
   Download, 
   Star, 
-  StarOff, 
   ChevronDown, 
   MapPin, 
   Truck, 
@@ -18,14 +17,10 @@ import {
   User, 
   Calendar, 
   Trash2,
-  Filter,
   Package,
   Route,
   Eye,
-  ThumbsUp,
-  ThumbsDown,
   FileText,
-  Phone,
   Hash,
   MessageSquare,
   Edit
@@ -57,11 +52,11 @@ export default function ArchiwumPage() {
   const [selectedRating, setSelectedRating] = useState('all')
   const [selectedConstruction, setSelectedConstruction] = useState('')
   
-  // Lista użytkowników, budów i innych danych do filtrowania
+  // Lista użytkowników i budów
   const [users, setUsers] = useState([])
   const [constructions, setConstructions] = useState([])
 
-  // Lista dostępnych lat i miesięcy
+  // Lista lat i miesięcy
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
   const months = [
@@ -80,7 +75,6 @@ export default function ArchiwumPage() {
     { value: 11, label: 'Grudzień' }
   ]
 
-  // POPRAWKA: Opcje filtra ocen - uproszczone
   const ratingOptions = [
     { value: 'all', label: 'Wszystkie transporty' },
     { value: 'rated', label: 'Tylko ocenione' },
@@ -153,7 +147,6 @@ export default function ArchiwumPage() {
     }
   }
   
-  // POPRAWKA: Uproszony system filtrowania
   const applyFilters = async (transports, year, month, warehouse, driver, requester, rating, construction) => {
     if (!transports) return
     
@@ -200,7 +193,6 @@ export default function ArchiwumPage() {
       return true
     })
 
-    // POPRAWKA: Filtrowanie po ocenach - teraz async żeby sprawdzić oceny
     if (rating !== 'all') {
       const ratingsPromises = filtered.map(async (transport) => {
         try {
@@ -215,7 +207,7 @@ export default function ArchiwumPage() {
           return transport
         } catch (error) {
           console.error('Błąd sprawdzania oceny transportu:', error)
-          return transport // W przypadku błędu, zachowaj transport
+          return transport
         }
       })
 
@@ -271,7 +263,7 @@ export default function ArchiwumPage() {
   const handleCloseRating = () => {
     setShowRatingModal(false)
     setSelectedTransport(null)
-    fetchArchivedTransports() // Odśwież dane po zamknięciu modalu
+    fetchArchivedTransports()
   }
 
   const getDriverInfo = (driverId) => {
@@ -366,7 +358,7 @@ export default function ArchiwumPage() {
   // Statystyki
   const totalDistance = filteredArchiwum.reduce((sum, t) => sum + (t.distance || 0), 0)
 
-  // POPRAWKA: Komponent do wyświetlania przycisku oceny
+  // Komponent przycisku oceny
   const RatingButton = ({ transport }) => {
     const [ratingInfo, setRatingInfo] = useState(null)
     const [loading, setLoading] = useState(true)
@@ -374,7 +366,6 @@ export default function ArchiwumPage() {
     useEffect(() => {
       const fetchRatingInfo = async () => {
         try {
-          // POPRAWKA: Sprawdzamy pełne API które ma informację o hasUserRated
           const response = await fetch(`/api/transport-ratings?transportId=${transport.id}`)
           const data = await response.json()
           if (data.success) {
@@ -386,7 +377,6 @@ export default function ArchiwumPage() {
           }
         } catch (error) {
           console.error('Błąd pobierania informacji o ocenie:', error)
-          // W przypadku błędu - zakładamy że transport można ocenić
           setRatingInfo({
             canBeRated: true,
             hasUserRated: false,
@@ -404,7 +394,6 @@ export default function ArchiwumPage() {
       return <div className="w-20 h-8 bg-gray-100 rounded animate-pulse"></div>
     }
 
-    // POPRAWKA: Jeśli transport nie można ocenić i użytkownik nie ocenił
     if (!ratingInfo?.canBeRated && !ratingInfo?.hasUserRated) {
       return (
         <span className="text-gray-400 text-sm">
@@ -413,7 +402,6 @@ export default function ArchiwumPage() {
       )
     }
 
-    // POPRAWKA: Jeśli użytkownik już ocenił - przycisk do edycji/przeglądania
     if (ratingInfo?.hasUserRated) {
       return (
         <button
@@ -426,7 +414,6 @@ export default function ArchiwumPage() {
       )
     }
 
-    // POPRAWKA: Jeśli użytkownik nie ocenił ale może ocenić - przycisk do oceny
     return (
       <button
         onClick={() => handleOpenRatingModal(transport)}
@@ -538,7 +525,6 @@ export default function ArchiwumPage() {
             </select>
           </div>
 
-          {/* POPRAWKA: Uproszczony filtr ocen */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Status oceny
@@ -807,14 +793,12 @@ export default function ArchiwumPage() {
                             )}
                             {transport.phone && (
                               <div className="flex items-center">
-                                <Phone size={14} className="text-gray-400 mr-2" />
                                 <span className="text-gray-600">Telefon:</span>
                                 <span className="ml-1">{transport.phone}</span>
                               </div>
                             )}
                             {transport.requester_email && (
                               <div className="flex items-center">
-                                <User size={14} className="text-gray-400 mr-2" />
                                 <span className="text-gray-600">Zamówił:</span>
                                 <span className="ml-1">{transport.requester_email}</span>
                               </div>
@@ -902,19 +886,32 @@ export default function ArchiwumPage() {
                     <ChevronLeft size={16} />
                   </button>
                   
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                    <button
-                      key={page}
-                      onClick={() => paginate(page)}
-                      className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
-                        currentPage === page
-                          ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
-                          : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  ))}
+                  {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                    let page;
+                    if (totalPages <= 5) {
+                      page = i + 1;
+                    } else if (currentPage <= 3) {
+                      page = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      page = totalPages - 4 + i;
+                    } else {
+                      page = currentPage - 2 + i;
+                    }
+                    
+                    return (
+                      <button
+                        key={page}
+                        onClick={() => paginate(page)}
+                        className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                          currentPage === page
+                            ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                            : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    );
+                  })}
                   
                   <button
                     onClick={() => paginate(currentPage + 1)}
