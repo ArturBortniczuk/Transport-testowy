@@ -434,7 +434,7 @@ export default function ArchiwumPage() {
     )
   }
 
-  // Komponent przycisków oceny
+  // Komponent przycisków oceny - UPROSZCZONA WERSJA
   const RatingButtons = ({ transport }) => {
     const rating = transportRatings[transport.id]
     
@@ -445,42 +445,27 @@ export default function ArchiwumPage() {
         </span>
       )
     }
-
+  
     const hasMainRating = rating.stats.totalRatings > 0
-    const userCanRate = !hasMainRating && currentUserEmail
-    const userCanComment = currentUserEmail
+    const userHasMainRating = rating.hasUserRated
     
     return (
       <div className="flex flex-col space-y-1">
-        {userCanRate && (
-          <button
-            onClick={() => handleOpenRatingModal(transport)}
-            className="flex items-center px-3 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors text-sm"
-          >
-            <Star size={14} className="mr-1" />
-            Oceń transport
-          </button>
-        )}
-        
-        {hasMainRating && rating.userRating && (
-          <button
-            onClick={() => handleOpenRatingModal(transport)}
-            className="flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors text-sm"
-          >
-            <Edit size={14} className="mr-1" />
-            Edytuj ocenę
-          </button>
-        )}
-        
-        {userCanComment && (
-          <button
-            onClick={() => handleOpenRatingModal(transport)}
-            className="flex items-center px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors text-sm"
-          >
-            <MessageSquare size={14} className="mr-1" />
-            {hasMainRating ? 'Komentarze' : 'Zobacz'}
-          </button>
-        )}
+        {/* Jeden przycisk dla wszystkich akcji */}
+        <button
+          onClick={() => handleOpenRatingModal(transport)}
+          className={`flex items-center px-3 py-1 rounded-md hover:opacity-80 transition-colors text-sm ${
+            hasMainRating 
+              ? 'bg-blue-100 text-blue-700' 
+              : 'bg-green-100 text-green-700'
+          }`}
+        >
+          <MessageSquare size={14} className="mr-1" />
+          {hasMainRating 
+            ? (userHasMainRating ? 'Edytuj ocenę/komentarz' : 'Dodaj komentarz') 
+            : 'Oceń transport'
+          }
+        </button>
       </div>
     )
   }
