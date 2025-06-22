@@ -1,5 +1,6 @@
 // src/app/archiwum/page.js - OSTATECZNA POPRAWKA
 'use client'
+import React from 'react'  // DODAJ TĘ LINIĘ
 import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
 import { pl } from 'date-fns/locale'
