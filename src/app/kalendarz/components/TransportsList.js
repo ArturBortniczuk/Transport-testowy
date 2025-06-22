@@ -1,4 +1,5 @@
 // src/app/kalendarz/components/TransportsList.js - NAPRAWIONA WERSJA BEZ OCEN
+import React from 'react'  // DODAJ TĘ LINIĘ
 import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
 import { KIEROWCY, POJAZDY } from '../constants';
