@@ -35,7 +35,8 @@ export async function POST(request) {
 
     const userEmail = await getUserEmailFromToken(authToken);
     if (!userEmail) {
-      return NextResponse.json({success: false, 
+      return NextResponse.json({
+       success: false, 
        error: 'Nieprawidłowa sesja' 
      }, { status: 401 })
    }
