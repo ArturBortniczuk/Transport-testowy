@@ -23,8 +23,9 @@ const getUserEmailFromToken = async (authToken) => {
 };
 
 export async function POST(request) {
-  console.log('Comment endpoint called'); // Dodaj to
   try {
+    console.log('Comment endpoint called');
+    
     const authToken = request.cookies.get('authToken')?.value
     console.log('AuthToken in comment:', authToken ? 'Exists' : 'Missing');
     
@@ -36,6 +37,8 @@ export async function POST(request) {
     }
 
     const userEmail = await getUserEmailFromToken(authToken);
+    console.log('UserEmail in comment:', userEmail);
+    
     if (!userEmail) {
       return NextResponse.json({ 
         success: false, 
@@ -44,6 +47,7 @@ export async function POST(request) {
     }
 
     const { transportId, comment } = await request.json()
+    console.log('Comment data:', { transportId, comment });
     
     if (!transportId || !comment || !comment.trim()) {
       return NextResponse.json({ 
@@ -72,7 +76,7 @@ export async function POST(request) {
       }, { status: 400 })
     }
 
-    // Sprawdź czy tabela szczegółowych ocen istnieje
+    // Sprawdź czy tabela komentarzy istnieje
     const tableExists = async (tableName) => {
       try {
         await db.raw(`SELECT 1 FROM ${tableName} LIMIT 1`);
@@ -82,42 +86,37 @@ export async function POST(request) {
       }
     };
 
-    const detailedRatingsExist = await tableExists('transport_detailed_ratings');
+    const commentsTableExists = await tableExists('transport_comments');
     
-    if (!detailedRatingsExist) {
-      await db.schema.createTable('transport_detailed_ratings', (table) => {
+    if (!commentsTableExists) {
+      console.log('Creating transport_comments table...');
+      await db.schema.createTable('transport_comments', (table) => {
         table.increments('id').primary()
         table.integer('transport_id').notNullable()
-        table.string('rater_email').notNullable()
-        table.boolean('driver_professional')
-        table.boolean('driver_tasks_completed')
-        table.boolean('cargo_complete')
-        table.boolean('cargo_correct')
-        table.boolean('delivery_notified')
-        table.boolean('delivery_on_time')
-        table.text('comment')
-        table.timestamp('rated_at').defaultTo(db.fn.now())
+        table.string('commenter_email').notNullable()
+        table.text('comment').notNullable()
+        table.timestamp('created_at').defaultTo(db.fn.now())
         
         table.index(['transport_id'])
+        table.index(['commenter_email'])
+        // Brak unique constraint - pozwalamy na wiele komentarzy od jednego użytkownika
       })
+      console.log('transport_comments table created');
     }
 
-    // Dodaj komentarz jako nowy wpis
+    // Dodaj komentarz do oddzielnej tabeli
     const commentData = {
       transport_id: transportId,
-      rater_email: userEmail,
+      commenter_email: userEmail,
       comment: comment.trim(),
-      rated_at: new Date(),
-      // Pozostałe pola oceny pozostaw jako null dla samych komentarzy
-      driver_professional: null,
-      driver_tasks_completed: null,
-      cargo_complete: null,
-      cargo_correct: null,
-      delivery_notified: null,
-      delivery_on_time: null
+      created_at: new Date()
     };
 
-    await db('transport_detailed_ratings').insert(commentData);
+    console.log('Inserting comment:', commentData);
+    
+    await db('transport_comments').insert(commentData);
+
+    console.log('Comment inserted successfully');
 
     return NextResponse.json({
       success: true,
@@ -129,7 +128,7 @@ export async function POST(request) {
     
     return NextResponse.json({ 
       success: false, 
-      error: 'Wystąpił błąd podczas dodawania komentarza' 
+      error: 'Wystąpił błąd podczas dodawania komentarza: ' + error.message 
     }, { status: 500 })
   }
 }
