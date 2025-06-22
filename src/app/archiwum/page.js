@@ -84,7 +84,7 @@ export default function ArchiwumPage() {
   useEffect(() => {
     const checkAdmin = async () => {
       try {
-        const response = await fetch('/api/auth/check')
+        const response = await fetch('/api/user')  // ZMIANA: używamy istniejącego endpointu
         if (response.ok) {
           const data = await response.json()
           setIsAdmin(data.isAdmin)
