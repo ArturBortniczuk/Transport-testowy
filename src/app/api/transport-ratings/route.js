@@ -19,13 +19,8 @@ const getUserEmailFromToken = async (authToken) => {
       return null;
     }
 
-    // Pobierz email użytkownika
-    const user = await db('users')
-      .where('id', session.user_id)
-      .select('email')
-      .first();
-    
-    return user?.email || null;
+    // ZMIANA: session.user_id zawiera już email, nie trzeba pobierać z tabeli users
+    return session.user_id;
   } catch (error) {
     console.error('Błąd walidacji sesji:', error)
     return null
