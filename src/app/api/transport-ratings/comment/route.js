@@ -23,8 +23,10 @@ const getUserEmailFromToken = async (authToken) => {
 };
 
 export async function POST(request) {
+  console.log('Comment endpoint called'); // Dodaj to
   try {
     const authToken = request.cookies.get('authToken')?.value
+    console.log('AuthToken in comment:', authToken ? 'Exists' : 'Missing');
     
     if (!authToken) {
       return NextResponse.json({ 
