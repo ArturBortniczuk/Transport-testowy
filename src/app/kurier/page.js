@@ -1,17 +1,26 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Archive } from 'lucide-react'
 import KurierForm from './components/KurierForm'
 import ZamowieniaList from './components/ZamowieniaList'
+import KurierStats from './components/KurierStats'
+import KurierFilters from './components/KurierFilters'
 
 export default function KurierPage() {
   const [zamowienia, setZamowienia] = useState([])
+  const [filteredZamowienia, setFilteredZamowienia] = useState([])
   const [userRole, setUserRole] = useState(null)
   const [userName, setUserName] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [filters, setFilters] = useState({
+    magazyn: '',
+    dataOd: '',
+    dataDo: '',
+    status: 'new'
+  })
 
   // Pobierz dane użytkownika i zamówienia przy ładowaniu
   useEffect(() => {
@@ -33,6 +42,39 @@ export default function KurierPage() {
     }
   }
 
+  // Funkcja filtrowania zamówień
+  const applyFilters = useCallback((zamowieniaList, currentFilters) => {
+    let filtered = [...zamowieniaList]
+
+    // Filtr magazynu
+    if (currentFilters.magazyn) {
+      filtered = filtered.filter(z => z.magazine_source === currentFilters.magazyn)
+    }
+
+    // Filtr daty od
+    if (currentFilters.dataOd) {
+      const dataOd = new Date(currentFilters.dataOd)
+      filtered = filtered.filter(z => new Date(z.created_at) >= dataOd)
+    }
+
+    // Filtr daty do
+    if (currentFilters.dataDo) {
+      const dataDo = new Date(currentFilters.dataDo)
+      dataDo.setHours(23, 59, 59) // Koniec dnia
+      filtered = filtered.filter(z => new Date(z.created_at) <= dataDo)
+    }
+
+    return filtered
+  }, [])
+
+  // Obsługa zmiany filtrów
+  const handleFiltersChange = useCallback((newFilters) => {
+    setFilters(newFilters)
+    const filtered = applyFilters(zamowienia, newFilters)
+    setFilteredZamowienia(filtered)
+  }, [zamowienia, applyFilters])
+
+  // Pobierz zamówienia i zastosuj filtry
   const fetchZamowienia = async () => {
     try {
       setLoading(true)
@@ -42,6 +84,9 @@ export default function KurierPage() {
       
       if (data.success) {
         setZamowienia(data.zamowienia)
+        // Zastosuj aktualne filtry do nowych danych
+        const filtered = applyFilters(data.zamowienia, filters)
+        setFilteredZamowienia(filtered)
       } else {
         setError(data.error)
       }
@@ -52,6 +97,14 @@ export default function KurierPage() {
       setLoading(false)
     }
   }
+
+  // Zastosuj filtry gdy zamówienia się zmienią
+  useEffect(() => {
+    if (zamowienia.length > 0) {
+      const filtered = applyFilters(zamowienia, filters)
+      setFilteredZamowienia(filtered)
+    }
+  }, [zamowienia, filters, applyFilters])
 
   const handleDodajZamowienie = async (noweZamowienie) => {
     try {
@@ -186,6 +239,15 @@ export default function KurierPage() {
         </div>
       </div>
 
+      {/* Statystyki */}
+      <KurierStats isArchive={false} />
+
+      {/* Filtry */}
+      <KurierFilters 
+        onFiltersChange={handleFiltersChange}
+        isArchive={false}
+      />
+
       {error && (
         <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg">
           Błąd: {error}
@@ -193,9 +255,9 @@ export default function KurierPage() {
       )}
 
       {/* Lista zamówień jest zawsze widoczna */}
-      <div className={`transition-all duration-500 ${showForm ? 'opacity-50' : 'opacity-100'}`}>
+      <div className={`transition-all duration-500 ${showForm ? 'opacity-50' : 'opacity-100'} mt-6`}>
         <ZamowieniaList
-          zamowienia={zamowienia}
+          zamowienia={filteredZamowienia}
           onZatwierdz={handleZatwierdzZamowienie}
           onUsun={handleUsunZamowienie}
           userRole={userRole}
