@@ -6,57 +6,162 @@ import ZamowieniaList from './components/ZamowieniaList'
 export default function KurierPage() {
   const [zamowienia, setZamowienia] = useState([])
   const [userRole, setUserRole] = useState(null)
+  const [userName, setUserName] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
+  // Pobierz dane użytkownika i zamówienia przy ładowaniu
   useEffect(() => {
-    const role = localStorage.getItem('userRole')
-    setUserRole(role)
-    
-    const savedZamowienia = localStorage.getItem('zamowieniaKurier')
-    if (savedZamowienia) {
-      setZamowienia(JSON.parse(savedZamowienia))
-    }
+    fetchUserData()
+    fetchZamowienia()
   }, [])
 
-  const handleDodajZamowienie = (noweZamowienie) => {
-    const zamowienieWithDetails = {
-      ...noweZamowienie,
-      id: Date.now(),
-      status: 'oczekujące',
-      dataDodania: new Date().toISOString(),
-      magazynZamawiajacy: userRole
+  const fetchUserData = async () => {
+    try {
+      const response = await fetch('/api/user')
+      const data = await response.json()
+      
+      if (data.isAuthenticated && data.user) {
+        setUserRole(data.user.role)
+        setUserName(data.user.name)
+      }
+    } catch (error) {
+      console.error('Błąd pobierania danych użytkownika:', error)
     }
+  }
 
-    const updatedZamowienia = [...zamowienia, zamowienieWithDetails]
-    setZamowienia(updatedZamowienia)
-    localStorage.setItem('zamowieniaKurier', JSON.stringify(updatedZamowienia))
-    setShowForm(false) // Chowamy formularz po dodaniu zamówienia
+  const fetchZamowienia = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch('/api/kurier')
+      const data = await response.json()
+      
+      if (data.success) {
+        setZamowienia(data.zamowienia)
+      } else {
+        setError(data.error)
+      }
+    } catch (error) {
+      console.error('Błąd pobierania zamówień:', error)
+      setError('Nie udało się pobrać zamówień kurierskich')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDodajZamowienie = async (noweZamowienie) => {
+    try {
+      setLoading(true)
+      const response = await fetch('/api/kurier', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...noweZamowienie,
+          magazynZamawiajacy: userRole
+        }),
+      })
+
+      const data = await response.json()
+      
+      if (data.success) {
+        // Odśwież listę zamówień
+        await fetchZamowienia()
+        setShowForm(false)
+        
+        // Pokaż komunikat sukcesu
+        alert('Zamówienie kurierskie zostało dodane pomyślnie!')
+      } else {
+        alert('Błąd: ' + data.error)
+      }
+    } catch (error) {
+      console.error('Błąd dodawania zamówienia:', error)
+      alert('Wystąpił błąd podczas dodawania zamówienia')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleZatwierdzZamowienie = async (zamowienieId) => {
-    // Tutaj później dodamy integrację z API DHL
-    const updatedZamowienia = zamowienia.map(zam =>
-      zam.id === zamowienieId ? { ...zam, status: 'zatwierdzone' } : zam
-    )
-    setZamowienia(updatedZamowienia)
-    localStorage.setItem('zamowieniaKurier', JSON.stringify(updatedZamowienia))
+    try {
+      // TODO: Tutaj później dodamy integrację z API DHL/InPost
+      const response = await fetch(`/api/kurier/${zamowienieId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          status: 'approved'
+        }),
+      })
+
+      const data = await response.json()
+      
+      if (data.success) {
+        // Odśwież listę zamówień
+        await fetchZamowienia()
+        alert('Zamówienie zostało zatwierdzone!')
+      } else {
+        alert('Błąd: ' + data.error)
+      }
+    } catch (error) {
+      console.error('Błąd zatwierdzania zamówienia:', error)
+      alert('Wystąpił błąd podczas zatwierdzania zamówienia')
+    }
   }
 
-  const handleUsunZamowienie = (zamowienieId) => {
-    const updatedZamowienia = zamowienia.filter(zam => zam.id !== zamowienieId)
-    setZamowienia(updatedZamowienia)
-    localStorage.setItem('zamowieniaKurier', JSON.stringify(updatedZamowienia))
+  const handleUsunZamowienie = async (zamowienieId) => {
+    if (!confirm('Czy na pewno chcesz usunąć to zamówienie?')) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/kurier/${zamowienieId}`, {
+        method: 'DELETE'
+      })
+
+      const data = await response.json()
+      
+      if (data.success) {
+        // Odśwież listę zamówień
+        await fetchZamowienia()
+        alert('Zamówienie zostało usunięte!')
+      } else {
+        alert('Błąd: ' + data.error)
+      }
+    } catch (error) {
+      console.error('Błąd usuwania zamówienia:', error)
+      alert('Wystąpił błąd podczas usuwania zamówienia')
+    }
   }
 
-const canAddOrder = userRole === 'handlowiec' || userRole === 'magazyn'
-  const canRespond = userRole === 'magazyn'
+  // Sprawdź uprawnienia
+  const canAddOrder = userRole === 'handlowiec' || userRole === 'admin' || userRole?.includes('magazyn')
+  const canApprove = userRole === 'admin' || userRole?.includes('magazyn')
   
+  if (loading && zamowienia.length === 0) {
+    return (
+      <div className="max-w-6xl mx-auto p-6">
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-6xl mx-auto p-6">
       <div className="mb-8 flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-900">
-          Zamówienia kuriera
-        </h1>
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">
+            Zamówienia kuriera
+          </h1>
+          <p className="text-gray-600 mt-2">
+            Zarządzaj zamówieniami kurierskimi dla magazynu
+          </p>
+        </div>
         {canAddOrder && (
           <button
             onClick={() => setShowForm(!showForm)}
@@ -67,6 +172,12 @@ const canAddOrder = userRole === 'handlowiec' || userRole === 'magazyn'
         )}
       </div>
 
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg">
+          Błąd: {error}
+        </div>
+      )}
+
       {/* Lista zamówień jest zawsze widoczna */}
       <div className={`transition-all duration-500 ${showForm ? 'opacity-50' : 'opacity-100'}`}>
         <ZamowieniaList
@@ -74,6 +185,8 @@ const canAddOrder = userRole === 'handlowiec' || userRole === 'magazyn'
           onZatwierdz={handleZatwierdzZamowienie}
           onUsun={handleUsunZamowienie}
           userRole={userRole}
+          canApprove={canApprove}
+          loading={loading}
         />
       </div>
 
@@ -84,6 +197,7 @@ const canAddOrder = userRole === 'handlowiec' || userRole === 'magazyn'
             <KurierForm 
               onSubmit={handleDodajZamowienie} 
               magazynNadawcy={userRole}
+              userName={userName}
               onCancel={() => setShowForm(false)}
             />
           </div>
