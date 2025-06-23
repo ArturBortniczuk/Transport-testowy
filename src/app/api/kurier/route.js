@@ -17,7 +17,7 @@ const validateSession = async (authToken) => {
   return session?.user_id;
 };
 
-// GET - Pobierz wszystkie zamówienia kurierskie
+// GET - Pobierz zamówienia kurierskie (z opcjonalnym filtrowaniem)
 export async function GET(request) {
   try {
     // Sprawdzamy uwierzytelnienie
@@ -31,9 +31,26 @@ export async function GET(request) {
       }, { status: 401 });
     }
 
-    // Pobierz wszystkie zamówienia, sortowane od najnowszych
-    const zamowienia = await db('kuriers')
-      .orderBy('created_at', 'desc');
+    // Sprawdź parametry URL
+    const { searchParams } = new URL(request.url);
+    const statusFilter = searchParams.get('status');
+
+    let query = db('kuriers');
+
+    // Filtrowanie według statusu
+    if (statusFilter === 'completed') {
+      // Archiwum - zamówienia zatwierdzone i dostarczone
+      query = query.whereIn('status', ['approved', 'sent', 'delivered']);
+    } else if (statusFilter === 'active') {
+      // Aktywne - tylko nowe zamówienia
+      query = query.where('status', 'new');
+    } else if (!statusFilter) {
+      // Domyślnie pokazuj tylko aktywne zamówienia (nowe)
+      query = query.where('status', 'new');
+    }
+
+    // Pobierz zamówienia, sortowane od najnowszych
+    const zamowienia = await query.orderBy('created_at', 'desc');
 
     return NextResponse.json({ 
       success: true, 
