@@ -37,7 +37,7 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
     szerokosc: '',
     wysokosc: ''
   })
-
+  const [error, setError] = useState('')  // DODAJ TĘ LINIĘ
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
     setFormData(prev => ({
@@ -48,6 +48,20 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
 
   const handleSubmit = (e) => {
     e.preventDefault()
+    setError('')
+  
+    // Walidacja wagi
+    if (formData.waga > 1000) {
+      setError('Maksymalna waga przesyłki to 1000 kg')
+      return
+    }
+  
+    // Walidacja wymiarów
+    if (formData.dlugosc > 160 || formData.szerokosc > 160 || formData.wysokosc > 160) {
+      setError('Maksymalny wymiar przesyłki to 160 cm (długość/szerokość/wysokość)')
+      return
+    }
+  
     onSubmit(formData)
     // Resetujemy formularz
     setFormData({
@@ -418,9 +432,11 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
                   onChange={handleChange}
                   step="0.1"
                   min="0.1"
+                  max="1000"
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500"
                   required
                 />
+                <p className="text-xs text-gray-500 mt-1">Max 1000 kg</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Długość (cm)</label>
@@ -430,9 +446,11 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
                   value={formData.dlugosc}
                   onChange={handleChange}
                   min="1"
+                  max="160"
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500"
                   required
                 />
+                <p className="text-xs text-gray-500 mt-1">Max 160 cm</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Szerokość (cm)</label>
@@ -442,9 +460,11 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
                   value={formData.szerokosc}
                   onChange={handleChange}
                   min="1"
+                  max="160"
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500"
                   required
                 />
+                <p className="text-xs text-gray-500 mt-1">Max 160 cm</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Wysokość (cm)</label>
@@ -454,9 +474,11 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
                   value={formData.wysokosc}
                   onChange={handleChange}
                   min="1"
+                  max="160"
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500"
                   required
                 />
+                <p className="text-xs text-gray-500 mt-1">Max 160 cm</p>
               </div>
             </div>
 
