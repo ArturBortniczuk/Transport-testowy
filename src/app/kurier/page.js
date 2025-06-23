@@ -1,5 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { Archive } from 'lucide-react'
 import KurierForm from './components/KurierForm'
 import ZamowieniaList from './components/ZamowieniaList'
 
@@ -34,7 +36,8 @@ export default function KurierPage() {
   const fetchZamowienia = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/kurier')
+      // Pobierz tylko aktywne zamówienia (status=active oznacza nowe)
+      const response = await fetch('/api/kurier?status=active')
       const data = await response.json()
       
       if (data.success) {
@@ -156,20 +159,31 @@ export default function KurierPage() {
       <div className="mb-8 flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">
-            Zamówienia kuriera
+            Aktywne zamówienia kuriera
           </h1>
           <p className="text-gray-600 mt-2">
-            Zarządzaj zamówieniami kurierskimi dla magazynu
+            Zarządzaj nowymi zamówieniami kurierskimi dla magazynu
           </p>
         </div>
-        {canAddOrder && (
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 flex items-center space-x-2 transition-all"
+        <div className="flex space-x-4">
+          {/* Link do archiwum */}
+          <Link
+            href="/archiwum-kurier"
+            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg shadow hover:bg-gray-200 flex items-center space-x-2 transition-all"
           >
-            <span>{showForm ? 'Anuluj' : 'Nowe zamówienie'}</span>
-          </button>
-        )}
+            <Archive size={20} />
+            <span>Archiwum</span>
+          </Link>
+          
+          {canAddOrder && (
+            <button
+              onClick={() => setShowForm(!showForm)}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 flex items-center space-x-2 transition-all"
+            >
+              <span>{showForm ? 'Anuluj' : 'Nowe zamówienie'}</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
