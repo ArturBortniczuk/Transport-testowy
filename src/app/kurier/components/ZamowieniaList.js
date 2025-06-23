@@ -178,38 +178,45 @@ export default function ZamowieniaList({ zamowienia, onZatwierdz, onUsun, userRo
                         <Package className="w-5 h-5 mr-2 text-purple-600" />
                         Szczegóły przesyłki
                       </h4>
-                      <div className="bg-purple-50 p-3 rounded-md">
+                      <div className="bg-purple-50 p-4 rounded-md">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <div className="flex items-center text-sm">
-                              <Box className="w-4 h-4 mr-2 text-gray-400" />
-                              <span className="font-medium">Opis:</span>
-                              <span className="ml-2">{zamowienie.package_description}</span>
+                          <div className="space-y-3">
+                            <div className="text-sm">
+                              <span className="font-medium text-gray-700">Zawartość:</span>
+                              <p className="mt-1 text-gray-900">{zamowienie.package_description.split(' | ')[0]}</p>
+                            </div>
+                            <div className="text-sm">
+                              <span className="font-medium text-gray-700">Parametry:</span>
+                              <div className="mt-1 space-y-1">
+                                {zamowienie.package_description.split(' | ').slice(1).map((param, index) => (
+                                  <div key={index} className="text-gray-900 text-xs bg-white px-2 py-1 rounded border">
+                                    {param}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="space-y-3">
+                            <div className="text-sm">
+                              <span className="font-medium text-gray-700">Magazyn nadawczy:</span>
+                              <p className="mt-1 text-gray-900 capitalize">{zamowienie.magazine_source?.replace('_', ' ')}</p>
+                            </div>
+                            <div className="text-sm">
+                              <span className="font-medium text-gray-700">Utworzone przez:</span>
+                              <p className="mt-1 text-gray-900">{zamowienie.created_by_email}</p>
                             </div>
                             {przesylka.mpk && (
-                              <div className="flex items-center text-sm">
-                                <span className="font-medium text-gray-500">MPK:</span>
-                                <span className="ml-2">{przesylka.mpk}</span>
+                              <div className="text-sm">
+                                <span className="font-medium text-gray-700">MPK:</span>
+                                <p className="mt-1 text-gray-900 font-mono">{przesylka.mpk}</p>
                               </div>
                             )}
                           </div>
-                          <div className="space-y-2">
-                            <div className="flex items-center text-sm">
-                              <Clock className="w-4 h-4 mr-2 text-gray-400" />
-                              <span className="font-medium">Magazyn źródłowy:</span>
-                              <span className="ml-2 capitalize">{zamowienie.magazine_source}</span>
-                            </div>
-                            <div className="flex items-center text-sm">
-                              <User className="w-4 h-4 mr-2 text-gray-400" />
-                              <span className="font-medium">Utworzone przez:</span>
-                              <span className="ml-2">{zamowienie.created_by_email}</span>
-                            </div>
-                          </div>
                           {przesylka.uwagi && (
-                            <div className="md:col-span-2">
+                            <div className="md:col-span-2 pt-3 border-t border-purple-200">
                               <div className="text-sm">
-                                <span className="font-medium text-gray-500">Uwagi:</span>
-                                <p className="mt-1 text-gray-700">{przesylka.uwagi}</p>
+                                <span className="font-medium text-gray-700">Uwagi:</span>
+                                <p className="mt-1 text-gray-900 bg-white p-3 rounded border">{przesylka.uwagi}</p>
                               </div>
                             </div>
                           )}
