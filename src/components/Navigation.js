@@ -200,11 +200,8 @@ export default function Navigation() {
     });
   }
   
-  // Dodaj link do archiwum spedycji tylko dla pełnego administratora
-  if (adminAccess.isFullAdmin) {
-    console.log('Dodawanie linku do archiwum spedycji');
-    privateLinks.push({ name: 'Archiwum Spedycji', path: '/archiwum-spedycji' });
-  }
+  // Dodaj link do modułu kurierskiego dla wszystkich zalogowanych użytkowników
+  privateLinks.push({ name: 'Kurier', path: '/kurier' });
 
   const navLinks = isLoggedIn ? privateLinks : publicLinks;
   const isActive = (path) => pathname === path;
