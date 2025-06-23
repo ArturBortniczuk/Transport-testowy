@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 
-export default function KurierForm({ onSubmit, magazynNadawcy, onCancel }) {
+export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCancel }) {
     const [formData, setFormData] = useState({
     // Dane nadawcy
     nadawcaTyp: 'firma',
@@ -122,7 +122,7 @@ export default function KurierForm({ onSubmit, magazynNadawcy, onCancel }) {
               </div>
             </div>
 
-            <div className="md:col-span-2">
+<div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700">
                 {formData.nadawcaTyp === 'osoba' ? 'Imię i nazwisko' : 'Nazwa firmy'}
               </label>
@@ -131,6 +131,7 @@ export default function KurierForm({ onSubmit, magazynNadawcy, onCancel }) {
                 name="nadawcaNazwa"
                 value={formData.nadawcaNazwa}
                 onChange={handleChange}
+                placeholder={formData.nadawcaTyp === 'firma' ? 'Grupa Eltron Sp. z o.o.' : ''}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 required
               />
