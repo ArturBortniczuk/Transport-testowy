@@ -133,8 +133,13 @@ class DHLApiService {
             <tns:serviceType>${serviceType}</tns:serviceType>
             <tns:billing>
               <tns:shippingPaymentType>SENDER</tns:shippingPaymentType>
+              <tns:billingAccountNumber>${process.env.DHL_ACCOUNT_NUMBER || ''}</tns:billingAccountNumber>
               <tns:paymentType>BANK_TRANSFER</tns:paymentType>
+              <tns:costsCenter>Transport System</tns:costsCenter>
             </tns:billing>
+            <tns:shipmentDate>${new Date().toISOString().split('T')[0]}</tns:shipmentDate>
+            <tns:shipmentStartHour>08:00</tns:shipmentStartHour>
+            <tns:shipmentEndHour>16:00</tns:shipmentEndHour>
             <tns:labelType>BLP</tns:labelType>
           </tns:shipmentInfo>
           <tns:pieceList>
