@@ -1,263 +1,235 @@
 // src/app/services/dhl-api.js
-// Prawdziwa integracja z DHL24 API zgodnie z dokumentacją WSDL
+import soap from 'soap';
 
 class DHLApiService {
   constructor() {
-    // URL do prawdziwego API DHL24
-    this.apiUrl = process.env.DHL_API_URL || 'https://dhl24.com.pl/servicepoint/provider/service.html?ws=1';
-    this.testApiUrl = 'https://sandbox.dhl24.com.pl/servicepoint/provider/service.html?ws=1'; // Sandbox dla testów
+    // URL do SOAP WSDL
+    this.wsdlUrl = process.env.DHL_TEST_MODE === 'true' 
+      ? 'https://sandbox.dhl24.com.pl/webapi2?wsdl'
+      : 'https://dhl24.com.pl/webapi2?wsdl';
+    
     this.username = process.env.DHL_USERNAME;
     this.password = process.env.DHL_PASSWORD;
+    this.clientNumber = process.env.DHL_CLIENT_NUMBER;
     this.isTestMode = process.env.DHL_TEST_MODE === 'true';
+    
+    console.log('DHL API Service initialized:', {
+      wsdlUrl: this.wsdlUrl,
+      username: this.username ? 'SET' : 'NOT SET',
+      password: this.password ? 'SET' : 'NOT SET',
+      clientNumber: this.clientNumber ? 'SET' : 'NOT SET',
+      testMode: this.isTestMode
+    });
   }
 
-  // Tworzenie przesyłki zgodnie z WSDL
+  // Główna metoda tworzenia przesyłki
   async createShipment(shipmentData) {
     try {
-      console.log('Creating DHL24 shipment for order:', shipmentData.id);
+      console.log('Creating DHL shipment for order:', shipmentData.id);
       
-      const soapEnvelope = this.buildCreateShipmentSOAP(shipmentData);
-      const url = this.isTestMode ? this.testApiUrl : this.apiUrl;
-      
-      console.log('Sending SOAP request to:', url);
-      console.log('SOAP Envelope:', soapEnvelope);
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/xml; charset=utf-8',
-          'SOAPAction': 'https://dhl24.com.pl/servicepoint/provider/service.html?ws=1#createShipment',
-          'Accept': 'text/xml'
-        },
-        body: soapEnvelope
-      });
-
-      console.log('DHL24 Response Status:', response.status);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('DHL24 HTTP error:', errorText);
-        throw new Error(`HTTP Error: ${response.status} - ${errorText}`);
+      // Sprawdź dane konfiguracyjne
+      if (!this.username || !this.password) {
+        return {
+          success: false,
+          error: 'Brak danych uwierzytelniających DHL (username/password)'
+        };
       }
 
-      const responseText = await response.text();
-      console.log('DHL24 Response:', responseText);
+      const notes = typeof shipmentData.notes === 'string' 
+        ? JSON.parse(shipmentData.notes) 
+        : shipmentData.notes;
+
+      // W trybie testowym zwróć sukces bez prawdziwego API
+      if (this.isTestMode && (!this.clientNumber || this.clientNumber === 'TEST')) {
+        console.log('TEST MODE: Simulating successful DHL shipment creation');
+        const mockShipmentNumber = `TEST_${Date.now()}`;
+        
+        return {
+          success: true,
+          shipmentNumber: mockShipmentNumber,
+          trackingNumber: mockShipmentNumber,
+          labelUrl: null,
+          labelContent: null,
+          dispatchNumber: `DISPATCH_${Date.now()}`,
+          cost: '25.50',
+          data: {
+            mode: 'TEST',
+            created: new Date().toISOString()
+          }
+        };
+      }
+
+      // Przygotuj dane zgodnie z SOAP API DHL
+      const soapParams = this.prepareDHLSOAPData(shipmentData, notes);
       
-      const result = this.parseCreateShipmentResponse(responseText);
+      console.log('Prepared SOAP data:', JSON.stringify(soapParams, null, 2));
       
-      if (result.success) {
-        console.log('DHL24 shipment created successfully:', result);
+      // Wywołaj SOAP API
+      const result = await this.callDHLSOAPAPI(soapParams);
+      
+      return result;
+    } catch (error) {
+      console.error('DHL shipment creation error:', error);
+      return {
+        success: false,
+        error: `DHL Error: ${error.message}`
+      };
+    }
+  }
+
+  // Przygotowanie danych zgodnie z dokumentacją DHL SOAP
+  prepareDHLSOAPData(shipmentData, notes) {
+    const shipperAddress = this.parseAddress(notes.nadawca?.adres || '');
+    const receiverAddress = this.parseAddress(shipmentData.recipient_address);
+    const piece = this.extractPieceInfo(shipmentData.package_description, notes.przesylka);
+
+    return {
+      authData: {
+        username: this.username,
+        password: this.password
+      },
+      shipmentData: {
+        ship: {
+          shipper: {
+            address: {
+              name: notes.nadawca?.nazwa || 'Grupa Eltron Sp. z o.o.',
+              postcode: shipperAddress.postcode || '15-169',
+              city: shipperAddress.city || 'Białystok',
+              street: shipperAddress.street || 'Wysockiego',
+              houseNumber: shipperAddress.houseNumber || '69B',
+              ...(shipperAddress.apartmentNumber && { apartmentNumber: shipperAddress.apartmentNumber })
+            },
+            contact: {
+              personName: notes.nadawca?.kontakt || 'Magazyn',
+              phoneNumber: this.cleanPhoneNumber(notes.nadawca?.telefon || '857152705'),
+              emailAddress: notes.nadawca?.email || 'logistyka@grupaeltron.pl'
+            }
+          },
+          receiver: {
+            address: {
+              addressType: notes.odbiorca?.typ === 'firma' ? 'BUSINESS' : 'PRIVATE',
+              name: shipmentData.recipient_name,
+              postcode: receiverAddress.postcode,
+              city: receiverAddress.city,
+              street: receiverAddress.street,
+              houseNumber: receiverAddress.houseNumber,
+              ...(receiverAddress.apartmentNumber && { apartmentNumber: receiverAddress.apartmentNumber })
+            },
+            contact: {
+              personName: notes.odbiorca?.kontakt || shipmentData.recipient_name,
+              phoneNumber: this.cleanPhoneNumber(shipmentData.recipient_phone),
+              emailAddress: notes.odbiorca?.email || ''
+            }
+          }
+        },
+        shipmentInfo: {
+          dropOffType: 'REGULAR_PICKUP',
+          serviceType: this.determineServiceType(notes.typZlecenia),
+          billing: {
+            shippingPaymentType: 'SHIPPER',
+            billingAccountNumber: this.clientNumber,
+            paymentType: 'BANK_TRANSFER',
+            costsCenter: 'Transport System'
+          },
+          shipmentDate: new Date().toISOString().split('T')[0],
+          shipmentStartHour: '08:00',
+          shipmentEndHour: '16:00',
+          labelType: 'BLP'
+        },
+        pieceList: [
+          {
+            item: piece
+          }
+        ],
+        content: this.extractContentFromDescription(shipmentData.package_description),
+        comment: notes.przesylka?.uwagi || '',
+        reference: `ORDER_${shipmentData.id}`
+      }
+    };
+  }
+
+  // Wywołanie SOAP API DHL
+  async callDHLSOAPAPI(soapParams) {
+    try {
+      console.log('Creating SOAP client for URL:', this.wsdlUrl);
+      
+      // Utwórz klienta SOAP
+      const client = await soap.createClientAsync(this.wsdlUrl, {
+        timeout: 30000,
+        disableCache: true
+      });
+      
+      console.log('SOAP client created successfully');
+      console.log('Available methods:', Object.keys(client));
+      
+      // Wywołaj metodę createShipment
+      const [result] = await client.createShipmentAsync(soapParams);
+      
+      console.log('DHL SOAP Response:', result);
+      
+      if (result && result.shipmentNumber) {
         return {
           success: true,
           shipmentNumber: result.shipmentNumber,
-          trackingNumber: result.shipmentNumber, // W DHL24 to samo
+          trackingNumber: result.shipmentNumber, // W DHL często to samo
           labelUrl: result.labelContent ? `data:application/pdf;base64,${result.labelContent}` : null,
           labelContent: result.labelContent,
           dispatchNumber: result.dispatchNumber,
+          cost: result.cost || 'Nieznany',
           data: result
         };
+      } else if (result && result.error) {
+        throw new Error(result.error);
       } else {
-        throw new Error(result.error || 'Unknown DHL24 error');
+        throw new Error('Nieoczekiwana odpowiedź z DHL API');
       }
     } catch (error) {
-      console.error('DHL24 shipment creation error:', error);
+      console.error('DHL SOAP API Error:', error);
+      
+      // Jeśli to błąd połączenia lub timeout, zwróć specjalny błąd
+      if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
+        return {
+          success: false,
+          error: 'Brak połączenia z serwisem DHL. Sprawdź połączenie internetowe i spróbuj ponownie.'
+        };
+      }
+      
       return {
         success: false,
-        error: error.message
+        error: `DHL SOAP Error: ${error.message}`
       };
     }
   }
 
-  // Budowanie SOAP envelope dla createShipment
-  buildCreateShipmentSOAP(shipmentData) {
-    const notes = typeof shipmentData.notes === 'string' 
-      ? JSON.parse(shipmentData.notes) 
-      : shipmentData.notes;
-
-    // Parsowanie adresów
-    const shipperAddress = this.parseAddress(notes.nadawca.adres);
-    const receiverAddress = this.parseAddress(shipmentData.recipient_address);
-    
-    // Określ typ usługi DHL
-    const serviceType = this.determineServiceType(notes.typZlecenia);
-    
-    // Wyciągnij wymiary i wagę
-    const piece = this.extractPieceInfo(shipmentData.package_description, notes.przesylka);
-
-    return `<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" 
-               xmlns:tns="https://dhl24.com.pl/servicepoint/provider/service.html?ws=1">
-  <soap:Body>
-    <tns:createShipment>
-      <tns:shipment>
-        <tns:authData>
-          <tns:username>${this.escapeXml(this.username)}</tns:username>
-          <tns:password>${this.escapeXml(this.password)}</tns:password>
-        </tns:authData>
-        <tns:shipmentData>
-          <tns:ship>
-            <tns:shipper>
-              <tns:address>
-                <tns:name>${this.escapeXml(notes.nadawca.nazwa)}</tns:name>
-                <tns:postcode>${this.escapeXml(shipperAddress.postcode)}</tns:postcode>
-                <tns:city>${this.escapeXml(shipperAddress.city)}</tns:city>
-                <tns:street>${this.escapeXml(shipperAddress.street)}</tns:street>
-                <tns:houseNumber>${this.escapeXml(shipperAddress.houseNumber)}</tns:houseNumber>
-                ${shipperAddress.apartmentNumber ? `<tns:apartmentNumber>${this.escapeXml(shipperAddress.apartmentNumber)}</tns:apartmentNumber>` : ''}
-              </tns:address>
-              <tns:contact>
-                <tns:personName>${this.escapeXml(notes.nadawca.kontakt)}</tns:personName>
-                <tns:phoneNumber>${this.escapeXml(this.cleanPhoneNumber(notes.nadawca.telefon))}</tns:phoneNumber>
-                <tns:emailAddress>${this.escapeXml(notes.nadawca.email)}</tns:emailAddress>
-              </tns:contact>
-            </tns:shipper>
-            <tns:receiver>
-              <tns:address>
-                <tns:addressType>PRIVATE</tns:addressType>
-                <tns:name>${this.escapeXml(shipmentData.recipient_name)}</tns:name>
-                <tns:postcode>${this.escapeXml(receiverAddress.postcode)}</tns:postcode>
-                <tns:city>${this.escapeXml(receiverAddress.city)}</tns:city>
-                <tns:street>${this.escapeXml(receiverAddress.street)}</tns:street>
-                <tns:houseNumber>${this.escapeXml(receiverAddress.houseNumber)}</tns:houseNumber>
-                ${receiverAddress.apartmentNumber ? `<tns:apartmentNumber>${this.escapeXml(receiverAddress.apartmentNumber)}</tns:apartmentNumber>` : ''}
-              </tns:address>
-              <tns:contact>
-                <tns:personName>${this.escapeXml(notes.odbiorca.kontakt || shipmentData.recipient_name)}</tns:personName>
-                <tns:phoneNumber>${this.escapeXml(this.cleanPhoneNumber(shipmentData.recipient_phone))}</tns:phoneNumber>
-                <tns:emailAddress>${this.escapeXml(notes.odbiorca.email || '')}</tns:emailAddress>
-              </tns:contact>
-            </tns:receiver>
-          </tns:ship>
-          <tns:shipmentInfo>
-            <tns:dropOffType>REGULAR_PICKUP</tns:dropOffType>
-            <tns:serviceType>${serviceType}</tns:serviceType>
-            <tns:billing>
-              <tns:shippingPaymentType>SENDER</tns:shippingPaymentType>
-              <tns:billingAccountNumber>${process.env.DHL_ACCOUNT_NUMBER || ''}</tns:billingAccountNumber>
-              <tns:paymentType>BANK_TRANSFER</tns:paymentType>
-              <tns:costsCenter>Transport System</tns:costsCenter>
-            </tns:billing>
-            <tns:shipmentDate>${new Date().toISOString().split('T')[0]}</tns:shipmentDate>
-            <tns:shipmentStartHour>08:00</tns:shipmentStartHour>
-            <tns:shipmentEndHour>16:00</tns:shipmentEndHour>
-            <tns:labelType>BLP</tns:labelType>
-          </tns:shipmentInfo>
-          <tns:pieceList>
-            <tns:item>
-              <tns:type>PACKAGE</tns:type>
-              <tns:width>${piece.width}</tns:width>
-              <tns:height>${piece.height}</tns:height>
-              <tns:lenght>${piece.length}</tns:lenght>
-              <tns:weight>${piece.weight}</tns:weight>
-              <tns:quantity>${piece.quantity}</tns:quantity>
-              <tns:nonStandard>false</tns:nonStandard>
-            </tns:item>
-          </tns:pieceList>
-          <tns:content>${this.escapeXml(this.extractContentFromDescription(shipmentData.package_description))}</tns:content>
-          <tns:comment>${this.escapeXml(notes.przesylka.uwagi || '')}</tns:comment>
-          <tns:reference>ORDER_${shipmentData.id}</tns:reference>
-        </tns:shipmentData>
-      </tns:shipment>
-    </tns:createShipment>
-  </soap:Body>
-</soap:Envelope>`;
-  }
-
-  // Parsowanie odpowiedzi createShipment
-  parseCreateShipmentResponse(xmlResponse) {
-    try {
-      // Sprawdź czy to błąd SOAP
-      if (xmlResponse.includes('soap:Fault') || xmlResponse.includes('faultstring')) {
-        const faultMatch = xmlResponse.match(/<faultstring[^>]*>(.*?)<\/faultstring>/);
-        const errorMessage = faultMatch ? faultMatch[1] : 'Unknown SOAP fault';
-        return {
-          success: false,
-          error: `DHL24 SOAP Error: ${errorMessage}`
-        };
-      }
-
-      // Wyciągnij shipmentNumber
-      const shipmentMatch = xmlResponse.match(/<(?:tns:)?shipmentNumber[^>]*>(.*?)<\/(?:tns:)?shipmentNumber>/);
-      const shipmentNumber = shipmentMatch ? shipmentMatch[1] : null;
-
-      // Wyciągnij dispatchNumber
-      const dispatchMatch = xmlResponse.match(/<(?:tns:)?dispatchNumber[^>]*>(.*?)<\/(?:tns:)?dispatchNumber>/);
-      const dispatchNumber = dispatchMatch ? dispatchMatch[1] : null;
-
-      // Wyciągnij labelContent (Base64)
-      const labelMatch = xmlResponse.match(/<(?:tns:)?labelContent[^>]*>(.*?)<\/(?:tns:)?labelContent>/);
-      const labelContent = labelMatch ? labelMatch[1] : null;
-
-      if (shipmentNumber) {
-        return {
-          success: true,
-          shipmentNumber: shipmentNumber,
-          dispatchNumber: dispatchNumber,
-          labelContent: labelContent
-        };
-      } else {
-        return {
-          success: false,
-          error: 'No shipment number in response'
-        };
-      }
-    } catch (error) {
-      return {
-        success: false,
-        error: `Response parsing error: ${error.message}`
-      };
-    }
-  }
-
-  // Usuwanie przesyłki
+  // Anulowanie przesyłki
   async cancelShipment(shipmentNumber) {
     try {
-      console.log('Cancelling DHL24 shipment:', shipmentNumber);
+      console.log('Cancelling DHL shipment:', shipmentNumber);
       
-      const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" 
-               xmlns:tns="https://dhl24.com.pl/servicepoint/provider/service.html?ws=1">
-  <soap:Body>
-    <tns:deleteShipment>
-      <tns:shipment>
-        <tns:authData>
-          <tns:username>${this.escapeXml(this.username)}</tns:username>
-          <tns:password>${this.escapeXml(this.password)}</tns:password>
-        </tns:authData>
-        <tns:shipment>${this.escapeXml(shipmentNumber)}</tns:shipment>
-      </tns:shipment>
-    </tns:deleteShipment>
-  </soap:Body>
-</soap:Envelope>`;
-
-      const url = this.isTestMode ? this.testApiUrl : this.apiUrl;
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/xml; charset=utf-8',
-          'SOAPAction': 'https://dhl24.com.pl/servicepoint/provider/service.html?ws=1#deleteShipment',
-          'Accept': 'text/xml'
-        },
-        body: soapEnvelope
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP Error: ${response.status}`);
+      if (this.isTestMode && (!this.clientNumber || this.clientNumber === 'TEST')) {
+        console.log('TEST MODE: Simulating successful cancellation');
+        return { success: true };
       }
 
-      const responseText = await response.text();
-      console.log('DHL24 Delete Response:', responseText);
+      const client = await soap.createClientAsync(this.wsdlUrl);
+      
+      const params = {
+        authData: {
+          username: this.username,
+          password: this.password
+        },
+        shipment: shipmentNumber
+      };
 
-      // Sprawdź status w odpowiedzi
-      if (responseText.includes('<tns:status>OK</tns:status>') || 
-          responseText.includes('<status>OK</status>')) {
+      const [result] = await client.deleteShipmentAsync(params);
+      
+      if (result && result.status === 'OK') {
         return { success: true };
       } else {
-        throw new Error('Cancellation failed');
+        throw new Error(result.error || 'Anulowanie nie powiodło się');
       }
     } catch (error) {
-      console.error('DHL24 cancellation error:', error);
+      console.error('DHL cancellation error:', error);
       return {
         success: false,
         error: error.message
@@ -265,98 +237,56 @@ class DHLApiService {
     }
   }
 
-  // Pobieranie etykiety
-  async getLabel(shipmentNumber) {
-    try {
-      console.log('Getting DHL24 label for:', shipmentNumber);
-      
-      const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" 
-               xmlns:tns="https://dhl24.com.pl/servicepoint/provider/service.html?ws=1">
-  <soap:Body>
-    <tns:getLabel>
-      <tns:structure>
-        <tns:authData>
-          <tns:username>${this.escapeXml(this.username)}</tns:username>
-          <tns:password>${this.escapeXml(this.password)}</tns:password>
-        </tns:authData>
-        <tns:shipment>${this.escapeXml(shipmentNumber)}</tns:shipment>
-        <tns:type>BLP</tns:type>
-      </tns:structure>
-    </tns:getLabel>
-  </soap:Body>
-</soap:Envelope>`;
-
-      const url = this.isTestMode ? this.testApiUrl : this.apiUrl;
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/xml; charset=utf-8',
-          'SOAPAction': 'https://dhl24.com.pl/servicepoint/provider/service.html?ws=1#getLabel',
-          'Accept': 'text/xml'
-        },
-        body: soapEnvelope
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP Error: ${response.status}`);
-      }
-
-      const responseText = await response.text();
-      
-      // Wyciągnij labelContent (Base64)
-      const labelMatch = responseText.match(/<(?:tns:)?labelContent[^>]*>(.*?)<\/(?:tns:)?labelContent>/);
-      const labelContent = labelMatch ? labelMatch[1] : null;
-
-      if (labelContent) {
-        return {
-          success: true,
-          labelUrl: `data:application/pdf;base64,${labelContent}`,
-          labelContent: labelContent
-        };
-      } else {
-        throw new Error('No label content in response');
-      }
-    } catch (error) {
-      console.error('DHL24 label download error:', error);
-      return {
-        success: false,
-        error: error.message
-      };
-    }
-  }
-
-  // Śledzenie przesyłki (to nie jest w WSDL, więc używamy innego API)
+  // Śledzenie przesyłki (jeśli dostępne w API)
   async getShipmentStatus(trackingNumber) {
     try {
-      console.log('Tracking DHL24 shipment:', trackingNumber);
+      console.log('Tracking DHL shipment:', trackingNumber);
       
-      // DHL24 ma osobne API do trackingu
-      const trackingUrl = 'https://api.dhl24.com.pl/tracking';
+      if (this.isTestMode) {
+        console.log('TEST MODE: Simulating tracking data');
+        return {
+          success: true,
+          status: 'IN_TRANSIT',
+          events: [
+            {
+              status: 'PICKED_UP',
+              timestamp: new Date(Date.now() - 86400000).toISOString(),
+              location: 'Białystok'
+            },
+            {
+              status: 'IN_TRANSIT',
+              timestamp: new Date().toISOString(),
+              location: 'Warszawa'
+            }
+          ],
+          estimatedDelivery: new Date(Date.now() + 86400000).toISOString()
+        };
+      }
+
+      // Próba użycia API śledzenia
+      const trackingUrl = `https://api-eu.dhl.com/track/shipments?trackingNumber=${trackingNumber}`;
       
-      const response = await fetch(`${trackingUrl}/${trackingNumber}`, {
+      const response = await fetch(trackingUrl, {
         method: 'GET',
         headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'DHL24-Integration'
+          'DHL-API-Key': process.env.DHL_TRACKING_API_KEY || '',
+          'Accept': 'application/json'
         }
       });
 
-      if (!response.ok) {
-        throw new Error(`Tracking API Error: ${response.status}`);
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          success: true,
+          status: data.shipments?.[0]?.status?.statusCode || 'UNKNOWN',
+          events: data.shipments?.[0]?.events || [],
+          estimatedDelivery: data.shipments?.[0]?.estimatedTimeOfDelivery
+        };
+      } else {
+        throw new Error(`Tracking API error: ${response.status}`);
       }
-
-      const data = await response.json();
-      
-      return {
-        success: true,
-        status: data.status || 'UNKNOWN',
-        events: data.events || [],
-        estimatedDelivery: data.estimatedDelivery
-      };
     } catch (error) {
-      console.error('DHL24 tracking error:', error);
+      console.error('DHL tracking error:', error);
       return {
         success: false,
         error: error.message
@@ -366,50 +296,48 @@ class DHLApiService {
 
   // ====== FUNKCJE POMOCNICZE ======
 
-  // Parsowanie adresu z tekstu
   parseAddress(addressString) {
     if (!addressString) return {};
     
     const parts = addressString.split(',').map(p => p.trim());
     const postcodeMatch = addressString.match(/(\d{2}-\d{3})/);
     
-    // Przykład: "Wysockiego 69B, 15-169 Białystok"
     const streetPart = parts[0] || '';
     const cityPart = parts[parts.length - 1] || '';
     
-    // Wyciągnij numer domu ze street
-    const streetMatch = streetPart.match(/^(.+?)[\s]+([0-9]+[A-Za-z]*)$/);
+    // Parsuj ulicę i numer domu
+    const streetMatch = streetPart.match(/^(.+?)[\s]+([0-9]+[A-Za-z]*)(\/([0-9]+))?$/);
     const street = streetMatch ? streetMatch[1] : streetPart;
     const houseNumber = streetMatch ? streetMatch[2] : '';
+    const apartmentNumber = streetMatch ? streetMatch[4] : '';
     
-    // Wyciągnij miasto (bez kodu pocztowego)
     const city = cityPart.replace(/\d{2}-\d{3}\s*/, '').trim();
     
     return {
       street: street,
       houseNumber: houseNumber,
-      apartmentNumber: '', // Trzeba by to lepiej parsować
+      apartmentNumber: apartmentNumber,
       postcode: postcodeMatch ? postcodeMatch[1] : '',
       city: city
     };
   }
 
-  // Wyciągnij informacje o paczce
   extractPieceInfo(packageDescription, przesylka) {
     const wymiary = przesylka?.wymiary || {};
     
     return {
+      type: 'PACKAGE',
       width: parseInt(wymiary.szerokosc) || 10,
       height: parseInt(wymiary.wysokosc) || 10,
-      length: parseInt(wymiary.dlugosc) || 10, // UWAGA: DHL używa "lenght" w XML!
-      weight: parseInt(przesylka?.waga) || 1,
-      quantity: parseInt(przesylka?.ilosc) || 1
+      lenght: parseInt(wymiary.dlugosc) || 10, // DHL używa "lenght" zamiast "length"
+      weight: parseFloat(przesylka?.waga) || 1,
+      quantity: parseInt(przesylka?.ilosc) || 1,
+      nonStandard: false
     };
   }
 
-  // Określ typ usługi DHL24
   determineServiceType(typZlecenia) {
-    // Kody usług zgodnie z dokumentacją DHL24
+    // Kody usług DHL zgodnie z dokumentacją
     switch (typZlecenia) {
       case 'nadawca_bialystok':
       case 'nadawca_zielonka':
@@ -417,31 +345,28 @@ class DHLApiService {
       case 'odbiorca_zielonka':
       case 'trzecia_strona':
       default:
-        return '09'; // Domestic 09:00 - standard dla przesyłek krajowych
+        return '09'; // Domestic 09:00 - standardowa usługa krajowa
     }
   }
 
-  // Wyciągnij zawartość z opisu
   extractContentFromDescription(description) {
     if (!description) return 'Przesyłka';
     return description.split('|')[0]?.trim() || 'Przesyłka';
   }
 
-  // Oczyszczanie numeru telefonu
   cleanPhoneNumber(phone) {
     if (!phone) return '';
-    return phone.replace(/[^\d+]/g, '').substring(0, 15);
-  }
-
-  // Escape XML characters
-  escapeXml(text) {
-    if (!text) return '';
-    return text.toString()
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;');
+    // Usuń wszystko oprócz cyfr i znaku +
+    let cleaned = phone.replace(/[^\d+]/g, '');
+    // Jeśli zaczyna się od 0, zamień na +48
+    if (cleaned.startsWith('0')) {
+      cleaned = '+48' + cleaned.substring(1);
+    }
+    // Jeśli nie ma prefiksu, dodaj +48
+    if (!cleaned.startsWith('+')) {
+      cleaned = '+48' + cleaned;
+    }
+    return cleaned.substring(0, 15);
   }
 }
 
