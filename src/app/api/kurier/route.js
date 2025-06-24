@@ -85,23 +85,23 @@ export async function POST(request) {
       .select('role', 'name')
       .first();
 
-    // Na razie każdy zalogowany może dodawać zamówienia kurierskie
-    // Później możemy to ograniczyć do konkretnych ról
-
     const zamowienieData = await request.json();
     console.log('Otrzymane dane zamówienia kurierskiego:', zamowienieData);
 
-    // Mapowanie danych z formularza na kolumny bazy danych
+    // Mapowanie danych z NOWEGO formularza na kolumny bazy danych
     const dataToSave = {
       status: 'new',
       created_by_email: userId,
-      magazine_source: zamowienieData.magazynZamawiajacy || user.role,
+      magazine_source: user.role, // Rola użytkownika
       magazine_destination: 'external', // Zawsze zewnętrzne dla kuriera
       recipient_name: zamowienieData.odbiorcaNazwa,
       recipient_address: `${zamowienieData.odbiorcaUlica} ${zamowienieData.odbiorcaNumerDomu}${zamowienieData.odbiorcaNumerLokalu ? '/' + zamowienieData.odbiorcaNumerLokalu : ''}, ${zamowienieData.odbiorcaKodPocztowy} ${zamowienieData.odbiorcaMiasto}`,
       recipient_phone: zamowienieData.odbiorcaTelefon,
       package_description: `${zamowienieData.zawartoscPrzesylki} | Waga: ${zamowienieData.waga}kg | Wymiary: ${zamowienieData.dlugosc}x${zamowienieData.szerokosc}x${zamowienieData.wysokosc}cm | Ilość: ${zamowienieData.iloscPaczek}`,
       notes: JSON.stringify({
+        // NOWA STRUKTURA - z informacją o typie zlecenia
+        typZlecenia: zamowienieData.typZlecenia,
+        
         // Dane nadawcy
         nadawca: {
           typ: zamowienieData.nadawcaTyp,
@@ -111,15 +111,33 @@ export async function POST(request) {
           telefon: zamowienieData.nadawcaTelefon,
           email: zamowienieData.nadawcaEmail
         },
+        
         // Dane odbiorcy
         odbiorca: {
           typ: zamowienieData.odbiorcaTyp,
-          email: zamowienieData.odbiorcaEmail
+          email: zamowienieData.odbiorcaEmail,
+          kontakt: zamowienieData.odbiorcaOsobaKontaktowa || zamowienieData.odbiorcaNazwa
         },
+        
         // Szczegóły przesyłki
         przesylka: {
           mpk: zamowienieData.MPK,
-          uwagi: zamowienieData.uwagi
+          uwagi: zamowienieData.uwagi,
+          waga: zamowienieData.waga,
+          wymiary: {
+            dlugosc: zamowienieData.dlugosc,
+            szerokosc: zamowienieData.szerokosc, 
+            wysokosc: zamowienieData.wysokosc
+          },
+          ilosc: zamowienieData.iloscPaczek
+        },
+        
+        // Informacja o magazynach (dla łatwiejszego filtrowania później)
+        magazyny: {
+          nadawca: zamowienieData.typZlecenia.includes('nadawca_') ? 
+            zamowienieData.typZlecenia.replace('nadawca_', '') : null,
+          odbiorca: zamowienieData.typZlecenia.includes('odbiorca_') ? 
+            zamowienieData.typZlecenia.replace('odbiorca_', '') : null
         }
       }),
       created_at: db.fn.now()
@@ -133,7 +151,7 @@ export async function POST(request) {
     return NextResponse.json({ 
       success: true, 
       id: id,
-      message: 'Zamówienie kurierskie zostało dodane'
+      message: `Zamówienie kurierskie zostało dodane (${zamowienieData.typZlecenia})`
     });
   } catch (error) {
     console.error('Error adding kurier order:', error);
