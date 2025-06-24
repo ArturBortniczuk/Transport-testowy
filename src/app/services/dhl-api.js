@@ -3,21 +3,24 @@ import soap from 'soap';
 
 class DHLApiService {
   constructor() {
-    // POPRAWIONY URL zgodnie z dokumentacją
-    this.wsdlUrl = process.env.DHL_TEST_MODE === 'true' 
-      ? 'https://sandbox.dhl24.com.pl/webapi2?wsdl'
-      : 'https://dhl24.com.pl/webapi2?wsdl';
+    // URL bazujący na API_URL lub domyślny
+    this.wsdlUrl = process.env.DHL_API_URL || 'https://sandbox.dhl24.com.pl/webapi2?wsdl';
     
-    this.username = process.env.DHL_USERNAME;
-    this.password = process.env.DHL_PASSWORD;
-    this.clientNumber = process.env.DHL_CLIENT_NUMBER;
+    // Mapowanie do Twoich nazw zmiennych
+    this.username = process.env.DHL_LOGIN;
+    this.password = process.env.DHL_PASSWORD_DHL24;
+    this.passwordApi = process.env.DHL_PASSWORD_API;
+    this.accountNumber = process.env.DHL_ACCOUNT_NUMBER;
+    this.sapClient = process.env.DHL_SAP_CLIENT;
     this.isTestMode = process.env.DHL_TEST_MODE === 'true';
     
     console.log('DHL API Service initialized:', {
       wsdlUrl: this.wsdlUrl,
       username: this.username ? 'SET' : 'NOT SET',
       password: this.password ? 'SET' : 'NOT SET',
-      clientNumber: this.clientNumber ? 'SET' : 'NOT SET',
+      passwordApi: this.passwordApi ? 'SET' : 'NOT SET',
+      accountNumber: this.accountNumber ? 'SET' : 'NOT SET',
+      sapClient: this.sapClient ? 'SET' : 'NOT SET',
       testMode: this.isTestMode
     });
   }
@@ -28,10 +31,10 @@ class DHLApiService {
       console.log('Creating DHL shipment for order:', shipmentData.id);
       
       // Sprawdź dane konfiguracyjne
-      if (!this.username || !this.password || !this.clientNumber) {
+      if (!this.username || !this.password || !this.accountNumber) {
         return {
           success: false,
-          error: 'Brak kompletnych danych uwierzytelniających DHL (username/password/clientNumber)'
+          error: 'Brak kompletnych danych uwierzytelniających DHL (DHL_LOGIN/DHL_PASSWORD_DHL24/DHL_ACCOUNT_NUMBER)'
         };
       }
 
@@ -40,7 +43,7 @@ class DHLApiService {
         : shipmentData.notes;
 
       // W trybie testowym zwróć sukces bez prawdziwego API
-      if (this.isTestMode && this.clientNumber === 'TEST') {
+      if (this.isTestMode && (!this.accountNumber || this.accountNumber === 'TEST')) {
         console.log('TEST MODE: Simulating successful DHL shipment creation');
         const mockShipmentNumber = `TEST_${Date.now()}`;
         
@@ -129,7 +132,7 @@ class DHLApiService {
             serviceType: this.determineServiceType(notes.typZlecenia),
             billing: {
               shippingPaymentType: 'SHIPPER',
-              billingAccountNumber: this.clientNumber,
+              billingAccountNumber: this.accountNumber,
               paymentType: 'BANK_TRANSFER',
               costsCenter: 'Transport System'
             },
@@ -215,10 +218,10 @@ class DHLApiService {
       }
       
       // Jeśli to błąd uwierzytelnienia
-      if (error.message && error.message.includes('auth')) {
+      if (error.message && (error.message.includes('auth') || error.message.includes('login'))) {
         return {
           success: false,
-          error: 'Błąd uwierzytelnienia DHL. Sprawdź dane logowania (username/password/clientNumber).'
+          error: 'Błąd uwierzytelnienia DHL. Sprawdź dane logowania (DHL_LOGIN/DHL_PASSWORD_DHL24/DHL_ACCOUNT_NUMBER).'
         };
       }
       
@@ -234,7 +237,7 @@ class DHLApiService {
     try {
       console.log('Cancelling DHL shipment:', shipmentNumber);
       
-      if (this.isTestMode && this.clientNumber === 'TEST') {
+      if (this.isTestMode && (!this.accountNumber || this.accountNumber === 'TEST')) {
         console.log('TEST MODE: Simulating successful cancellation');
         return { success: true };
       }
