@@ -12,7 +12,9 @@ class DHLApiService {
   // Autoryzacja do DHL24 - zgodnie z dokumentacją
   async authenticate() {
     try {
-      console.log('DHL24 authentication attempt');
+      console.log('DHL24 authentication attempt to:', this.baseUrl);
+      console.log('Using login:', this.login);
+      console.log('Using SAP client:', this.sapClient);
 
       // DHL24 używa Basic Auth lub POST z parametrami
       const response = await fetch(`${this.baseUrl}/api/auth`, {
@@ -28,14 +30,17 @@ class DHLApiService {
         })
       });
 
+      console.log('DHL24 Auth Response Status:', response.status);
+      console.log('DHL24 Auth Response Headers:', Object.fromEntries(response.headers.entries()));
+
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('DHL24 Auth error:', errorText);
-        throw new Error(`Authentication failed: ${response.status}`);
+        console.error('DHL24 Auth error response:', errorText);
+        throw new Error(`Authentication failed: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
-      console.log('DHL24 authentication successful');
+      console.log('DHL24 authentication successful, received data:', data);
       
       return data.authToken || data.token;
     } catch (error) {
@@ -48,11 +53,17 @@ class DHLApiService {
   async createShipment(shipmentData) {
     try {
       console.log('Creating DHL24 shipment for order:', shipmentData.id);
+      console.log('Shipment data received:', {
+        id: shipmentData.id,
+        recipient: shipmentData.recipient_name,
+        address: shipmentData.recipient_address,
+        phone: shipmentData.recipient_phone
+      });
       
       const token = await this.authenticate();
       const dhlShipment = this.mapToDHL24Format(shipmentData);
       
-      console.log('Sending shipment data to DHL24:', dhlShipment);
+      console.log('Mapped DHL24 shipment data:', JSON.stringify(dhlShipment, null, 2));
       
       const response = await fetch(`${this.baseUrl}/api/shipments`, {
         method: 'POST',
@@ -63,6 +74,9 @@ class DHLApiService {
         },
         body: JSON.stringify(dhlShipment)
       });
+
+      console.log('DHL24 Shipment Response Status:', response.status);
+      console.log('DHL24 Shipment Response Headers:', Object.fromEntries(response.headers.entries()));
 
       if (!response.ok) {
         const errorData = await response.text();
