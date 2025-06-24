@@ -1,9 +1,10 @@
 'use client'
 import { useState } from 'react'
-import { ChevronDown, ChevronUp, Package, User, Building2, MapPin, Phone, Mail, Box, Weight, Ruler, Clock, CheckCircle, AlertCircle } from 'lucide-react'
+import { ChevronDown, ChevronUp, Package, User, Building2, MapPin, Phone, Mail, Box, Weight, Ruler, Clock, CheckCircle, AlertCircle, Truck, RefreshCw } from 'lucide-react'
 
-export default function ZamowieniaList({ zamowienia, onZatwierdz, onUsun, userRole, canApprove, loading }) {
+export default function ZamowieniaList({ zamowienia, onZatwierdz, onUsun, userRole, canApprove, loading, onRefresh }) {
   const [expandedId, setExpandedId] = useState(null)
+  const [trackingLoading, setTrackingLoading] = useState(null)
 
   const toggleExpand = (id) => {
     setExpandedId(expandedId === id ? null : id)
@@ -27,7 +28,7 @@ export default function ZamowieniaList({ zamowienia, onZatwierdz, onUsun, userRo
       case 'approved':
         return <span className="px-3 py-1 rounded-full text-sm bg-green-100 text-green-800">Zatwierdzone</span>
       case 'sent':
-        return <span className="px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800">Wysłane</span>
+        return <span className="px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800">Wysłane do DHL</span>
       case 'delivered':
         return <span className="px-3 py-1 rounded-full text-sm bg-purple-100 text-purple-800">Dostarczone</span>
       default:
@@ -40,6 +41,33 @@ export default function ZamowieniaList({ zamowienia, onZatwierdz, onUsun, userRo
       return JSON.parse(notesString || '{}')
     } catch (error) {
       return {}
+    }
+  }
+
+  const handleTrackingRefresh = async (trackingNumber) => {
+    try {
+      setTrackingLoading(trackingNumber)
+      
+      const response = await fetch(`/api/kurier/tracking/${trackingNumber}`, {
+        method: 'POST' // POST dla wymuszenia odświeżenia
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        alert(`Status śledzenia odświeżony!\nStatus: ${data.status}`)
+        // Odśwież listę zamówień
+        if (onRefresh) {
+          onRefresh()
+        }
+      } else {
+        alert('Błąd odświeżania statusu: ' + data.error)
+      }
+    } catch (error) {
+      console.error('Błąd odświeżania trackingu:', error)
+      alert('Wystąpił błąd podczas odświeżania statusu')
+    } finally {
+      setTrackingLoading(null)
     }
   }
 
@@ -103,6 +131,17 @@ export default function ZamowieniaList({ zamowienia, onZatwierdz, onUsun, userRo
                 </div>
                 <div className="flex items-center space-x-4">
                   {getStatusBadge(zamowienie.status)}
+                  {/* Wskaźnik DHL */}
+                  {notes.dhl && (
+                    <div className="flex items-center space-x-2">
+                      <Truck className={`w-4 h-4 ${
+                        notes.dhl.status === 'sent_to_dhl' ? 'text-blue-600' :
+                        notes.dhl.status === 'failed' ? 'text-red-600' :
+                        'text-yellow-600'
+                      }`} />
+                      <span className="text-xs text-gray-500">DHL</span>
+                    </div>
+                  )}
                   {expandedId === zamowienie.id ? <ChevronUp /> : <ChevronDown />}
                 </div>
               </div>
@@ -211,6 +250,12 @@ export default function ZamowieniaList({ zamowienia, onZatwierdz, onUsun, userRo
                                 <p className="mt-1 text-gray-900 font-mono">{przesylka.mpk}</p>
                               </div>
                             )}
+                            {notes.typZlecenia && (
+                              <div className="text-sm">
+                                <span className="font-medium text-gray-700">Typ zlecenia:</span>
+                                <p className="mt-1 text-gray-900 capitalize">{notes.typZlecenia.replace('_', ' ')}</p>
+                              </div>
+                            )}
                           </div>
                           {przesylka.uwagi && (
                             <div className="md:col-span-2 pt-3 border-t border-purple-200">
@@ -238,6 +283,128 @@ export default function ZamowieniaList({ zamowienia, onZatwierdz, onUsun, userRo
                         </div>
                       </div>
                     )}
+
+                    {/* Informacje DHL */}
+                    {notes.dhl && (
+                      <div className="md:col-span-2">
+                        <div className={`border p-3 rounded-md ${
+                          notes.dhl.status === 'sent_to_dhl' ? 'bg-blue-50 border-blue-200' :
+                          notes.dhl.status === 'failed' ? 'bg-red-50 border-red-200' :
+                          'bg-yellow-50 border-yellow-200'
+                        }`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center">
+                              <Truck className="w-4 h-4 mr-2" />
+                              <span className="font-medium">Status DHL</span>
+                            </div>
+                            {notes.dhl.trackingNumber && (
+                              <button
+                                onClick={() => handleTrackingRefresh(notes.dhl.trackingNumber)}
+                                disabled={trackingLoading === notes.dhl.trackingNumber}
+                                className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded hover:bg-blue-200 transition-colors disabled:opacity-50 flex items-center space-x-1"
+                              >
+                                <RefreshCw className={`w-3 h-3 ${trackingLoading === notes.dhl.trackingNumber ? 'animate-spin' : ''}`} />
+                                <span>{trackingLoading === notes.dhl.trackingNumber ? 'Odświeżanie...' : 'Odśwież status'}</span>
+                              </button>
+                            )}
+                          </div>
+                          
+                          {notes.dhl.status === 'sent_to_dhl' && (
+                            <div className="space-y-2 text-sm">
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <span className="font-medium text-gray-700">Nr przesyłki:</span>
+                                  <p className="font-mono text-blue-700">{notes.dhl.shipmentNumber}</p>
+                                </div>
+                                <div>
+                                  <span className="font-medium text-gray-700">Nr śledzenia:</span>
+                                  <p className="font-mono text-blue-700">{notes.dhl.trackingNumber}</p>
+                                </div>
+                              </div>
+                              
+                              {notes.dhl.cost && (
+                                <div>
+                                  <span className="font-medium text-gray-700">Koszt:</span>
+                                  <span className="ml-2 text-green-600 font-medium">{notes.dhl.cost} PLN</span>
+                                </div>
+                              )}
+                              
+                              <div>
+                                <span className="font-medium text-gray-700">Wysłano:</span>
+                                <span className="ml-2">{formatDate(notes.dhl.sentAt)} przez {notes.dhl.sentBy}</span>
+                              </div>
+                              
+                              {notes.dhl.labelUrl && (
+                                <div>
+                                  <a 
+                                    href={notes.dhl.labelUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
+                                  >
+                                    📄 Pobierz etykietę
+                                  </a>
+                                </div>
+                              )}
+                              
+                              {notes.dhl.trackingStatus && (
+                                <div className="pt-2 border-t border-blue-200">
+                                  <span className="font-medium text-gray-700">Status śledzenia:</span>
+                                  <span className="ml-2 text-blue-700 font-medium">{notes.dhl.trackingStatus}</span>
+                                  {notes.dhl.lastTracked && (
+                                    <span className="ml-2 text-xs text-gray-500">
+                                      (sprawdzono: {formatDate(notes.dhl.lastTracked)})
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+
+                              {notes.dhl.estimatedDelivery && (
+                                <div>
+                                  <span className="font-medium text-gray-700">Przewidywana dostawa:</span>
+                                  <span className="ml-2 text-purple-600 font-medium">{formatDate(notes.dhl.estimatedDelivery)}</span>
+                                </div>
+                              )}
+
+                              {notes.dhl.trackingEvents && notes.dhl.trackingEvents.length > 0 && (
+                                <div className="pt-2 border-t border-blue-200">
+                                  <span className="font-medium text-gray-700">Ostatnie zdarzenia:</span>
+                                  <div className="mt-1 space-y-1 max-h-32 overflow-y-auto">
+                                    {notes.dhl.trackingEvents.slice(0, 3).map((event, index) => (
+                                      <div key={index} className="text-xs bg-white p-2 rounded border">
+                                        <div className="font-medium">{event.status || event.description}</div>
+                                        <div className="text-gray-500">{formatDate(event.timestamp || event.date)}</div>
+                                        {event.location && <div className="text-gray-600">{event.location}</div>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          
+                          {notes.dhl.status === 'failed' && (
+                            <div className="text-sm text-red-700">
+                              <span className="font-medium">Błąd wysyłki DHL:</span>
+                              <p className="mt-1">{notes.dhl.error}</p>
+                              <p className="text-xs text-red-600 mt-1">
+                                Próba: {formatDate(notes.dhl.attemptedAt)} przez {notes.dhl.attemptedBy}
+                              </p>
+                            </div>
+                          )}
+                          
+                          {notes.dhl.status === 'error' && (
+                            <div className="text-sm text-yellow-700">
+                              <span className="font-medium">Problem z integracją DHL:</span>
+                              <p className="mt-1">{notes.dhl.error}</p>
+                              <p className="text-xs text-yellow-600 mt-1">
+                                Spróbuj ponownie lub skontaktuj się z administratorem
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Przyciski akcji */}
@@ -255,18 +422,33 @@ export default function ZamowieniaList({ zamowienia, onZatwierdz, onUsun, userRo
                           className="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 transition-colors flex items-center"
                         >
                           <CheckCircle size={16} className="mr-1" />
-                          Zatwierdź i wyślij do kuriera
+                          Zatwierdź i wyślij do DHL
                         </button>
                       )}
                     </div>
                   )}
 
                   {/* Informacja dla zamówień zatwierdzonych */}
-                  {zamowienie.status === 'approved' && (
+                  {zamowienie.status === 'approved' && !notes.dhl && (
                     <div className="mt-6 p-3 bg-blue-50 border border-blue-200 rounded-md">
                       <div className="flex items-center text-sm text-blue-800">
                         <AlertCircle className="w-4 h-4 mr-2" />
-                        <span>Zamówienie zostało zatwierdzone i może zostać przekazane do realizacji kurierskiej.</span>
+                        <span>Zamówienie zostało zatwierdzone. Oczekiwanie na wysyłkę do DHL...</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Informacja dla zamówień wysłanych */}
+                  {(zamowienie.status === 'sent' || zamowienie.status === 'delivered') && notes.dhl && notes.dhl.status === 'sent_to_dhl' && (
+                    <div className="mt-6 p-3 bg-green-50 border border-green-200 rounded-md">
+                      <div className="flex items-center text-sm text-green-800">
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        <span>
+                          {zamowienie.status === 'delivered' 
+                            ? 'Przesyłka została dostarczona do odbiorcy!' 
+                            : 'Przesyłka została przekazana do DHL i jest w trasie.'
+                          }
+                        </span>
                       </div>
                     </div>
                   )}
