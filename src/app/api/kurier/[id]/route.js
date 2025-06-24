@@ -119,6 +119,12 @@ export async function PUT(request, { params }) {
         console.log('Attempting to send shipment to DHL for order:', id);
         const dhlResult = await DHLApiService.createShipment(zamowienie);
         
+        console.log('DHL API Response:', {
+          success: dhlResult.success,
+          error: dhlResult.error,
+          data: dhlResult.success ? 'OK' : 'FAILED'
+        });
+        
         if (dhlResult.success) {
           // Zaktualizuj status na 'sent' i dodaj dane DHL
           dataToUpdate.status = 'sent';
@@ -143,7 +149,7 @@ export async function PUT(request, { params }) {
           });
         } else {
           // Jeśli DHL nie powiedzie się, tylko zatwierdź lokalnie
-          console.error('DHL shipment failed, keeping local approval:', dhlResult.error);
+          console.error('DHL shipment failed for order:', id, 'Error:', dhlResult.error);
           const existingNotes = JSON.parse(zamowienie.notes || '{}');
           dataToUpdate.notes = JSON.stringify({
             ...existingNotes,
@@ -151,12 +157,13 @@ export async function PUT(request, { params }) {
               error: dhlResult.error,
               attemptedAt: new Date().toISOString(),
               attemptedBy: userId,
-              status: 'failed'
+              status: 'failed',
+              rawError: dhlResult.error
             }
           });
         }
       } catch (dhlError) {
-        console.error('DHL integration error:', dhlError);
+        console.error('DHL integration error for order:', id, dhlError);
         // Kontynuuj z lokalnym zatwierdzeniem nawet jeśli DHL nie działa
         const zamowienie = await db('kuriers').where('id', id).first();
         const existingNotes = JSON.parse(zamowienie?.notes || '{}');
@@ -166,7 +173,8 @@ export async function PUT(request, { params }) {
             error: 'Integration error: ' + dhlError.message,
             attemptedAt: new Date().toISOString(),
             attemptedBy: userId,
-            status: 'error'
+            status: 'error',
+            stackTrace: dhlError.stack
           }
         });
       }
