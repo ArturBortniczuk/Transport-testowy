@@ -16,10 +16,12 @@ export default function KurierPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [filters, setFilters] = useState({
-    magazyn: '',
+    zleca: 'wszystkie',
+    status: 'nowe',
     dataOd: '',
     dataDo: '',
-    status: 'new'
+    szukaj: '',
+    sortowanie: 'data_desc'
   })
 
   // Pobierz dane użytkownika i zamówienia przy ładowaniu
@@ -46,9 +48,47 @@ export default function KurierPage() {
   const applyFilters = useCallback((zamowieniaList, currentFilters) => {
     let filtered = [...zamowieniaList]
 
-    // Filtr magazynu
-    if (currentFilters.magazyn) {
-      filtered = filtered.filter(z => z.magazine_source === currentFilters.magazyn)
+    // Filtr typu zlecenia
+    if (currentFilters.zleca !== 'wszystkie') {
+      filtered = filtered.filter(z => {
+        try {
+          const notes = JSON.parse(z.notes || '{}')
+          const typZlecenia = notes.typZlecenia || ''
+          
+          switch (currentFilters.zleca) {
+            case 'nadawca':
+              return typZlecenia.includes('nadawca_')
+            case 'trzecia_strona':
+              return typZlecenia === 'trzecia_strona'
+            case 'odbiorca':
+              return typZlecenia.includes('odbiorca_')
+            default:
+              return true
+          }
+        } catch (error) {
+          return true
+        }
+      })
+    }
+
+    // Filtr statusu
+    if (currentFilters.status === 'nowe') {
+      filtered = filtered.filter(z => z.status === 'new')
+    }
+
+    // Filtr wyszukiwania
+    if (currentFilters.szukaj) {
+      const searchTerm = currentFilters.szukaj.toLowerCase()
+      filtered = filtered.filter(z => {
+        const notes = JSON.parse(z.notes || '{}')
+        return (
+          z.recipient_name?.toLowerCase().includes(searchTerm) ||
+          z.recipient_address?.toLowerCase().includes(searchTerm) ||
+          z.package_description?.toLowerCase().includes(searchTerm) ||
+          notes.przesylka?.mpk?.toLowerCase().includes(searchTerm) ||
+          z.created_by_email?.toLowerCase().includes(searchTerm)
+        )
+      })
     }
 
     // Filtr daty od
@@ -63,6 +103,22 @@ export default function KurierPage() {
       dataDo.setHours(23, 59, 59) // Koniec dnia
       filtered = filtered.filter(z => new Date(z.created_at) <= dataDo)
     }
+
+    // Sortowanie
+    filtered.sort((a, b) => {
+      switch (currentFilters.sortowanie) {
+        case 'data_asc':
+          return new Date(a.created_at) - new Date(b.created_at)
+        case 'data_desc':
+          return new Date(b.created_at) - new Date(a.created_at)
+        case 'nazwa_asc':
+          return a.recipient_name.localeCompare(b.recipient_name)
+        case 'nazwa_desc':
+          return b.recipient_name.localeCompare(a.recipient_name)
+        default:
+          return new Date(b.created_at) - new Date(a.created_at)
+      }
+    })
 
     return filtered
   }, [])
@@ -83,16 +139,22 @@ export default function KurierPage() {
       const data = await response.json()
       
       if (data.success) {
+        console.log('Pobrano zamówienia:', data.zamowienia.length)
         setZamowienia(data.zamowienia)
         // Zastosuj aktualne filtry do nowych danych
         const filtered = applyFilters(data.zamowienia, filters)
         setFilteredZamowienia(filtered)
+        setError(null)
       } else {
         setError(data.error)
+        setZamowienia([])
+        setFilteredZamowienia([])
       }
     } catch (error) {
       console.error('Błąd pobierania zamówień:', error)
       setError('Nie udało się pobrać zamówień kurierskich')
+      setZamowienia([])
+      setFilteredZamowienia([])
     } finally {
       setLoading(false)
     }
@@ -109,6 +171,8 @@ export default function KurierPage() {
   const handleDodajZamowienie = async (noweZamowienie) => {
     try {
       setLoading(true)
+      console.log('Dodawanie nowego zamówienia:', noweZamowienie)
+      
       const response = await fetch('/api/kurier', {
         method: 'POST',
         headers: {
@@ -123,6 +187,7 @@ export default function KurierPage() {
       const data = await response.json()
       
       if (data.success) {
+        console.log('Zamówienie dodane pomyślnie, ID:', data.id)
         // Odśwież listę zamówień
         await fetchZamowienia()
         setShowForm(false)
@@ -130,6 +195,7 @@ export default function KurierPage() {
         // Pokaż komunikat sukcesu
         alert('Zamówienie kurierskie zostało dodane pomyślnie!')
       } else {
+        console.error('Błąd dodawania zamówienia:', data.error)
         alert('Błąd: ' + data.error)
       }
     } catch (error) {
@@ -142,7 +208,8 @@ export default function KurierPage() {
 
   const handleZatwierdzZamowienie = async (zamowienieId) => {
     try {
-      // TODO: Tutaj później dodamy integrację z API DHL/InPost
+      console.log('Zatwierdzanie zamówienia:', zamowienieId)
+      
       const response = await fetch(`/api/kurier/${zamowienieId}`, {
         method: 'PUT',
         headers: {
@@ -156,10 +223,18 @@ export default function KurierPage() {
       const data = await response.json()
       
       if (data.success) {
+        console.log('Zamówienie zatwierdzone:', data)
         // Odśwież listę zamówień
         await fetchZamowienia()
-        alert('Zamówienie zostało zatwierdzone!')
+        
+        // Pokaż odpowiedni komunikat w zależności od statusu DHL
+        if (data.dhlStatus === 'sent') {
+          alert('Zamówienie zostało zatwierdzone i wysłane do DHL! 🚚')
+        } else {
+          alert('Zamówienie zostało zatwierdzone. ' + (data.message || ''))
+        }
       } else {
+        console.error('Błąd zatwierdzania:', data.error)
         alert('Błąd: ' + data.error)
       }
     } catch (error) {
@@ -169,11 +244,13 @@ export default function KurierPage() {
   }
 
   const handleUsunZamowienie = async (zamowienieId) => {
-    if (!confirm('Czy na pewno chcesz usunąć to zamówienie?')) {
+    if (!confirm('Czy na pewno chcesz usunąć to zamówienie? Jeśli ma numer DHL, zostanie także anulowane.')) {
       return
     }
 
     try {
+      console.log('Usuwanie zamówienia:', zamowienieId)
+      
       const response = await fetch(`/api/kurier/${zamowienieId}`, {
         method: 'DELETE'
       })
@@ -181,10 +258,12 @@ export default function KurierPage() {
       const data = await response.json()
       
       if (data.success) {
+        console.log('Zamówienie usunięte pomyślnie')
         // Odśwież listę zamówień
         await fetchZamowienia()
         alert('Zamówienie zostało usunięte!')
       } else {
+        console.error('Błąd usuwania:', data.error)
         alert('Błąd: ' + data.error)
       }
     } catch (error) {
@@ -202,6 +281,7 @@ export default function KurierPage() {
       <div className="max-w-6xl mx-auto p-6">
         <div className="flex justify-center items-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          <span className="ml-3 text-gray-600">Ładowanie...</span>
         </div>
       </div>
     )
@@ -215,7 +295,7 @@ export default function KurierPage() {
             Aktywne zamówienia kuriera
           </h1>
           <p className="text-gray-600 mt-2">
-            Zarządzaj nowymi zamówieniami kurierskimi dla magazynu
+            Zarządzaj nowymi zamówieniami kurierskimi z integracją DHL
           </p>
         </div>
         <div className="flex space-x-4">
@@ -243,14 +323,22 @@ export default function KurierPage() {
       <KurierStats isArchive={false} />
 
       {/* Filtry */}
-      <KurierFilters 
-        onFiltersChange={handleFiltersChange}
-        isArchive={false}
-      />
+      <div className="mb-6">
+        <KurierFilters 
+          onFiltersChange={handleFiltersChange}
+          isArchive={false}
+        />
+      </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg">
-          Błąd: {error}
+        <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200">
+          <div className="flex items-center">
+            <div className="text-red-400 mr-2">⚠️</div>
+            <div>
+              <div className="font-medium">Błąd:</div>
+              <div>{error}</div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -263,6 +351,7 @@ export default function KurierPage() {
           userRole={userRole}
           canApprove={canApprove}
           loading={loading}
+          onRefresh={fetchZamowienia}
         />
       </div>
 
@@ -276,6 +365,19 @@ export default function KurierPage() {
               userName={userName}
               onCancel={() => setShowForm(false)}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Debug info - tylko w development */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="mt-8 p-4 bg-gray-100 rounded-lg text-sm text-gray-600">
+          <div className="font-mono">
+            <div>Łącznie zamówień: {zamowienia.length}</div>
+            <div>Po filtrach: {filteredZamowienia.length}</div>
+            <div>Użytkownik: {userName} ({userRole})</div>
+            <div>Uprawnienia: Dodawanie: {canAddOrder ? 'TAK' : 'NIE'}, Zatwierdzanie: {canApprove ? 'TAK' : 'NIE'}</div>
+            <div>Aktywne filtry: {JSON.stringify(filters)}</div>
           </div>
         </div>
       )}
