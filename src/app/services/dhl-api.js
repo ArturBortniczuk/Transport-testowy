@@ -181,7 +181,7 @@ class DHLApiService {
                 type: 'PACKAGE',
                 width: piece.width,
                 height: piece.height,
-                lenght: piece.length, // DHL używa "lenght"
+                length: piece.length, // DHL używa "lenght"
                 weight: piece.weight,
                 quantity: piece.quantity,
                 nonStandard: false
