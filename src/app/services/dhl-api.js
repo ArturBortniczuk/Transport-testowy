@@ -394,6 +394,99 @@ class DHLApiService {
       };
     }
   }
+
+  // METODA TESTOWA - wysyła przykładowe zapytanie do DHL
+  async testDHLConnection() {
+    console.log('=== TESTOWANIE POŁĄCZENIA Z DHL ===');
+    
+    // Przykładowe dane testowe
+    const testShipmentData = {
+      id: 'TEST_001',
+      recipient_name: 'Jan Testowy',
+      recipient_address: 'Testowa 123, 00-001 Warszawa',
+      recipient_phone: '+48600123456',
+      package_description: 'Testowa przesyłka | Waga: 2kg | Wymiary: 30x20x10cm | Ilość: 1',
+      magazine_source: 'magazyn_bialystok',
+      notes: JSON.stringify({
+        typZlecenia: 'nadawca_bialystok',
+        nadawca: {
+          typ: 'firma',
+          nazwa: 'Grupa Eltron Sp. z o.o.',
+          adres: 'Wysockiego 69B, 15-169 Białystok',
+          kontakt: 'Magazyn Białystok',
+          telefon: '857152705',
+          email: 'bialystok@grupaeltron.pl'
+        },
+        odbiorca: {
+          typ: 'osoba',
+          email: 'jan.testowy@example.com',
+          kontakt: 'Jan Testowy'
+        },
+        przesylka: {
+          mpk: 'TEST_MPK_001',
+          uwagi: 'To jest testowa przesyłka - proszę nie dostarczać!',
+          waga: '2',
+          wymiary: {
+            dlugosc: '30',
+            szerokosc: '20',
+            wysokosc: '10'
+          },
+          ilosc: '1'
+        }
+      })
+    };
+
+    console.log('Testowe dane przesyłki:', testShipmentData);
+    
+    // Wywołaj metodę createShipment z testowymi danymi
+    const result = await this.createShipment(testShipmentData);
+    
+    console.log('=== WYNIK TESTU DHL ===');
+    console.log('Success:', result.success);
+    console.log('Error:', result.error);
+    console.log('Full result:', result);
+    console.log('=== KONIEC TESTU ===');
+    
+    return result;
+  }
+
+  // METODA DO TESTOWANIA STRUKTURY SOAP
+  async testSOAPStructure() {
+    console.log('=== TEST STRUKTURY SOAP ===');
+    
+    try {
+      console.log('Próba połączenia z WSDL:', this.wsdlUrl);
+      console.log('Dane uwierzytelniające:', {
+        username: this.username ? 'SET' : 'NOT SET',
+        password: this.password ? 'SET' : 'NOT SET',
+        accountNumber: this.accountNumber ? 'SET' : 'NOT SET'
+      });
+
+      // Sprawdź czy można utworzyć klienta SOAP
+      const client = await soap.createClientAsync(this.wsdlUrl, {
+        timeout: 10000,
+        disableCache: true
+      });
+      
+      console.log('✅ SOAP Client utworzony pomyślnie!');
+      console.log('Dostępne metody:', Object.keys(client));
+      console.log('WSDL załadowany z:', client.wsdl.uri);
+      
+      return {
+        success: true,
+        methods: Object.keys(client),
+        wsdlUri: client.wsdl.uri
+      };
+      
+    } catch (error) {
+      console.error('❌ Błąd tworzenia SOAP Client:', error);
+      return {
+        success: false,
+        error: error.message,
+        details: error
+      };
+    }
+  }
 }
 
 export default new DHLApiService();
