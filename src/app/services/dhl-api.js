@@ -113,82 +113,48 @@ class DHLApiService {
     }
   }
 
-  // FINALNA metoda dla ServicePoint API
+  // UPROSZCZONA struktura dla WebAPI (nie ServicePoint)
   prepareDHLSOAPData(shipmentData, notes) {
     const shipperAddress = this.parseAddress(notes.nadawca?.adres || '');
     const receiverAddress = this.parseAddress(shipmentData.recipient_address);
     const piece = this.extractPieceInfo(shipmentData.package_description, notes.przesylka);
 
-    // STRUKTURA ServicePoint zgodnie z działającym WSDL
+    // MINIMALNA STRUKTURA dla WebAPI
     return {
+      authData: {
+        username: this.username,
+        password: this.password
+      },
       shipment: {
-        authData: {
-          username: this.username,
-          password: this.password
+        shipper: {
+          name: notes.nadawca?.nazwa || 'Grupa Eltron Sp. z o.o.',
+          street: shipperAddress.street || 'Wysockiego',
+          houseNumber: shipperAddress.houseNumber || '69B',
+          city: shipperAddress.city || 'Białystok',
+          postcode: shipperAddress.postcode || '15-169',
+          country: 'PL'
         },
-        shipmentData: {
-          ship: {
-            shipper: {
-              address: {
-                name: notes.nadawca?.nazwa || 'Grupa Eltron Sp. z o.o.',
-                postcode: shipperAddress.postcode || '15-169',
-                city: shipperAddress.city || 'Białystok',
-                street: shipperAddress.street || 'Wysockiego',
-                houseNumber: shipperAddress.houseNumber || '69B',
-                ...(shipperAddress.apartmentNumber && { apartmentNumber: shipperAddress.apartmentNumber })
-              },
-              contact: {
-                personName: notes.nadawca?.kontakt || 'Magazyn Białystok',
-                phoneNumber: this.cleanPhoneNumber(notes.nadawca?.telefon || '857152705'),
-                emailAddress: notes.nadawca?.email || 'bialystok@grupaeltron.pl'
-              }
-            },
-            receiver: {
-              address: {
-                name: shipmentData.recipient_name,
-                postcode: receiverAddress.postcode || '00-001',
-                city: receiverAddress.city || 'Warszawa',
-                street: receiverAddress.street || 'Testowa',
-                houseNumber: receiverAddress.houseNumber || '123',
-                ...(receiverAddress.apartmentNumber && { apartmentNumber: receiverAddress.apartmentNumber })
-              },
-              contact: {
-                personName: notes.odbiorca?.kontakt || shipmentData.recipient_name,
-                phoneNumber: this.cleanPhoneNumber(shipmentData.recipient_phone),
-                emailAddress: notes.odbiorca?.email || ''
-              }
-            }
-          },
-          shipmentInfo: {
-            dropOffType: 'REGULAR_PICKUP',
-            serviceType: 'LM', // Last Mile dla ServicePoint
-            billing: {
-              shippingPaymentType: 'SHIPPER',
-              billingAccountNumber: this.accountNumber,
-              paymentType: 'BANK_TRANSFER',
-              costsCenter: 'Transport System'
-            },
-            shipmentDate: new Date().toISOString().split('T')[0],
-            shipmentStartHour: '08:00',
-            shipmentEndHour: '16:00',
-            labelType: 'BLP'
-          },
-          pieceList: [
-            {
-              item: {
-                type: 'PACKAGE',
-                width: piece.width,
-                height: piece.height,
-                lenght: piece.length, // ServicePoint używa "lenght"
-                weight: piece.weight,
-                quantity: piece.quantity,
-                nonStandard: false
-              }
-            }
-          ],
-          content: this.extractContentFromDescription(shipmentData.package_description),
-          comment: notes.przesylka?.uwagi || '',
-          reference: `ORDER_${shipmentData.id}`
+        consignee: {
+          name: shipmentData.recipient_name,
+          street: receiverAddress.street || 'Testowa',
+          houseNumber: receiverAddress.houseNumber || '123',
+          city: receiverAddress.city || 'Warszawa',
+          postcode: receiverAddress.postcode || '00-001',
+          country: 'PL'
+        },
+        shipmentInfo: {
+          account: this.accountNumber,
+          serviceType: 'AH',
+          shipmentDate: new Date().toISOString().split('T')[0]
+        },
+        pieceList: {
+          piece: {
+            type: 'PACKAGE',
+            weight: piece.weight,
+            width: piece.width,
+            height: piece.height,
+            length: piece.length
+          }
         }
       }
     };
