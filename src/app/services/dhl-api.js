@@ -9,8 +9,9 @@ try {
 
 class DHLApiService {
   constructor() {
-    // URL bazujący na API_URL lub domyślny
-    this.wsdlUrl = process.env.DHL_API_URL || 'https://sandbox.dhl24.com.pl/webapi2?wsdl';
+    // URL bazujący na API_URL lub domyślny - POPRAWIONY
+    const baseUrl = process.env.DHL_API_URL || 'https://sandbox.dhl24.com.pl/webapi2';
+    this.wsdlUrl = baseUrl.includes('?wsdl') ? baseUrl : `${baseUrl}?wsdl`;
     
     // Mapowanie do Twoich nazw zmiennych
     this.username = process.env.DHL_LOGIN;
@@ -163,6 +164,11 @@ class DHLApiService {
   // Wywołanie SOAP API DHL (POPRAWIONE)
   async callDHLSOAPAPI(soapParams) {
     try {
+      // Sprawdź czy biblioteka soap jest dostępna
+      if (!soap) {
+        throw new Error('Biblioteka SOAP nie jest dostępna. Uruchom: npm install soap');
+      }
+
       console.log('Creating SOAP client for URL:', this.wsdlUrl);
       
       // Utwórz klienta SOAP z timeoutem
@@ -177,10 +183,22 @@ class DHLApiService {
       console.log('SOAP client created successfully');
       console.log('Available methods:', Object.keys(client));
       
+      console.log('=== WYSYŁANE DANE DO DHL ===');
+      console.log('SOAP Params:', JSON.stringify(soapParams, null, 2));
+      console.log('=== KONIEC WYSYŁANYCH DANYCH ===');
+
       // Wywołaj metodę createShipment zgodnie z dokumentacją
       const [result] = await client.createShipmentAsync(soapParams);
       
-      console.log('DHL SOAP Response:', result);
+      console.log('=== PEŁNA ODPOWIEDŹ Z DHL ===');
+      console.log('Raw result:', JSON.stringify(result, null, 2));
+      console.log('Type of result:', typeof result);
+      console.log('Keys in result:', Object.keys(result || {}));
+      
+      if (result && result.createShipmentResult) {
+        console.log('createShipmentResult:', JSON.stringify(result.createShipmentResult, null, 2));
+      }
+      console.log('=== KONIEC ODPOWIEDZI ===');
       
       // Sprawdź strukturę odpowiedzi zgodnie z CreateShipmentResponseStructure
       if (result && result.createShipmentResult) {
@@ -461,6 +479,14 @@ class DHLApiService {
     console.log('=== TEST STRUKTURY SOAP ===');
     
     try {
+      // Sprawdź czy biblioteka soap jest dostępna
+      if (!soap) {
+        return {
+          success: false,
+          error: 'Biblioteka SOAP nie jest dostępna. Uruchom: npm install soap'
+        };
+      }
+
       console.log('Próba połączenia z WSDL:', this.wsdlUrl);
       console.log('Dane uwierzytelniające:', {
         username: this.username ? 'SET' : 'NOT SET',
@@ -470,8 +496,13 @@ class DHLApiService {
 
       // Sprawdź czy można utworzyć klienta SOAP
       const client = await soap.createClientAsync(this.wsdlUrl, {
-        timeout: 10000,
-        disableCache: true
+        timeout: 15000,
+        disableCache: true,
+        // Dodatkowe opcje dla lepszej kompatybilności
+        ignoredNamespaces: {
+          namespaces: [],
+          override: false
+        }
       });
       
       console.log('✅ SOAP Client utworzony pomyślnie!');
