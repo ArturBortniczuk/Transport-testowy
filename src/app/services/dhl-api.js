@@ -113,13 +113,13 @@ class DHLApiService {
     }
   }
 
-  // OSTATECZNA metoda przygotowania danych - zgodnie z ServicePoint WSDL
+  // FINALNA metoda dla ServicePoint API
   prepareDHLSOAPData(shipmentData, notes) {
     const shipperAddress = this.parseAddress(notes.nadawca?.adres || '');
     const receiverAddress = this.parseAddress(shipmentData.recipient_address);
     const piece = this.extractPieceInfo(shipmentData.package_description, notes.przesylka);
 
-    // STRUKTURA zgodna z ServicePoint WSDL CreateShipmentStructure
+    // STRUKTURA ServicePoint zgodnie z działającym WSDL
     return {
       shipment: {
         authData: {
@@ -145,7 +145,6 @@ class DHLApiService {
             },
             receiver: {
               address: {
-                addressType: notes.odbiorca?.typ === 'firma' ? 'BUSINESS' : 'PRIVATE',
                 name: shipmentData.recipient_name,
                 postcode: receiverAddress.postcode || '00-001',
                 city: receiverAddress.city || 'Warszawa',
@@ -162,7 +161,7 @@ class DHLApiService {
           },
           shipmentInfo: {
             dropOffType: 'REGULAR_PICKUP',
-            serviceType: 'LM', // Last Mile - zgodnie z dokumentacją ServicePoint
+            serviceType: 'LM', // Last Mile dla ServicePoint
             billing: {
               shippingPaymentType: 'SHIPPER',
               billingAccountNumber: this.accountNumber,
@@ -180,10 +179,10 @@ class DHLApiService {
                 type: 'PACKAGE',
                 width: piece.width,
                 height: piece.height,
-                lenght: piece.length, // ServicePoint używa "lenght" zgodnie z WSDL
+                lenght: piece.length, // ServicePoint używa "lenght"
                 weight: piece.weight,
                 quantity: piece.quantity,
-                nonStandard: piece.nonStandard
+                nonStandard: false
               }
             }
           ],
