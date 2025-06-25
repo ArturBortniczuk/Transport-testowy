@@ -37,7 +37,7 @@ class DHLApiService {
     this.passwordApi = process.env.DHL_PASSWORD_API;
     this.accountNumber = process.env.DHL_ACCOUNT_NUMBER;
     this.sapClient = process.env.DHL_SAP_CLIENT;
-    this.isTestMode = process.env.DHL_TEST_MODE === 'true'; = baseUrl.includes('?wsdl') ? baseUrl : `${baseUrl}?wsdl`;
+    this.isTestMode = process.env.DHL_TEST_MODE === 'true';
     
     // Mapowanie do Twoich nazw zmiennych
     this.username = process.env.DHL_LOGIN;
