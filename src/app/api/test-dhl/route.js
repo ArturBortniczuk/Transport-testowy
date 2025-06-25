@@ -15,8 +15,12 @@ export async function GET(request) {
     console.log('\n--- TEST 1: Struktura SOAP ---');
     const soapTest = await DHLApiService.testSOAPStructure();
     
-    // Test 2: Pełny test z przykładowymi danymi
-    console.log('\n--- TEST 2: Przykładowa przesyłka ---');
+    // Test 2: Prosta przesyłka
+    console.log('\n--- TEST 2: Prosta przesyłka ---');
+    const simpleTest = await DHLApiService.testSimpleShipment();
+    
+    // Test 3: Pełny test z przykładowymi danymi
+    console.log('\n--- TEST 3: Przykładowa przesyłka ---');
     const shipmentTest = await DHLApiService.testDHLConnection();
     
     return NextResponse.json({
@@ -25,6 +29,7 @@ export async function GET(request) {
       tests: {
         urlTest: urlTest,
         soapStructure: soapTest,
+        simpleShipment: simpleTest,
         shipmentCreation: shipmentTest
       },
       environment: {
