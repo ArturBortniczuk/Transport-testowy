@@ -177,15 +177,13 @@ class DHLApiService {
           },
           pieceList: [
             {
-              item: {
-                type: 'PACKAGE',
-                width: piece.width,
-                height: piece.height,
-                length: piece.length, // DHL używa "lenght"
-                weight: piece.weight,
-                quantity: piece.quantity,
-                nonStandard: false
-              }
+              type: 'PACKAGE',
+              width: piece.width,
+              height: piece.height,
+              length: piece.length,
+              weight: piece.weight,
+              quantity: piece.quantity,
+              nonStandard: false
             }
           ],
           content: this.extractContentFromDescription(shipmentData.package_description) || 'Przesyłka',
