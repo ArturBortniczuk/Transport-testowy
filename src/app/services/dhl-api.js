@@ -150,7 +150,7 @@ class DHLApiService {
             },
             receiver: {
               address: {
-                addressType: '',
+                addressType: 'B',
                 name: shipmentData.recipient_name,
                 postcode: receiverAddress.postcode || '00-001',
                 city: receiverAddress.city || 'Warszawa',
@@ -173,6 +173,7 @@ class DHLApiService {
             servicePointAccountNumber: this.accountNumber // Dodane zgodnie z przykładem
           },
           shipmentInfo: {
+            account: this.accountNumber, // 🔥 TO DODAJ
             dropOffType: 'REGULAR_PICKUP',
             serviceType: 'LM', // Jak w przykładzie
             billing: {
