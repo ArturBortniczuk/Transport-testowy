@@ -1,5 +1,11 @@
 // src/app/services/dhl-api.js
-import soap from 'soap';
+// Dynamiczny import soap dla środowiska serverless
+let soap;
+try {
+  soap = require('soap');
+} catch (error) {
+  console.error('SOAP library not available:', error);
+}
 
 class DHLApiService {
   constructor() {
