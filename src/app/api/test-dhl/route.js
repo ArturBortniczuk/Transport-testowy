@@ -6,6 +6,11 @@ export async function GET(request) {
   try {
     console.log('🧪 Rozpoczynam test DHL API...');
     
+    // Test 0: Sprawdź wszystkie URL DHL
+    console.log('\n--- TEST 0: Wszystkie URL DHL ---');
+    const urlTest = await DHLApiService.testMultipleURLs();
+    console.log('URL Test Results:', urlTest);
+    
     // Test 1: Sprawdź strukturę SOAP
     console.log('\n--- TEST 1: Struktura SOAP ---');
     const soapTest = await DHLApiService.testSOAPStructure();
@@ -18,6 +23,7 @@ export async function GET(request) {
       success: true,
       timestamp: new Date().toISOString(),
       tests: {
+        urlTest: urlTest,
         soapStructure: soapTest,
         shipmentCreation: shipmentTest
       },
