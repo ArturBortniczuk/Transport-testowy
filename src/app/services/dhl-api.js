@@ -141,11 +141,16 @@ class DHLApiService {
                 personName: notes.nadawca?.kontakt || 'Magazyn Białystok',
                 phoneNumber: this.cleanPhoneNumber(notes.nadawca?.telefon || '857152705'),
                 emailAddress: notes.nadawca?.email || 'bialystok@grupaeltron.pl'
+              },
+              preaviso: {
+                personName: notes.nadawca?.kontakt || 'Magazyn Białystok',
+                phoneNumber: this.cleanPhoneNumber(notes.nadawca?.telefon || '857152705'),
+                emailAddress: notes.nadawca?.email || 'bialystok@grupaeltron.pl'
               }
             },
             receiver: {
               address: {
-                addressType: '', // Puste jak w przykładzie
+                addressType: '',
                 name: shipmentData.recipient_name,
                 postcode: receiverAddress.postcode || '00-001',
                 city: receiverAddress.city || 'Warszawa',
@@ -157,8 +162,14 @@ class DHLApiService {
                 personName: notes.odbiorca?.kontakt || shipmentData.recipient_name,
                 phoneNumber: this.cleanPhoneNumber(shipmentData.recipient_phone),
                 emailAddress: notes.odbiorca?.email || ''
+              },
+              preaviso: {
+                personName: notes.odbiorca?.kontakt || shipmentData.recipient_name,
+                phoneNumber: this.cleanPhoneNumber(shipmentData.recipient_phone),
+                emailAddress: notes.odbiorca?.email || ''
               }
             },
+
             servicePointAccountNumber: this.accountNumber // Dodane zgodnie z przykładem
           },
           shipmentInfo: {
