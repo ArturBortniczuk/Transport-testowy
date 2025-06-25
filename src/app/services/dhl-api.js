@@ -32,7 +32,7 @@ class DHLApiService {
     console.log('Final WSDL URL will be:', this.wsdlUrl);
     
     // Mapowanie do Twoich nazw zmiennych
-    this.username = process.env.DHL_LOGIN;
+    this.login = process.env.DHL_LOGIN;
     this.password = process.env.DHL_PASSWORD_DHL24;
     this.passwordApi = process.env.DHL_PASSWORD_API;
     this.accountNumber = process.env.DHL_ACCOUNT_NUMBER;
@@ -40,7 +40,7 @@ class DHLApiService {
     this.isTestMode = process.env.DHL_TEST_MODE === 'true';
     
     // Mapowanie do Twoich nazw zmiennych
-    this.username = process.env.DHL_LOGIN;
+    this.login = process.env.DHL_LOGIN;
     this.password = process.env.DHL_PASSWORD_DHL24;
     this.passwordApi = process.env.DHL_PASSWORD_API;
     this.accountNumber = process.env.DHL_ACCOUNT_NUMBER;
@@ -49,7 +49,7 @@ class DHLApiService {
     
     console.log('DHL API Service initialized:', {
       wsdlUrl: this.wsdlUrl,
-      username: this.username ? 'SET' : 'NOT SET',
+      login: this.login ? 'SET' : 'NOT SET',
       password: this.password ? 'SET' : 'NOT SET',
       passwordApi: this.passwordApi ? 'SET' : 'NOT SET',
       accountNumber: this.accountNumber ? 'SET' : 'NOT SET',
@@ -64,7 +64,7 @@ class DHLApiService {
       console.log('Creating DHL shipment for order:', shipmentData.id);
       
       // Sprawdź dane konfiguracyjne
-      if (!this.username || !this.password || !this.accountNumber) {
+      if (!this.login || !this.password || !this.accountNumber) {
         return {
           success: false,
           error: 'Brak kompletnych danych uwierzytelniających DHL (DHL_LOGIN/DHL_PASSWORD_DHL24/DHL_ACCOUNT_NUMBER)'
@@ -123,7 +123,7 @@ class DHLApiService {
     return {
       shipment: {
         authData: {
-          username: this.username,
+          login: this.login,
           password: this.password
         },
         shipmentData: {
@@ -323,7 +323,7 @@ class DHLApiService {
         return { success: true };
       }
 
-      if (!this.username || !this.password) {
+      if (!this.login || !this.password) {
         return {
           success: false,
           error: 'Brak danych uwierzytelniających do anulowania przesyłki'
@@ -338,7 +338,7 @@ class DHLApiService {
       const params = {
         shipment: {
           authData: {
-            username: this.username,
+            login: this.login,
             password: this.password
           },
           shipment: shipmentNumber
@@ -491,7 +491,7 @@ class DHLApiService {
       // MINIMALNA STRUKTURA zgodnie z dokumentacją DHL
       const minimalParams = {
         authData: {
-          username: this.username,
+          login: this.login,
           password: this.password
         },
         shipment: {
@@ -675,7 +675,7 @@ class DHLApiService {
 
       console.log('Próba połączenia z WSDL:', this.wsdlUrl);
       console.log('Dane uwierzytelniające:', {
-        username: this.username ? 'SET' : 'NOT SET',
+        login: this.login ? 'SET' : 'NOT SET',
         password: this.password ? 'SET' : 'NOT SET',
         accountNumber: this.accountNumber ? 'SET' : 'NOT SET'
       });
