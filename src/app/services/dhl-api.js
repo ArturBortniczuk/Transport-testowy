@@ -113,48 +113,84 @@ class DHLApiService {
     }
   }
 
-  // UPROSZCZONA struktura dla WebAPI (nie ServicePoint)
+  // DOKŁADNA struktura zgodnie z przykładem DHL
   prepareDHLSOAPData(shipmentData, notes) {
     const shipperAddress = this.parseAddress(notes.nadawca?.adres || '');
     const receiverAddress = this.parseAddress(shipmentData.recipient_address);
     const piece = this.extractPieceInfo(shipmentData.package_description, notes.przesylka);
 
-    // MINIMALNA STRUKTURA dla WebAPI
+    // STRUKTURA zgodna z przykładem z dokumentacji DHL
     return {
-      authData: {
-        username: this.username,
-        password: this.password
-      },
       shipment: {
-        shipper: {
-          name: notes.nadawca?.nazwa || 'Grupa Eltron Sp. z o.o.',
-          street: shipperAddress.street || 'Wysockiego',
-          houseNumber: shipperAddress.houseNumber || '69B',
-          city: shipperAddress.city || 'Białystok',
-          postcode: shipperAddress.postcode || '15-169',
-          country: 'PL'
+        authData: {
+          username: this.username,
+          password: this.password
         },
-        consignee: {
-          name: shipmentData.recipient_name,
-          street: receiverAddress.street || 'Testowa',
-          houseNumber: receiverAddress.houseNumber || '123',
-          city: receiverAddress.city || 'Warszawa',
-          postcode: receiverAddress.postcode || '00-001',
-          country: 'PL'
-        },
-        shipmentInfo: {
-          account: this.accountNumber,
-          serviceType: 'AH',
-          shipmentDate: new Date().toISOString().split('T')[0]
-        },
-        pieceList: {
-          piece: {
-            type: 'PACKAGE',
-            weight: piece.weight,
-            width: piece.width,
-            height: piece.height,
-            length: piece.length
-          }
+        shipmentData: {
+          ship: {
+            shipper: {
+              address: {
+                name: notes.nadawca?.nazwa || 'Grupa Eltron Sp. z o.o.',
+                postcode: shipperAddress.postcode || '15-169',
+                city: shipperAddress.city || 'Białystok',
+                street: shipperAddress.street || 'Wysockiego',
+                houseNumber: shipperAddress.houseNumber || '69B',
+                ...(shipperAddress.apartmentNumber && { apartmentNumber: shipperAddress.apartmentNumber })
+              },
+              contact: {
+                personName: notes.nadawca?.kontakt || 'Magazyn Białystok',
+                phoneNumber: this.cleanPhoneNumber(notes.nadawca?.telefon || '857152705'),
+                emailAddress: notes.nadawca?.email || 'bialystok@grupaeltron.pl'
+              }
+            },
+            receiver: {
+              address: {
+                addressType: '', // Puste jak w przykładzie
+                name: shipmentData.recipient_name,
+                postcode: receiverAddress.postcode || '00-001',
+                city: receiverAddress.city || 'Warszawa',
+                street: receiverAddress.street || 'Testowa',
+                houseNumber: receiverAddress.houseNumber || '123',
+                ...(receiverAddress.apartmentNumber && { apartmentNumber: receiverAddress.apartmentNumber })
+              },
+              contact: {
+                personName: notes.odbiorca?.kontakt || shipmentData.recipient_name,
+                phoneNumber: this.cleanPhoneNumber(shipmentData.recipient_phone),
+                emailAddress: notes.odbiorca?.email || ''
+              }
+            },
+            servicePointAccountNumber: this.accountNumber // Dodane zgodnie z przykładem
+          },
+          shipmentInfo: {
+            dropOffType: 'REGULAR_PICKUP',
+            serviceType: 'LM', // Jak w przykładzie
+            billing: {
+              shippingPaymentType: 'SHIPPER',
+              billingAccountNumber: this.accountNumber,
+              paymentType: 'BANK_TRANSFER',
+              costsCenter: 'Transport System'
+            },
+            shipmentDate: new Date().toISOString().split('T')[0],
+            shipmentStartHour: '10:00', // Jak w przykładzie
+            shipmentEndHour: '15:00',   // Jak w przykładzie
+            labelType: 'BLP'
+          },
+          pieceList: [
+            {
+              item: {
+                type: 'PACKAGE',
+                width: piece.width,
+                height: piece.height,
+                lenght: piece.length, // DHL używa "lenght"
+                weight: piece.weight,
+                quantity: piece.quantity,
+                nonStandard: false
+              }
+            }
+          ],
+          content: this.extractContentFromDescription(shipmentData.package_description) || 'Przesyłka',
+          comment: notes.przesylka?.uwagi || '',
+          reference: `ORDER_${shipmentData.id}`
         }
       }
     };
