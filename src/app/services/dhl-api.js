@@ -83,16 +83,16 @@ class DHLApiService {
     }
   }
 
-  // POPRAWIONA METODA: Przygotuj dane zgodnie z dokumentacją DHL
+  // Zaktualizuj metodę prepareCreateShipmentsData
   prepareCreateShipmentsData(shipmentData, notes) {
     const shipperAddress = this.parseAddress(notes.nadawca?.adres || '');
     const receiverAddress = this.parseAddress(shipmentData.recipient_address);
     const piece = this.extractPieceInfo(shipmentData.package_description, notes.przesylka);
-
+  
     // STRUKTURA ZGODNA Z DOKUMENTACJĄ DHL WebAPI2
     return {
       authData: {
-        username: this.login,  // ← ZGODNIE Z DOKUMENTACJĄ
+        username: this.login,
         password: this.password
       },
       shipments: {
@@ -111,10 +111,14 @@ class DHLApiService {
               contactEmail: notes.nadawca?.email || 'bialystok@grupaeltron.pl'
             },
             
-            // RECEIVER - odbiorca (zgodnie z dokumentacją)
+            // RECEIVER - odbiorca - POPRAWIONA STRUKTURA
             receiver: {
+              // DODANE: Wymagane pola dla przesyłek krajowych
+              country: 'PL', // ← KLUCZOWE: Kraj odbiorcy
+              addressType: 'B', // ← KLUCZOWE: Typ adresu (B = Business, C = Consumer)
+              
               name: shipmentData.recipient_name,
-              postalCode: receiverAddress.postcode || '00-001',
+              postalCode: this.cleanPostalCode(receiverAddress.postcode) || '00-001',
               city: receiverAddress.city || 'Warszawa',
               street: receiverAddress.street || 'Testowa',
               houseNumber: receiverAddress.houseNumber || '1',
@@ -131,7 +135,7 @@ class DHLApiService {
                   type: 'PACKAGE',
                   width: piece.width,
                   height: piece.height,
-                  length: piece.length,  // ← length (nie lenght!)
+                  length: piece.length,
                   weight: piece.weight,
                   quantity: piece.quantity,
                   nonStandard: false
@@ -157,85 +161,33 @@ class DHLApiService {
             content: this.extractContentFromDescription(shipmentData.package_description) || 'Przesyłka',
             comment: notes.przesylka?.uwagi || '',
             reference: `ORDER_${shipmentData.id}`,
-            skipRestrictionCheck: true // Ważne dla stałego zbioru
+            skipRestrictionCheck: true // Ważne dla sandbox
           }
         ]
       }
     };
   }
-
-  // WYWOŁANIE createShipments zgodnie z dokumentacją
-  async callCreateShipments(shipmentParams) {
-    try {
-      if (!soap) {
-        throw new Error('Biblioteka SOAP nie jest dostępna');
-      }
-
-      console.log('Creating SOAP client for WebAPI2:', this.wsdlUrl);
-      
-      const client = await soap.createClientAsync(this.wsdlUrl, {
-        timeout: 30000,
-        disableCache: true
-      });
-      
-      console.log('WebAPI2 client created successfully');
-      console.log('Available methods:', Object.keys(client).filter(key => key.includes('createShipments')));
-      
-      console.log('=== WYSYŁANE DANE DO DHL createShipments ===');
-      console.log('Params:', JSON.stringify(shipmentParams, null, 2));
-      console.log('=== KONIEC WYSYŁANYCH DANYCH ===');
-
-      // WYWOŁAJ createShipments (zgodnie z dokumentacją WebAPI2)
-      const [result] = await client.createShipmentsAsync(shipmentParams);
-      
-      console.log('=== PEŁNA ODPOWIEDŹ Z DHL createShipments ===');
-      console.log('Raw result:', JSON.stringify(result, null, 2));
-      console.log('=== KONIEC ODPOWIEDZI ===');
-      
-      // SPRAWDŹ STRUKTURĘ ODPOWIEDZI (zgodnie z dokumentacją)
-      if (result && result.createShipmentsResult) {
-        const shipmentsResult = result.createShipmentsResult;
-        
-        if (shipmentsResult.item && shipmentsResult.item.length > 0) {
-          const shipment = shipmentsResult.item[0];
-          
-          if (shipment.shipmentId) {
-            return {
-              success: true,
-              shipmentNumber: shipment.shipmentId,
-              trackingNumber: shipment.shipmentId,
-              labelUrl: null, // Etykiety pobieramy osobno metodą getLabels
-              labelContent: null,
-              dispatchNumber: null,
-              cost: 'Nieznany',
-              data: shipment
-            };
-          }
-        }
-      }
-      
-      // Sprawdź czy jest informacja o błędzie
-      if (result && (result.error || result.errors)) {
-        throw new Error(`DHL WebAPI2 Error: ${result.error || result.errors}`);
-      }
-      
-      throw new Error(`DHL WebAPI2 zwróciło nieoczekiwaną strukturę: ${JSON.stringify(result)}`);
-      
-    } catch (error) {
-      console.error('DHL WebAPI2 createShipments Error:', error);
-      
-      if (error.body) {
-        console.error('SOAP Error Body:', error.body);
-      }
-      
-      return {
-        success: false,
-        error: `DHL WebAPI2 Error: ${error.message}`
-      };
+  
+  // DODAJ nową metodę do czyszczenia kodów pocztowych
+  cleanPostalCode(postcode) {
+    if (!postcode) return '';
+    // Usuń wszystko oprócz cyfr i myślnika
+    const cleaned = postcode.replace(/[^\d-]/g, '');
+    
+    // Sprawdź czy to polski format XX-XXX
+    if (cleaned.match(/^\d{2}-\d{3}$/)) {
+      return cleaned;
     }
+    
+    // Jeśli tylko cyfry, sformatuj jako XX-XXX
+    if (cleaned.match(/^\d{5}$/)) {
+      return `${cleaned.substring(0, 2)}-${cleaned.substring(2)}`;
+    }
+    
+    return cleaned || '00-001'; // Domyślny kod dla testów
   }
-
-  // METODA TESTOWA zgodna z dokumentacją
+  
+  // ZAKTUALIZUJ metodę testową
   async testCreateShipments() {
     try {
       console.log('=== TESTOWANIE createShipments WebAPI2 ===');
@@ -243,13 +195,13 @@ class DHLApiService {
       if (!soap) {
         return { success: false, error: 'SOAP not available' };
       }
-
+  
       const client = await soap.createClientAsync(this.wsdlUrl, {
         timeout: 30000,
         disableCache: true
       });
-
-      // MINIMALNA STRUKTURA zgodna z dokumentacją DHL
+  
+      // POPRAWIONA STRUKTURA TESTOWA zgodna z dokumentacją DHL
       const testParams = {
         authData: {
           username: this.login,
@@ -259,21 +211,25 @@ class DHLApiService {
           item: [
             {
               shipper: {
-                name: "Test Shipper",
-                postalCode: "00-999",
-                city: "Warszawa",
-                street: "Testowa",
-                houseNumber: "1",
-                contactPerson: "Test Person",
-                contactPhone: "600700800",
-                contactEmail: "test@test.pl"
+                name: "Grupa Eltron Test",
+                postalCode: "15-169",
+                city: "Białystok",
+                street: "Wysockiego",
+                houseNumber: "69B",
+                contactPerson: "Test Magazyn",
+                contactPhone: "857152705",
+                contactEmail: "test@grupaeltron.pl"
               },
               receiver: {
+                // KLUCZOWE POLA dla przesyłek krajowych
+                country: "PL",
+                addressType: "B", // Business address
+                
                 name: "Test Receiver",
-                postalCode: "30-001",
-                city: "Kraków",
-                street: "Odbiorcza",
-                houseNumber: "2",
+                postalCode: "24-100", // Prawidłowy polski format
+                city: "Puławy",
+                street: "Wróblewskiego",
+                houseNumber: "7",
                 contactPerson: "Test Receiver",
                 contactPhone: "600800900",
                 contactEmail: "receiver@test.pl"
@@ -297,7 +253,7 @@ class DHLApiService {
                 accountNumber: parseInt(this.accountNumber)
               },
               service: {
-                product: "AH",
+                product: "AH", // Przesyłka krajowa AH
                 deliveryEvening: false
               },
               shipmentDate: new Date().toISOString().split('T')[0],
@@ -309,24 +265,24 @@ class DHLApiService {
           ]
         }
       };
-
+  
       console.log('=== createShipments TEST PARAMS ===');
       console.log(JSON.stringify(testParams, null, 2));
-
+  
       const [result] = await client.createShipmentsAsync(testParams);
       
       console.log('=== createShipments TEST RESULT ===');
       console.log(JSON.stringify(result, null, 2));
-
+  
       const isSuccess = result?.createShipmentsResult?.item?.[0]?.shipmentId ? true : false;
-
+  
       return {
         success: isSuccess,
         result: result,
         shipmentId: result?.createShipmentsResult?.item?.[0]?.shipmentId,
         error: !isSuccess ? 'No shipmentId returned' : null
       };
-
+  
     } catch (error) {
       console.error('createShipments test error:', error);
       return {
