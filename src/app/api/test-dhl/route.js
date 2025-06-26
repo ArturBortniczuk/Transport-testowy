@@ -15,12 +15,16 @@ export async function GET(request) {
     console.log('\n--- TEST 1: Struktura SOAP (ServicePoint) ---');
     const soapTest = await DHLApiService.testSOAPStructure();
     
-    // Test 2: Prosta przesyłka z poprawną strukturą
-    console.log('\n--- TEST 2: Prosta przesyłka (ServicePoint API) ---');
+    // Test 2: Test różnych wariantów username
+    console.log('\n--- TEST 2: Różne warianty username ---');
+    const authTest = await DHLApiService.testAuthVariants();
+    
+    // Test 3: Prosta przesyłka z poprawną strukturą
+    console.log('\n--- TEST 3: Prosta przesyłka (ServicePoint API) ---');
     const simpleTest = await DHLApiService.testSimpleShipment();
     
-    // Test 3: Pełny test z przykładowymi danymi
-    console.log('\n--- TEST 3: Przykładowa przesyłka (ServicePoint) ---');
+    // Test 4: Pełny test z przykładowymi danymi
+    console.log('\n--- TEST 4: Przykładowa przesyłka (ServicePoint) ---');
     const shipmentTest = await DHLApiService.testDHLConnection();
     
     return NextResponse.json({
@@ -30,6 +34,7 @@ export async function GET(request) {
       tests: {
         urlTest: urlTest,
         soapStructure: soapTest,
+        authVariants: authTest,
         simpleShipment: simpleTest,
         shipmentCreation: shipmentTest
       },
