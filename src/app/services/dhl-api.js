@@ -10,7 +10,7 @@ try {
 class DHLApiService {
   constructor() {
     // UŻYWAJ ServicePoint API zgodnie z dokumentacją DHL
-    this.wsdlUrl = process.env.DHL_API_URL || 'https://sandbox.dhl24.com.pl/servicepoint?wsdl';
+    this.wsdlUrl = 'https://sandbox.dhl24.com.pl/servicepoint?wsdl'; // ← WYMUŚ ServicePoint API
     
     console.log('Final WSDL URL:', this.wsdlUrl);
     
@@ -169,21 +169,24 @@ class DHLApiService {
             shipmentDate: new Date().toISOString().split('T')[0],
             shipmentStartHour: '10:00',
             shipmentEndHour: '15:00',
-            labelType: 'BLP'
+            labelType: 'BLP',
+            wayBill: `WB_${Date.now()}` // Dodaj wayBill jeśli potrzebny
           },
-          // ArrayOfPiecestructure
-          pieceList: [
-            {
-              // PieceStructure
-              type: 'PACKAGE',
-              width: piece.width,
-              height: piece.height,
-              lenght: piece.length, // ← UWAGA: DHL używa "lenght" (błąd w ich API)
-              weight: piece.weight,
-              quantity: piece.quantity,
-              nonStandard: false
-            }
-          ],
+          // ArrayOfPiecestructure - STRUKTURA ZGODNA Z SERVICEPOINT WSDL
+          pieceList: {
+            item: [
+              {
+                // PieceStructure
+                type: 'PACKAGE',
+                width: piece.width,
+                height: piece.height,
+                lenght: piece.length, // ← UWAGA: DHL używa "lenght" (błąd w ich API)
+                weight: piece.weight,
+                quantity: piece.quantity,
+                nonStandard: false
+              }
+            ]
+          },
           content: this.extractContentFromDescription(shipmentData.package_description) || 'Przesyłka',
           comment: notes.przesylka?.uwagi || '',
           reference: `ORDER_${shipmentData.id}`
@@ -507,17 +510,19 @@ class DHLApiService {
               shipmentEndHour: "15:00",
               labelType: "BLP"
             },
-            pieceList: [
-              {
-                type: "PACKAGE",
-                width: 10,
-                height: 10,
-                lenght: 10, // ← DHL używa "lenght" (błąd w ich API)
-                weight: 1,
-                quantity: 1,
-                nonStandard: false
-              }
-            ],
+            pieceList: {
+              item: [
+                {
+                  type: "PACKAGE",
+                  width: 10,
+                  height: 10,
+                  lenght: 10, // ← DHL używa "lenght" (błąd w ich API)
+                  weight: 1,
+                  quantity: 1,
+                  nonStandard: false
+                }
+              ]
+            },
             content: "Test content",
             comment: "Test comment",
             reference: "TEST_REF"
@@ -549,7 +554,161 @@ class DHLApiService {
     }
   }
 
-  // METODY TESTOWE (zachowaj istniejące)
+  // Dodaj metodę testową z różnymi wariantami username
+  async testAuthVariants() {
+    try {
+      console.log('=== TEST RÓŻNYCH WARIANTÓW USERNAME ===');
+      
+      if (!soap) {
+        return { success: false, error: 'SOAP not available' };
+      }
+
+      const authVariants = [
+        { username: this.login, password: this.password, description: 'Current login (GRUPAELTRON_TEST)' },
+        { username: 'A.BORTNICZUK@GRUPAELTRON.PL', password: this.password, description: 'Email from DHL documentation' },
+        { username: 'test', password: 'WSyj3$aDE', description: 'Example from DHL docs' },
+        { username: this.login.toLowerCase(), password: this.password, description: 'Lowercase login' }
+      ];
+
+      const client = await soap.createClientAsync(this.wsdlUrl, {
+        timeout: 30000,
+        disableCache: true
+      });
+
+      const results = [];
+
+      for (const [index, auth] of authVariants.entries()) {
+        console.log(`\n--- Testing auth variant ${index + 1}: ${auth.description} ---`);
+        
+        try {
+          const simpleParams = {
+            shipment: {
+              authData: {
+                username: auth.username,
+                password: auth.password
+              },
+              shipmentData: {
+                ship: {
+                  shipper: {
+                    address: {
+                      name: "Test Shipper",
+                      postcode: "00999",
+                      city: "Warszawa",
+                      street: "Testowa",
+                      houseNumber: "1"
+                    },
+                    contact: {
+                      personName: "Test Person",
+                      phoneNumber: "600700800",
+                      emailAddress: "test@test.pl"
+                    },
+                    preaviso: {
+                      personName: "Test Person",
+                      phoneNumber: "600700800",
+                      emailAddress: "test@test.pl"
+                    }
+                  },
+                  receiver: {
+                    address: {
+                      addressType: "B",
+                      name: "Test Receiver",
+                      postcode: "30001",
+                      city: "Kraków",
+                      street: "Odbiorcza",
+                      houseNumber: "2"
+                    },
+                    contact: {
+                      personName: "Test Receiver",
+                      phoneNumber: "600800900",
+                      emailAddress: "receiver@test.pl"
+                    },
+                    preaviso: {
+                      personName: "Test Receiver",
+                      phoneNumber: "600800900",
+                      emailAddress: "receiver@test.pl"
+                    }
+                  },
+                  servicePointAccountNumber: this.accountNumber
+                },
+                shipmentInfo: {
+                  dropOffType: "REGULAR_PICKUP",
+                  serviceType: "LM",
+                  billing: {
+                    shippingPaymentType: "SHIPPER",
+                    billingAccountNumber: this.accountNumber,
+                    paymentType: "BANK_TRANSFER",
+                    costsCenter: "TEST"
+                  },
+                  shipmentDate: new Date().toISOString().split('T')[0],
+                  shipmentStartHour: "10:00",
+                  shipmentEndHour: "15:00",
+                  labelType: "BLP"
+                },
+                pieceList: {
+                  item: [
+                    {
+                      type: "PACKAGE",
+                      width: 10,
+                      height: 10,
+                      lenght: 10,
+                      weight: 1,
+                      quantity: 1,
+                      nonStandard: false
+                    }
+                  ]
+                },
+                content: "Test content",
+                comment: "Test comment",
+                reference: "TEST_REF"
+              }
+            }
+          };
+
+          const [result] = await client.createShipmentAsync(simpleParams);
+          
+          console.log(`Result for ${auth.description}:`, result);
+          
+          results.push({
+            variant: index + 1,
+            description: auth.description,
+            username: auth.username,
+            success: result?.createShipmentResult?.shipmentNumber ? true : false,
+            result: result,
+            shipmentNumber: result?.createShipmentResult?.shipmentNumber,
+            error: result?.createShipmentResult === null ? 'createShipmentResult is null' : null
+          });
+
+        } catch (error) {
+          console.error(`Variant ${index + 1} error:`, error.message);
+          results.push({
+            variant: index + 1,
+            description: auth.description,
+            username: auth.username,
+            success: false,
+            error: error.message
+          });
+        }
+      }
+      
+      console.log('\n=== PODSUMOWANIE TESTÓW AUTH ===');
+      results.forEach(result => {
+        console.log(`Variant ${result.variant} (${result.description}): ${result.success ? '✅ SUCCESS' : '❌ FAILED'} - ${result.error || 'OK'}`);
+      });
+      
+      return {
+        success: true,
+        results: results,
+        working: results.filter(r => r.success)
+      };
+      
+    } catch (error) {
+      console.error('Auth variants test error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
   async testMultipleURLs() {
     const urlsToTest = [
       'https://sandbox.dhl24.com.pl/servicepoint?wsdl', // ← Teraz ServicePoint jako główny
@@ -607,7 +766,21 @@ class DHLApiService {
   async testDHLConnection() {
     console.log('=== TESTOWANIE POŁĄCZENIA Z DHL (ServicePoint) ===');
     
-    // Testuj prostą strukturę
+    // NAJPIERW testuj różne warianty username
+    const authTest = await this.testAuthVariants();
+    console.log('Auth variants test result:', authTest);
+    
+    if (authTest.working && authTest.working.length > 0) {
+      return {
+        success: true,
+        authVariants: authTest.results,
+        workingVariants: authTest.working,
+        note: 'Found working authentication variant',
+        recommendedAuth: authTest.working[0]
+      };
+    }
+    
+    // Jeśli żaden wariant auth nie działa, testuj prostą strukturę
     const simpleTest = await this.testSimpleShipment();
     console.log('Simple test result:', simpleTest);
     
