@@ -89,6 +89,43 @@ export async function PUT(request, { params }) {
       }, { status: 403 });
     }
 
+    // NOWA WALIDACJA: Sprawdź czy zamówienie już zostało zatwierdzone
+    const existingOrder = await db('kuriers')
+      .where('id', id)
+      .first();
+
+    if (!existingOrder) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Zamówienie nie znalezione' 
+      }, { status: 404 });
+    }
+
+    // KLUCZOWA WALIDACJA: Sprawdź czy już nie zostało wysłane do DHL
+    if (updateData.status === 'approved' && existingOrder.status !== 'new') {
+      console.log(`⚠️ Próba ponownego zatwierdzenia zamówienia ${id}. Obecny status: ${existingOrder.status}`);
+      return NextResponse.json({ 
+        success: false, 
+        error: `Zamówienie zostało już przetworzone (status: ${existingOrder.status})` 
+      }, { status: 400 });
+    }
+
+    // Sprawdź czy w notatkach już jest informacja o DHL
+    let existingNotes = {};
+    try {
+      existingNotes = JSON.parse(existingOrder.notes || '{}');
+    } catch (e) {
+      // Ignore parsing errors
+    }
+
+    if (updateData.status === 'approved' && existingNotes.dhl) {
+      console.log(`⚠️ Zamówienie ${id} już ma dane DHL:`, existingNotes.dhl);
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Zamówienie zostało już wysłane do DHL' 
+      }, { status: 400 });
+    }
+
     let dataToUpdate = {
       ...updateData,
       ...(updateData.status === 'approved' && {
@@ -99,36 +136,25 @@ export async function PUT(request, { params }) {
 
     // Jeśli zatwierdzamy zamówienie, spróbuj wysłać do DHL
     if (updateData.status === 'approved') {
+      console.log(`🚀 Rozpoczynam wysyłkę zamówienia ${id} do DHL przez użytkownika ${userId}`);
+      
       try {
-        // Pobierz pełne dane zamówienia
-        const zamowienie = await db('kuriers')
-          .where('id', id)
-          .first();
-
-        if (!zamowienie) {
-          return NextResponse.json({ 
-            success: false, 
-            error: 'Zamówienie nie znalezione' 
-          }, { status: 404 });
-        }
-
         // Import DHL service dynamically (dla środowiska serverless)
         const { default: DHLApiService } = await import('@/app/services/dhl-api');
         
         // Wyślij do DHL
         console.log('Attempting to send shipment to DHL for order:', id);
-        const dhlResult = await DHLApiService.createShipment(zamowienie);
+        const dhlResult = await DHLApiService.createShipment(existingOrder);
         
         console.log('DHL API Response:', {
           success: dhlResult.success,
           error: dhlResult.error,
-          data: dhlResult.success ? 'OK' : 'FAILED'
+          shipmentNumber: dhlResult.success ? dhlResult.shipmentNumber : 'NONE'
         });
         
         if (dhlResult.success) {
           // Zaktualizuj status na 'sent' i dodaj dane DHL
           dataToUpdate.status = 'sent';
-          const existingNotes = JSON.parse(zamowienie.notes || '{}');
           dataToUpdate.notes = JSON.stringify({
             ...existingNotes,
             dhl: {
@@ -138,19 +164,20 @@ export async function PUT(request, { params }) {
               cost: dhlResult.cost,
               sentAt: new Date().toISOString(),
               sentBy: userId,
-              status: 'sent_to_dhl'
+              status: 'sent_to_dhl',
+              // Dodaj znacznik czasu dla debugowania
+              processedAt: new Date().toISOString(),
+              processId: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
             }
           });
           
-          console.log('DHL shipment created successfully:', {
-            orderId: id,
+          console.log(`✅ DHL shipment created successfully for order ${id}:`, {
             shipmentNumber: dhlResult.shipmentNumber,
             trackingNumber: dhlResult.trackingNumber
           });
         } else {
           // Jeśli DHL nie powiedzie się, tylko zatwierdź lokalnie
-          console.error('DHL shipment failed for order:', id, 'Error:', dhlResult.error);
-          const existingNotes = JSON.parse(zamowienie.notes || '{}');
+          console.error(`❌ DHL shipment failed for order ${id}:`, dhlResult.error);
           dataToUpdate.notes = JSON.stringify({
             ...existingNotes,
             dhl: {
@@ -163,10 +190,8 @@ export async function PUT(request, { params }) {
           });
         }
       } catch (dhlError) {
-        console.error('DHL integration error for order:', id, dhlError);
+        console.error(`💥 DHL integration error for order ${id}:`, dhlError);
         // Kontynuuj z lokalnym zatwierdzeniem nawet jeśli DHL nie działa
-        const zamowienie = await db('kuriers').where('id', id).first();
-        const existingNotes = JSON.parse(zamowienie?.notes || '{}');
         dataToUpdate.notes = JSON.stringify({
           ...existingNotes,
           dhl: {
@@ -180,6 +205,8 @@ export async function PUT(request, { params }) {
       }
     }
 
+    // WYKONAJ AKTUALIZACJĘ W BAZIE DANYCH
+    console.log(`📝 Aktualizuję zamówienie ${id} w bazie danych...`);
     const updated = await db('kuriers')
       .where('id', id)
       .update(dataToUpdate);
@@ -187,9 +214,11 @@ export async function PUT(request, { params }) {
     if (updated === 0) {
       return NextResponse.json({ 
         success: false, 
-        error: 'Zamówienie nie znalezione' 
+        error: 'Zamówienie nie znalezione lub nie zostało zaktualizowane' 
       }, { status: 404 });
     }
+
+    console.log(`✅ Zamówienie ${id} zostało zaktualizowane w bazie danych`);
 
     // Zwróć odpowiednią wiadomość
     let message = 'Zamówienie zostało zaktualizowane';
@@ -205,7 +234,8 @@ export async function PUT(request, { params }) {
       success: true,
       message: message,
       dhlStatus: dataToUpdate.status,
-      localStatus: updateData.status
+      localStatus: updateData.status,
+      orderId: id
     });
   } catch (error) {
     console.error('Error updating kurier order:', error);
