@@ -4,52 +4,32 @@ import DHLApiService from '@/app/services/dhl-api';
 
 export async function GET(request) {
   try {
-    console.log('🧪 Rozpoczynam PEŁNĄ DIAGNOZĘ DHL API...');
+    console.log('🧪 Testowanie DHL createShipments z prawdziwymi danymi...');
     
-    // Uruchom pełną diagnozę
-    const fullDiagnosis = await DHLApiService.diagnoseDHLConnection();
+    const createShipmentsTest = await DHLApiService.testCreateShipments();
     
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
-      title: '🔍 PEŁNA DIAGNOZA DHL API',
-      diagnosis: fullDiagnosis,
+      title: '🚚 Test DHL createShipments (WebAPI2)',
       
-      // Dodatkowe informacje o środowisku
+      createShipmentsTest: createShipmentsTest,
+      
       environment: {
-        DHL_TEST_MODE: process.env.DHL_TEST_MODE,
-        DHL_LOGIN: process.env.DHL_LOGIN ? `✅ SET (${process.env.DHL_LOGIN})` : '❌ NOT SET',
-        DHL_PASSWORD_DHL24: process.env.DHL_PASSWORD_DHL24 ? `✅ SET (${process.env.DHL_PASSWORD_DHL24.substring(0, 3)}...)` : '❌ NOT SET',
-        DHL_PASSWORD_API: process.env.DHL_PASSWORD_API ? `✅ SET (${process.env.DHL_PASSWORD_API.substring(0, 3)}...)` : '❌ NOT SET',
-        DHL_ACCOUNT_NUMBER: process.env.DHL_ACCOUNT_NUMBER ? `✅ SET (${process.env.DHL_ACCOUNT_NUMBER})` : '❌ NOT SET',
-        DHL_SAP_CLIENT: process.env.DHL_SAP_CLIENT ? `✅ SET (${process.env.DHL_SAP_CLIENT})` : '❌ NOT SET'
+        DHL_LOGIN: process.env.DHL_LOGIN,
+        DHL_ACCOUNT_NUMBER: process.env.DHL_ACCOUNT_NUMBER,
+        DHL_TEST_MODE: process.env.DHL_TEST_MODE
       },
       
-      // Instrukcje dla użytkownika
-      nextSteps: generateNextSteps(fullDiagnosis),
-      
-      // Możliwe rozwiązania
-      possibleSolutions: [
-        '1. Sprawdź czy dane logowania są poprawne w panelu DHL',
-        '2. Upewnij się, że konto jest aktywne w środowisku sandbox',
-        '3. Sprawdź czy numer konta ServicePoint jest prawidłowy',
-        '4. Skontaktuj się z supportem DHL w celu weryfikacji konta',
-        '5. Sprawdź czy nie używasz danych produkcyjnych w środowisku sandbox'
-      ]
+      result: createShipmentsTest.success 
+        ? `✅ SUCCESS! ShipmentId: ${createShipmentsTest.shipmentId}`
+        : `❌ FAILED: ${createShipmentsTest.error}`
     });
     
   } catch (error) {
-    console.error('❌ Błąd podczas diagnozy DHL:', error);
     return NextResponse.json({
       success: false,
-      error: error.message,
-      stack: error.stack,
-      recommendations: [
-        'Sprawdź logi serwera dla szczegółów błędu',
-        'Upewnij się, że wszystkie zmienne środowiskowe są ustawione',
-        'Sprawdź połączenie internetowe',
-        'Spróbuj ponownie za kilka minut'
-      ]
+      error: error.message
     }, { status: 500 });
   }
 }
