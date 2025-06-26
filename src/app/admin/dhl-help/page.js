@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { AlertCircle, CheckCircle, Clock, RefreshCw, Settings, Phone } from 'lucide-react'
+import { AlertCircle, CheckCircle, Clock, RefreshCw, Settings, Phone, Truck, TestTube, Key, Database } from 'lucide-react'
 
 export default function DHLHelpPage() {
   const [diagnosis, setDiagnosis] = useState(null)
@@ -67,35 +67,76 @@ export default function DHLHelpPage() {
   return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-4">
-          🚚 Diagnoza i Pomoc DHL API
+        <h1 className="text-3xl font-bold text-gray-900 mb-4 flex items-center">
+          <Truck className="mr-3 text-blue-600" size={36} />
+          Diagnoza i Pomoc DHL WebAPI2
         </h1>
         <p className="text-gray-600">
-          Narzędzie do diagnozy problemów z integracją DHL i testowania różnych konfiguracji
+          Narzędzie do diagnozy problemów z integracją DHL WebAPI2 i testowania różnych konfiguracji
         </p>
       </div>
 
       {/* Przyciski akcji */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <button
           onClick={runDiagnosis}
           disabled={loading}
           className="flex items-center justify-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? <Clock className="animate-spin" size={20} /> : <RefreshCw size={20} />}
-          <span>{loading ? 'Uruchamianie diagnozy...' : 'Uruchom pełną diagnozę'}</span>
+          {loading ? <Clock className="animate-spin" size={20} /> : <TestTube size={20} />}
+          <span>{loading ? 'Testowanie...' : 'Test DHL createShipments'}</span>
         </button>
 
         <div className="flex items-center space-x-2 px-4 py-3 bg-gray-50 rounded-lg">
           <Settings size={20} className="text-gray-600" />
-          <span className="text-gray-700">Sprawdź zmienne środowiskowe w Vercel</span>
+          <span className="text-gray-700">Sprawdź zmienne w Vercel</span>
+        </div>
+
+        <div className="flex items-center space-x-2 px-4 py-3 bg-orange-50 rounded-lg">
+          <Key size={20} className="text-orange-600" />
+          <span className="text-orange-700">WebAPI2 (createShipments)</span>
+        </div>
+      </div>
+
+      {/* Aktualne dane konfiguracyjne */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+        <h2 className="text-xl font-semibold text-blue-900 mb-4 flex items-center">
+          <Database className="mr-2" size={24} />
+          Poprawne dane DHL z maila (26.06.2025)
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+          <div className="bg-white p-4 rounded border">
+            <h3 className="font-semibold text-blue-800 mb-2">WebAPI2 (Zalecane)</h3>
+            <div className="space-y-1 font-mono text-xs">
+              <div><strong>Login:</strong> GRUPAELTRON_TEST</div>
+              <div><strong>Hasło:</strong> 3by#aCgl:pJMGu!</div>
+              <div><strong>Konto SAP:</strong> 6000000</div>
+              <div><strong>URL:</strong> https://sandbox.dhl24.com.pl/webapi2</div>
+            </div>
+          </div>
+          <div className="bg-white p-4 rounded border">
+            <h3 className="font-semibold text-gray-800 mb-2">ServicePoint (Backup)</h3>
+            <div className="space-y-1 font-mono text-xs">
+              <div><strong>Login:</strong> GRUPAELTRON_TEST_PS</div>
+              <div><strong>Hasło:</strong> THp4UY6W5hUWUE</div>
+              <div><strong>Konto SAP:</strong> 6000000</div>
+              <div><strong>URL:</strong> https://sandbox.dhl24.com.pl/servicepoint</div>
+            </div>
+          </div>
+        </div>
+        <div className="mt-4 p-3 bg-blue-100 rounded border border-blue-300">
+          <p className="text-blue-800 text-sm">
+            <strong>⚠️ Ważne:</strong> W haśle WebAPI2 jest mała litera "l" (el), nie wielka "J" (jay): 
+            <code className="bg-white px-1 rounded">3by#aC<strong>gl</strong>:pJMGu!</code>
+          </p>
         </div>
       </div>
 
       {/* Test własnych danych logowania */}
       <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">
-          🧪 Test własnych danych logowania
+        <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
+          <TestTube className="mr-2 text-green-600" size={24} />
+          Test własnych danych logowania
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           <div>
@@ -118,13 +159,13 @@ export default function DHLHelpPage() {
               type="password"
               value={testCredentials.password}
               onChange={(e) => setTestCredentials(prev => ({ ...prev, password: e.target.value }))}
-              placeholder="••••••••"
+              placeholder="3by#aCgl:pJMGu!"
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Numer konta
+              Numer konta SAP
             </label>
             <input
               type="text"
@@ -154,7 +195,7 @@ export default function DHLHelpPage() {
             <div className="flex items-center space-x-3 mb-4">
               {getStatusIcon(diagnosis.success)}
               <h2 className="text-xl font-semibold">
-                {diagnosis.success ? 'Diagnoza ukończona' : 'Wystąpiły problemy'}
+                {diagnosis.success ? 'Test zakończony' : 'Wystąpiły problemy'}
               </h2>
             </div>
             
@@ -163,121 +204,73 @@ export default function DHLHelpPage() {
                 <p className="text-red-800 font-medium">Błąd: {diagnosis.error}</p>
               </div>
             )}
+
+            {diagnosis.result && (
+              <div className="bg-blue-100 border border-blue-200 rounded p-4">
+                <p className="text-blue-800 font-medium">{diagnosis.result}</p>
+              </div>
+            )}
           </div>
+
+          {/* Wyniki testu createShipments */}
+          {diagnosis.createShipmentsTest && (
+            <div className="bg-white rounded-lg shadow-sm border p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <Truck className="mr-2 text-blue-600" size={20} />
+                Test createShipments (WebAPI2)
+              </h3>
+              
+              <div className={`border rounded p-4 ${getStatusColor(diagnosis.createShipmentsTest.success)}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    {getStatusIcon(diagnosis.createShipmentsTest.success)}
+                    <span className="font-medium">
+                      {diagnosis.createShipmentsTest.success ? 'Sukces!' : 'Niepowodzenie'}
+                    </span>
+                  </div>
+                  {diagnosis.createShipmentsTest.shipmentId && (
+                    <span className="text-sm bg-white px-2 py-1 rounded border font-mono">
+                      ID: {diagnosis.createShipmentsTest.shipmentId}
+                    </span>
+                  )}
+                </div>
+                
+                {diagnosis.createShipmentsTest.error && (
+                  <div className="mt-2 text-sm text-red-600">
+                    <strong>Błąd:</strong> {diagnosis.createShipmentsTest.error}
+                  </div>
+                )}
+
+                {diagnosis.createShipmentsTest.success && (
+                  <div className="mt-2 text-sm text-green-700">
+                    ✅ DHL WebAPI2 działa poprawnie! Przesyłka została utworzona w systemie.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Środowisko */}
           {diagnosis.environment && (
             <div className="bg-white rounded-lg shadow-sm border p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                📋 Zmienne środowiskowe
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <Settings className="mr-2 text-gray-600" size={20} />
+                Zmienne środowiskowe
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {Object.entries(diagnosis.environment).map(([key, value]) => (
                   <div key={key} className="flex items-center justify-between p-3 bg-gray-50 rounded">
                     <span className="font-medium text-gray-700">{key}:</span>
                     <span className={`text-sm ${
-                      value.toString().includes('✅') ? 'text-green-600' : 'text-red-600'
+                      value?.toString().includes('SET') || value?.toString().includes('GRUPAELTRON') || value?.toString().includes('6000000')
+                        ? 'text-green-600' 
+                        : 'text-red-600'
                     }`}>
-                      {value.toString()}
+                      {value?.toString() || 'BRAK'}
                     </span>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-          {/* Testy połączeń */}
-          {diagnosis.diagnosis?.tests?.credentialCombinations && (
-            <div className="bg-white rounded-lg shadow-sm border p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                🔐 Testy różnych konfiguracji logowania
-              </h3>
-              
-              {diagnosis.diagnosis.tests.credentialCombinations.workingVariants?.length > 0 ? (
-                <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded">
-                  <h4 className="font-medium text-green-800 mb-2">
-                    ✅ Znaleziono działające konfiguracje:
-                  </h4>
-                  {diagnosis.diagnosis.tests.credentialCombinations.workingVariants.map((variant, index) => (
-                    <div key={index} className="mb-2">
-                      <span className="font-medium">{variant.name}</span>
-                      <span className="text-sm text-gray-600 ml-2">({variant.wsdl})</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded">
-                  <h4 className="font-medium text-red-800">
-                    ❌ Brak działających konfiguracji
-                  </h4>
-                </div>
-              )}
-
-              <div className="space-y-3">
-                {diagnosis.diagnosis.tests.credentialCombinations.results?.map((result, index) => (
-                  <div
-                    key={index}
-                    className={`border rounded p-4 ${getStatusColor(result.success)}`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        {getStatusIcon(result.success)}
-                        <span className="font-medium">{result.name}</span>
-                      </div>
-                      <span className="text-sm text-gray-600">{result.wsdl?.split('/').pop()}</span>
-                    </div>
-                    
-                    {result.error && (
-                      <div className="mt-2 text-sm text-red-600">
-                        <strong>Błąd:</strong> {result.error}
-                      </div>
-                    )}
-                    
-                    {result.errorDetails?.isAuthError && (
-                      <div className="mt-2 text-sm text-red-700 bg-red-100 p-2 rounded">
-                        🔐 Błąd autoryzacji (Kod: {result.errorDetails.faultCode})
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Zalecenia */}
-          {(diagnosis.nextSteps || diagnosis.possibleSolutions) && (
-            <div className="bg-white rounded-lg shadow-sm border p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                💡 Zalecane działania
-              </h3>
-              
-              {diagnosis.nextSteps && (
-                <div className="mb-6">
-                  <h4 className="font-medium text-gray-800 mb-2">Następne kroki:</h4>
-                  <ul className="space-y-2">
-                    {diagnosis.nextSteps.map((step, index) => (
-                      <li key={index} className="flex items-start space-x-2">
-                        <span className="text-blue-600 mt-1">•</span>
-                        <span className="text-gray-700">{step}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              
-              {diagnosis.possibleSolutions && (
-                <div>
-                  <h4 className="font-medium text-gray-800 mb-2">Możliwe rozwiązania:</h4>
-                  <ul className="space-y-2">
-                    {diagnosis.possibleSolutions.map((solution, index) => (
-                      <li key={index} className="flex items-start space-x-2">
-                        <span className="text-green-600 mt-1">•</span>
-                        <span className="text-gray-700">{solution}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
             </div>
           )}
 
@@ -291,48 +284,95 @@ export default function DHLHelpPage() {
             </div>
             <div className="text-blue-800">
               <p className="mb-2">
-                <strong>Jeśli wszystkie testy nie powiodły się, skontaktuj się z DHL:</strong>
+                <strong>Jeśli testy nie przechodzą, skontaktuj się z DHL:</strong>
               </p>
               <ul className="space-y-1 text-sm">
-                <li>📧 Email: dhl24@dhl.com</li>
-                <li>📞 Telefon: +48 42 345 345 0</li>
-                <li>🌐 Panel: <a href="https://sandbox.dhl24.com.pl" className="underline" target="_blank">sandbox.dhl24.com.pl</a></li>
-                <li>📋 Podaj swój login: <strong>{diagnosis.environment?.DHL_LOGIN?.replace('✅ SET (', '').replace(')', '') || 'NIEZNANY'}</strong></li>
+                <li>📧 Email: <strong>pl.cim@dhl.com</strong></li>
+                <li>📞 Telefon: <strong>+48 42 345 345 0</strong></li>
+                <li>🌐 Panel sandbox: <a href="https://sandbox.dhl24.com.pl" className="underline" target="_blank" rel="noopener noreferrer">sandbox.dhl24.com.pl</a></li>
+                <li>📋 Podaj swój login: <strong>GRUPAELTRON_TEST</strong></li>
+                <li>🔧 Powiedz: <strong>"Problemy z WebAPI2 createShipments - błąd autoryzacji"</strong></li>
               </ul>
             </div>
           </div>
         </div>
       )}
 
-      {/* Instrukcje debugowania */}
+      {/* Instrukcje krok po kroku */}
       <div className="mt-8 bg-gray-50 rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
-          🔧 Debugowanie krok po kroku
+        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+          <RefreshCw className="mr-2" size={20} />
+          Instrukcje krok po kroku
         </h3>
-        <div className="space-y-4 text-sm text-gray-700">
+        
+        <div className="space-y-6 text-sm text-gray-700">
           <div>
-            <strong>1. Sprawdź zmienne środowiskowe w Vercel:</strong>
+            <strong className="text-blue-800">1. Ustaw zmienne środowiskowe w Vercel:</strong>
+            <div className="mt-2 bg-white p-3 rounded border font-mono text-xs">
+              <div>DHL_LOGIN=<strong>GRUPAELTRON_TEST</strong></div>
+              <div>DHL_PASSWORD_DHL24=<strong>3by#aCgl:pJMGu!</strong></div>
+              <div>DHL_ACCOUNT_NUMBER=<strong>6000000</strong></div>
+              <div>DHL_TEST_MODE=<strong>false</strong></div>
+            </div>
+            <p className="mt-2 text-red-600 font-medium">
+              ⚠️ Uwaga: W haśle jest mała litera "l" (el), nie wielka "J" (jay)!
+            </p>
+          </div>
+          
+          <div>
+            <strong className="text-green-800">2. Po zmianie zmiennych w Vercel:</strong>
             <ul className="ml-4 mt-1 space-y-1">
-              <li>• DHL_LOGIN - login do DHL (np. GRUPAELTRON_TEST)</li>
-              <li>• DHL_PASSWORD_DHL24 - hasło do DHL24</li>
-              <li>• DHL_ACCOUNT_NUMBER - numer konta ServicePoint (np. 6000000)</li>
-              <li>• DHL_TEST_MODE=true - tryb testowy</li>
+              <li>• Przejdź do zakładki "Deployments"</li>
+              <li>• Kliknij "Redeploy" na najnowszym deployment</li>
+              <li>• Poczekaj na przebudowanie (2-3 minuty)</li>
+            </ul>
+          </div>
+          
+          <div>
+            <strong className="text-purple-800">3. Przetestuj integrację:</strong>
+            <ul className="ml-4 mt-1 space-y-1">
+              <li>• Kliknij "Test DHL createShipments" powyżej</li>
+              <li>• Sprawdź czy otrzymujesz shipmentId</li>
+              <li>• Jeśli tak - integracja działa!</li>
+            </ul>
+          </div>
+          
+          <div>
+            <strong className="text-orange-800">4. Testuj w module kuriera:</strong>
+            <ul className="ml-4 mt-1 space-y-1">
+              <li>• Przejdź do /kurier</li>
+              <li>• Dodaj testowe zamówienie</li>
+              <li>• Zatwierdź je</li>
+              <li>• Sprawdź czy generuje prawdziwy numer DHL</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* Różnice API */}
+      <div className="mt-8 bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+        <h3 className="text-lg font-semibold text-yellow-900 mb-4">
+          🔄 Różnica: WebAPI2 vs ServicePoint
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+          <div>
+            <h4 className="font-semibold text-green-800 mb-2">✅ WebAPI2 (Używamy)</h4>
+            <ul className="space-y-1 text-green-700">
+              <li>• Metoda: <code>createShipments</code></li>
+              <li>• Pełna funkcjonalność DHL</li>
+              <li>• Wszystkie typy przesyłek</li>
+              <li>• Przesyłki międzynarodowe</li>
+              <li>• Lepsze wsparcie DHL</li>
             </ul>
           </div>
           <div>
-            <strong>2. Sprawdź w panelu DHL:</strong>
-            <ul className="ml-4 mt-1 space-y-1">
-              <li>• Czy konto jest aktywne</li>
-              <li>• Czy masz dostęp do API ServicePoint</li>
-              <li>• Czy numer konta ServicePoint jest prawidłowy</li>
-            </ul>
-          </div>
-          <div>
-            <strong>3. Typowe błędy:</strong>
-            <ul className="ml-4 mt-1 space-y-1">
-              <li>• Kod 301 - błąd autoryzacji (nieprawidłowe dane lub nieaktywne konto)</li>
-              <li>• Timeout - problem z połączeniem</li>
-              <li>• Invalid structure - błędna struktura danych</li>
+            <h4 className="font-semibold text-orange-800 mb-2">⚠️ ServicePoint (Backup)</h4>
+            <ul className="space-y-1 text-orange-700">
+              <li>• Metoda: <code>createShipment</code></li>
+              <li>• Ograniczona funkcjonalność</li>
+              <li>• Głównie punkty obsługi</li>
+              <li>• Tylko przesyłki krajowe</li>
+              <li>• Starsze API</li>
             </ul>
           </div>
         </div>
