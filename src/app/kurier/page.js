@@ -15,6 +15,7 @@ export default function KurierPage() {
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [processingOrders, setProcessingOrders] = useState(new Set()) // NOWE: Śledzenie przetwarzanych zamówień
   const [filters, setFilters] = useState({
     zleca: 'wszystkie',
     status: 'nowe',
@@ -206,9 +207,19 @@ export default function KurierPage() {
     }
   }
 
+  // POPRAWIONA FUNKCJA: Zatwierdzanie z ochroną przed podwójnymi kliknięciami
   const handleZatwierdzZamowienie = async (zamowienieId) => {
+    // Sprawdź czy zamówienie nie jest już przetwarzane
+    if (processingOrders.has(zamowienieId)) {
+      console.warn(`⚠️ Zamówienie ${zamowienieId} jest już przetwarzane, ignoruję żądanie`);
+      return;
+    }
+
     try {
-      console.log('Zatwierdzanie zamówienia:', zamowienieId)
+      // Dodaj do listy przetwarzanych
+      setProcessingOrders(prev => new Set([...prev, zamowienieId]));
+      
+      console.log(`🚀 Rozpoczynam zatwierdzanie zamówienia: ${zamowienieId}`);
       
       const response = await fetch(`/api/kurier/${zamowienieId}`, {
         method: 'PUT',
@@ -223,7 +234,7 @@ export default function KurierPage() {
       const data = await response.json()
       
       if (data.success) {
-        console.log('Zamówienie zatwierdzone:', data)
+        console.log(`✅ Zamówienie ${zamowienieId} zatwierdzone:`, data)
         // Odśwież listę zamówień
         await fetchZamowienia()
         
@@ -234,12 +245,21 @@ export default function KurierPage() {
           alert('Zamówienie zostało zatwierdzone. ' + (data.message || ''))
         }
       } else {
-        console.error('Błąd zatwierdzania:', data.error)
+        console.error(`❌ Błąd zatwierdzania zamówienia ${zamowienieId}:`, data.error)
         alert('Błąd: ' + data.error)
       }
     } catch (error) {
-      console.error('Błąd zatwierdzania zamówienia:', error)
+      console.error(`💥 Błąd zatwierdzania zamówienia ${zamowienieId}:`, error)
       alert('Wystąpił błąd podczas zatwierdzania zamówienia')
+    } finally {
+      // Usuń z listy przetwarzanych po 5 sekundach (zabezpieczenie)
+      setTimeout(() => {
+        setProcessingOrders(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(zamowienieId);
+          return newSet;
+        });
+      }, 5000);
     }
   }
 
@@ -352,6 +372,7 @@ export default function KurierPage() {
           canApprove={canApprove}
           loading={loading}
           onRefresh={fetchZamowienia}
+          processingOrders={processingOrders} // NOWE: Przekaż informację o przetwarzanych zamówieniach
         />
       </div>
 
@@ -378,6 +399,7 @@ export default function KurierPage() {
             <div>Użytkownik: {userName} ({userRole})</div>
             <div>Uprawnienia: Dodawanie: {canAddOrder ? 'TAK' : 'NIE'}, Zatwierdzanie: {canApprove ? 'TAK' : 'NIE'}</div>
             <div>Aktywne filtry: {JSON.stringify(filters)}</div>
+            <div>Przetwarzane zamówienia: {Array.from(processingOrders).join(', ') || 'Brak'}</div>
           </div>
         </div>
       )}
