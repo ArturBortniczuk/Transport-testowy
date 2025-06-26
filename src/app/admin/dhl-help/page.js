@@ -132,6 +132,43 @@ export default function DHLHelpPage() {
         </div>
       </div>
 
+      {/* NOWA SEKCJA: Problem z kodami pocztowymi */}
+      <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-6">
+        <h2 className="text-xl font-semibold text-red-900 mb-4 flex items-center">
+          <AlertCircle className="mr-2 text-red-600" size={24} />
+          🔧 NAPRAWIONY: Problem z kodami pocztowymi
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+          <div className="bg-white p-4 rounded border border-red-300">
+            <h3 className="font-semibold text-red-800 mb-2">❌ BŁĘDNY format (stary)</h3>
+            <div className="space-y-1 font-mono text-xs">
+              <div>postalCode: <span className="text-red-600">"15-169"</span> ← Z myślnikiem</div>
+              <div>postalCode: <span className="text-red-600">"24-100"</span> ← Z myślnikiem</div>
+              <div className="mt-2 text-red-700">
+                <strong>Błąd DHL:</strong> "117: Błąd w danych adresowych nadawcy: Wprowadź poprawny kod pocztowy"
+              </div>
+            </div>
+          </div>
+          <div className="bg-white p-4 rounded border border-green-300">
+            <h3 className="font-semibold text-green-800 mb-2">✅ PRAWIDŁOWY format (nowy)</h3>
+            <div className="space-y-1 font-mono text-xs">
+              <div>postalCode: <span className="text-green-600">"15169"</span> ← Tylko cyfry</div>
+              <div>postalCode: <span className="text-green-600">"24100"</span> ← Tylko cyfry</div>
+              <div className="mt-2 text-green-700">
+                <strong>Wynik:</strong> DHL WebAPI2 akceptuje kod pocztowy ✓
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="mt-4 p-3 bg-green-100 rounded border border-green-300">
+          <p className="text-green-800 text-sm">
+            <strong>✅ Naprawione!</strong> Kod został zaktualizowany w pliku 
+            <code className="bg-white px-1 rounded mx-1">src/app/services/dhl-api.js</code>
+            - funkcja <code className="bg-white px-1 rounded">cleanPostalCode()</code> teraz usuwa myślniki automatycznie.
+          </p>
+        </div>
+      </div>
+
       {/* Test własnych danych logowania */}
       <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
         <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
@@ -298,11 +335,11 @@ export default function DHLHelpPage() {
         </div>
       )}
 
-      {/* Instrukcje krok po kroku */}
+      {/* Instrukcje krok po kroku - ZAKTUALIZOWANE */}
       <div className="mt-8 bg-gray-50 rounded-lg p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
           <RefreshCw className="mr-2" size={20} />
-          Instrukcje krok po kroku
+          Instrukcje krok po kroku (ZAKTUALIZOWANE)
         </h3>
         
         <div className="space-y-6 text-sm text-gray-700">
@@ -320,7 +357,22 @@ export default function DHLHelpPage() {
           </div>
           
           <div>
-            <strong className="text-green-800">2. Po zmianie zmiennych w Vercel:</strong>
+            <strong className="text-green-800">2. ✅ NAPRAWIONE: Problem z kodami pocztowymi</strong>
+            <div className="mt-2 bg-green-50 p-3 rounded border">
+              <p className="text-green-800">
+                <strong>Automatycznie naprawione w kodzie!</strong> Funkcja <code className="bg-white px-1 rounded">cleanPostalCode()</code> 
+                teraz automatycznie usuwa myślniki z kodów pocztowych:
+              </p>
+              <ul className="mt-2 ml-4 space-y-1 text-green-700">
+                <li>• <code>"15-169"</code> → <code>"15169"</code></li>
+                <li>• <code>"24-100"</code> → <code>"24100"</code></li>
+                <li>• DHL WebAPI2 akceptuje tylko cyfry bez myślników!</li>
+              </ul>
+            </div>
+          </div>
+          
+          <div>
+            <strong className="text-purple-800">3. Po zmianie zmiennych w Vercel:</strong>
             <ul className="ml-4 mt-1 space-y-1">
               <li>• Przejdź do zakładki "Deployments"</li>
               <li>• Kliknij "Redeploy" na najnowszym deployment</li>
@@ -329,7 +381,7 @@ export default function DHLHelpPage() {
           </div>
           
           <div>
-            <strong className="text-purple-800">3. Przetestuj integrację:</strong>
+            <strong className="text-orange-800">4. Przetestuj integrację:</strong>
             <ul className="ml-4 mt-1 space-y-1">
               <li>• Kliknij "Test DHL createShipments" powyżej</li>
               <li>• Sprawdź czy otrzymujesz shipmentId</li>
@@ -338,7 +390,7 @@ export default function DHLHelpPage() {
           </div>
           
           <div>
-            <strong className="text-orange-800">4. Testuj w module kuriera:</strong>
+            <strong className="text-indigo-800">5. Testuj w module kuriera:</strong>
             <ul className="ml-4 mt-1 space-y-1">
               <li>• Przejdź do /kurier</li>
               <li>• Dodaj testowe zamówienie</li>
@@ -363,6 +415,7 @@ export default function DHLHelpPage() {
               <li>• Wszystkie typy przesyłek</li>
               <li>• Przesyłki międzynarodowe</li>
               <li>• Lepsze wsparcie DHL</li>
+              <li>• <strong>Kody pocztowe: tylko cyfry!</strong></li>
             </ul>
           </div>
           <div>
@@ -373,6 +426,7 @@ export default function DHLHelpPage() {
               <li>• Głównie punkty obsługi</li>
               <li>• Tylko przesyłki krajowe</li>
               <li>• Starsze API</li>
+              <li>• <strong>Akceptuje XX-XXX format</strong></li>
             </ul>
           </div>
         </div>
