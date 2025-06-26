@@ -42,26 +42,26 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
     wysokosc: ''
   })
 
-  // Dane magazynów
+  // Dane magazynów - POPRAWIONE dla DHL
   const daneMagazynow = {
     bialystok: {
       nazwa: 'Grupa Eltron Sp. z o.o. - Magazyn Białystok',
       ulica: 'Wysockiego',
       numerDomu: '69B',
-      kodPocztowy: '15-169',
+      kodPocztowy: '15169', // ← POPRAWIONE: tylko cyfry dla DHL
       miasto: 'Białystok',
       osobaKontaktowa: 'Magazyn Białystok',
-      telefon: '85 715 27 05',
+      telefon: '857152705', // ← POPRAWIONE: bez spacji i myślników
       email: 'bialystok@grupaeltron.pl'
     },
     zielonka: {
       nazwa: 'Grupa Eltron Sp. z o.o. - Magazyn Zielonka',
       ulica: 'Krótka',
       numerDomu: '2',
-      kodPocztowy: '05-220',
+      kodPocztowy: '05220', // ← POPRAWIONE: tylko cyfry dla DHL
       miasto: 'Zielonka',
       osobaKontaktowa: 'Magazyn Zielonka',
-      telefon: '85 715 27 05',
+      telefon: '857152705', // ← POPRAWIONE: bez spacji i myślników
       email: 'zielonka@grupaeltron.pl'
     }
   }
@@ -105,6 +105,47 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
     }
   ]
 
+  // NOWA FUNKCJA: Walidacja kodu pocztowego
+  const validatePostalCode = (code) => {
+    // Usuń wszystko oprócz cyfr
+    const cleaned = code.replace(/[^\d]/g, '')
+    // Polski kod pocztowy: 5 cyfr
+    return cleaned.length === 5 ? cleaned : null
+  }
+
+  // NOWA FUNKCJA: Walidacja numeru telefonu
+  const validatePhoneNumber = (phone) => {
+    // Usuń wszystko oprócz cyfr
+    const cleaned = phone.replace(/[^\d]/g, '')
+    // Polski numer: 9 cyfr (bez +48)
+    let validPhone = cleaned
+    if (validPhone.startsWith('48')) {
+      validPhone = validPhone.substring(2)
+    }
+    if (validPhone.startsWith('0')) {
+      validPhone = validPhone.substring(1)
+    }
+    return validPhone.length === 9 ? validPhone : null
+  }
+
+  // NOWA FUNKCJA: Formatowanie wyświetlanego kodu pocztowego
+  const formatPostalCodeDisplay = (code) => {
+    const cleaned = code.replace(/[^\d]/g, '')
+    if (cleaned.length === 5) {
+      return `${cleaned.substring(0, 2)}-${cleaned.substring(2)}`
+    }
+    return code
+  }
+
+  // NOWA FUNKCJA: Formatowanie wyświetlanego telefonu
+  const formatPhoneDisplay = (phone) => {
+    const cleaned = phone.replace(/[^\d]/g, '')
+    if (cleaned.length === 9) {
+      return `${cleaned.substring(0, 3)} ${cleaned.substring(3, 6)} ${cleaned.substring(6)}`
+    }
+    return phone
+  }
+
   // Automatyczne uzupełnianie gdy zmienia się typ zlecenia
   useEffect(() => {
     const resetFormData = () => {
@@ -147,10 +188,10 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
         nadawcaNazwa: dane.nazwa,
         nadawcaUlica: dane.ulica,
         nadawcaNumerDomu: dane.numerDomu,
-        nadawcaKodPocztowy: dane.kodPocztowy,
+        nadawcaKodPocztowy: dane.kodPocztowy, // Już w formacie DHL (tylko cyfry)
         nadawcaMiasto: dane.miasto,
         nadawcaOsobaKontaktowa: dane.osobaKontaktowa,
-        nadawcaTelefon: dane.telefon,
+        nadawcaTelefon: dane.telefon, // Już w formacie DHL (tylko cyfry)
         nadawcaEmail: dane.email
       }))
     } else if (typZlecenia === 'nadawca_zielonka') {
@@ -161,10 +202,10 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
         nadawcaNazwa: dane.nazwa,
         nadawcaUlica: dane.ulica,
         nadawcaNumerDomu: dane.numerDomu,
-        nadawcaKodPocztowy: dane.kodPocztowy,
+        nadawcaKodPocztowy: dane.kodPocztowy, // Już w formacie DHL (tylko cyfry)
         nadawcaMiasto: dane.miasto,
         nadawcaOsobaKontaktowa: dane.osobaKontaktowa,
-        nadawcaTelefon: dane.telefon,
+        nadawcaTelefon: dane.telefon, // Już w formacie DHL (tylko cyfry)
         nadawcaEmail: dane.email
       }))
     } else if (typZlecenia === 'odbiorca_bialystok') {
@@ -175,10 +216,10 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
         odbiorcaNazwa: dane.nazwa,
         odbiorcaUlica: dane.ulica,
         odbiorcaNumerDomu: dane.numerDomu,
-        odbiorcaKodPocztowy: dane.kodPocztowy,
+        odbiorcaKodPocztowy: dane.kodPocztowy, // Już w formacie DHL (tylko cyfry)
         odbiorcaMiasto: dane.miasto,
         odbiorcaOsobaKontaktowa: dane.osobaKontaktowa,
-        odbiorcaTelefon: dane.telefon,
+        odbiorcaTelefon: dane.telefon, // Już w formacie DHL (tylko cyfry)
         odbiorcaEmail: dane.email
       }))
     } else if (typZlecenia === 'odbiorca_zielonka') {
@@ -189,10 +230,10 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
         odbiorcaNazwa: dane.nazwa,
         odbiorcaUlica: dane.ulica,
         odbiorcaNumerDomu: dane.numerDomu,
-        odbiorcaKodPocztowy: dane.kodPocztowy,
+        odbiorcaKodPocztowy: dane.kodPocztowy, // Już w formacie DHL (tylko cyfry)
         odbiorcaMiasto: dane.miasto,
         odbiorcaOsobaKontaktowa: dane.osobaKontaktowa,
-        odbiorcaTelefon: dane.telefon,
+        odbiorcaTelefon: dane.telefon, // Już w formacie DHL (tylko cyfry)
         odbiorcaEmail: dane.email
       }))
     }
@@ -201,34 +242,83 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
+    
+    let processedValue = type === 'checkbox' ? checked : value
+
+    // NOWA LOGIKA: Automatyczne czyszczenie kodów pocztowych i telefonów
+    if (name.includes('KodPocztowy')) {
+      // Zachowaj tylko cyfry dla kodów pocztowych
+      processedValue = value.replace(/[^\d]/g, '')
+    } else if (name.includes('Telefon')) {
+      // Zachowaj tylko cyfry dla telefonów
+      processedValue = value.replace(/[^\d]/g, '')
+    }
+
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: processedValue
     }))
   }
 
   const handleSubmit = (e) => {
     e.preventDefault()
     setError('')
-  
+
+    // NOWA WALIDACJA: Sprawdź format danych dla DHL
+    
+    // Walidacja kodów pocztowych
+    const nadawcaPostalValid = validatePostalCode(formData.nadawcaKodPocztowy)
+    const odbiorcaPostalValid = validatePostalCode(formData.odbiorcaKodPocztowy)
+    
+    if (!nadawcaPostalValid) {
+      setError('Kod pocztowy nadawcy musi mieć format: 5 cyfr (np. 15169)')
+      return
+    }
+    
+    if (!odbiorcaPostalValid) {
+      setError('Kod pocztowy odbiorcy musi mieć format: 5 cyfr (np. 24100)')
+      return
+    }
+
+    // Walidacja numerów telefonów
+    const nadawcaPhoneValid = validatePhoneNumber(formData.nadawcaTelefon)
+    const odbiorcaPhoneValid = validatePhoneNumber(formData.odbiorcaTelefon)
+    
+    if (!nadawcaPhoneValid) {
+      setError('Telefon nadawcy musi mieć 9 cyfr (bez +48 i bez 0 na początku)')
+      return
+    }
+    
+    if (!odbiorcaPhoneValid) {
+      setError('Telefon odbiorcy musi mieć 9 cyfr (bez +48 i bez 0 na początku)')
+      return
+    }
+
     // Walidacja wagi
     if (formData.waga > 1000) {
       setError('Maksymalna waga przesyłki to 1000 kg')
       return
     }
-  
+
     // Walidacja wymiarów
     if (formData.dlugosc > 160 || formData.szerokosc > 160 || formData.wysokosc > 160) {
       setError('Maksymalny wymiar przesyłki to 160 cm (długość/szerokość/wysokość)')
       return
     }
-  
-    // Dodaj informację o typie zlecenia
+
+    // NOWA LOGIKA: Przygotuj dane w formacie DHL
     const dataToSubmit = {
       ...formData,
-      typZlecenia: typZlecenia
+      typZlecenia: typZlecenia,
+      // Wyczyść kody pocztowe do samych cyfr (format DHL)
+      nadawcaKodPocztowy: nadawcaPostalValid,
+      odbiorcaKodPocztowy: odbiorcaPostalValid,
+      // Wyczyść telefony do samych cyfr (format DHL)
+      nadawcaTelefon: nadawcaPhoneValid,
+      odbiorcaTelefon: odbiorcaPhoneValid
     }
-  
+
+    console.log('Dane przygotowane dla DHL:', dataToSubmit)
     onSubmit(dataToSubmit)
     
     // Reset formularza
@@ -244,6 +334,7 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
     <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-lg overflow-hidden">
       <div className="bg-gradient-to-r from-blue-600 to-blue-800 px-6 py-4">
         <h2 className="text-xl font-bold text-white">Nowe zamówienie kuriera</h2>
+        <p className="text-blue-100 text-sm mt-1">Formularz zoptymalizowany dla DHL WebAPI2</p>
       </div>
 
       <div className="p-6 space-y-6">
@@ -337,6 +428,7 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700">
                 {formData.nadawcaTyp === 'osoba' ? 'Imię i nazwisko' : 'Nazwa firmy'}
+                <span className="text-red-500 ml-1">*</span>
               </label>
               <input
                 type="text"
@@ -352,7 +444,9 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">Ulica</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Ulica <span className="text-red-500 ml-1">*</span>
+              </label>
               <div className="grid grid-cols-6 gap-2">
                 <div className="col-span-4">
                   <input
@@ -398,23 +492,32 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">Kod pocztowy</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Kod pocztowy <span className="text-red-500 ml-1">*</span>
+              </label>
               <input
                 type="text"
                 name="nadawcaKodPocztowy"
                 value={formData.nadawcaKodPocztowy}
                 onChange={handleChange}
                 readOnly={isNadawcaReadonly}
-                placeholder="00-000"
+                placeholder="15169"
+                maxLength="5"
                 className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 ${
                   isNadawcaReadonly ? 'bg-gray-100' : ''
                 }`}
                 required
               />
+              <p className="text-xs text-gray-500 mt-1">
+                Wyświetlane: {formatPostalCodeDisplay(formData.nadawcaKodPocztowy || '00000')} | 
+                DHL: {formData.nadawcaKodPocztowy || '00000'}
+              </p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">Miejscowość</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Miejscowość <span className="text-red-500 ml-1">*</span>
+              </label>
               <input
                 type="text"
                 name="nadawcaMiasto"
@@ -429,7 +532,9 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">Osoba kontaktowa</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Osoba kontaktowa <span className="text-red-500 ml-1">*</span>
+              </label>
               <input
                 type="text"
                 name="nadawcaOsobaKontaktowa"
@@ -444,22 +549,32 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">Telefon</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Telefon <span className="text-red-500 ml-1">*</span>
+              </label>
               <input
                 type="tel"
                 name="nadawcaTelefon"
                 value={formData.nadawcaTelefon}
                 onChange={handleChange}
                 readOnly={isNadawcaReadonly}
+                placeholder="857152705"
+                maxLength="9"
                 className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 ${
                   isNadawcaReadonly ? 'bg-gray-100' : ''
                 }`}
                 required
               />
+              <p className="text-xs text-gray-500 mt-1">
+                Wyświetlany: {formatPhoneDisplay(formData.nadawcaTelefon || '000000000')} | 
+                DHL: {formData.nadawcaTelefon || '000000000'}
+              </p>
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">Email</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Email <span className="text-red-500 ml-1">*</span>
+              </label>
               <input
                 type="email"
                 name="nadawcaEmail"
@@ -520,6 +635,7 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700">
                 {formData.odbiorcaTyp === 'osoba' ? 'Imię i nazwisko' : 'Nazwa firmy'}
+                <span className="text-red-500 ml-1">*</span>
               </label>
               <input
                 type="text"
@@ -535,7 +651,9 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">Ulica</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Ulica <span className="text-red-500 ml-1">*</span>
+              </label>
               <div className="grid grid-cols-6 gap-2">
                 <div className="col-span-4">
                   <input
@@ -581,23 +699,32 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">Kod pocztowy</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Kod pocztowy <span className="text-red-500 ml-1">*</span>
+              </label>
               <input
                 type="text"
                 name="odbiorcaKodPocztowy"
                 value={formData.odbiorcaKodPocztowy}
                 onChange={handleChange}
                 readOnly={isOdbiorcaReadonly}
-                placeholder="00-000"
+                placeholder="24100"
+                maxLength="5"
                 className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 ${
                   isOdbiorcaReadonly ? 'bg-gray-100' : ''
                 }`}
                 required
               />
+              <p className="text-xs text-gray-500 mt-1">
+                Wyświetlane: {formatPostalCodeDisplay(formData.odbiorcaKodPocztowy || '00000')} | 
+                DHL: {formData.odbiorcaKodPocztowy || '00000'}
+              </p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">Miejscowość</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Miejscowość <span className="text-red-500 ml-1">*</span>
+              </label>
               <input
                 type="text"
                 name="odbiorcaMiasto"
@@ -612,11 +739,13 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">Telefon</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Osoba kontaktowa <span className="text-red-500 ml-1">*</span>
+              </label>
               <input
-                type="tel"
-                name="odbiorcaTelefon"
-                value={formData.odbiorcaTelefon}
+                type="text"
+                name="odbiorcaOsobaKontaktowa"
+                value={formData.odbiorcaOsobaKontaktowa}
                 onChange={handleChange}
                 readOnly={isOdbiorcaReadonly}
                 className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 ${
@@ -627,7 +756,32 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">Email</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Telefon <span className="text-red-500 ml-1">*</span>
+              </label>
+              <input
+                type="tel"
+                name="odbiorcaTelefon"
+                value={formData.odbiorcaTelefon}
+                onChange={handleChange}
+                readOnly={isOdbiorcaReadonly}
+                placeholder="600800900"
+                maxLength="9"
+                className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 ${
+                  isOdbiorcaReadonly ? 'bg-gray-100' : ''
+                }`}
+                required
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Wyświetlany: {formatPhoneDisplay(formData.odbiorcaTelefon || '000000000')} | 
+                DHL: {formData.odbiorcaTelefon || '000000000'}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Email <span className="text-red-500 ml-1">*</span>
+              </label>
               <input
                 type="email"
                 name="odbiorcaEmail"
@@ -652,7 +806,9 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">Zawartość przesyłki</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Zawartość przesyłki <span className="text-red-500 ml-1">*</span>
+              </label>
               <input
                 type="text"
                 name="zawartoscPrzesylki"
@@ -677,13 +833,16 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">Ilość paczek</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Ilość paczek <span className="text-red-500 ml-1">*</span>
+              </label>
               <input
                 type="number"
                 name="iloscPaczek"
                 value={formData.iloscPaczek}
                 onChange={handleChange}
                 min="1"
+                max="10"
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
                 required
               />
@@ -691,7 +850,9 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
 
             <div className="md:col-span-2 grid grid-cols-4 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Waga (kg)</label>
+                <label className="block text-sm font-medium text-gray-700">
+                  Waga (kg) <span className="text-red-500 ml-1">*</span>
+                </label>
                 <input
                   type="number"
                   name="waga"
@@ -706,7 +867,9 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
                 <p className="text-xs text-gray-500 mt-1">Max 1000 kg</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Długość (cm)</label>
+                <label className="block text-sm font-medium text-gray-700">
+                  Długość (cm) <span className="text-red-500 ml-1">*</span>
+                </label>
                 <input
                   type="number"
                   name="dlugosc"
@@ -720,7 +883,9 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
                 <p className="text-xs text-gray-500 mt-1">Max 160 cm</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Szerokość (cm)</label>
+                <label className="block text-sm font-medium text-gray-700">
+                  Szerokość (cm) <span className="text-red-500 ml-1">*</span>
+                </label>
                 <input
                   type="number"
                   name="szerokosc"
@@ -734,7 +899,9 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
                 <p className="text-xs text-gray-500 mt-1">Max 160 cm</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Wysokość (cm)</label>
+                <label className="block text-sm font-medium text-gray-700">
+                  Wysokość (cm) <span className="text-red-500 ml-1">*</span>
+                </label>
                 <input
                   type="number"
                   name="wysokosc"
@@ -763,10 +930,41 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
           </div>
         </div>
 
+        {/* NOWA SEKCJA: Podgląd danych dla DHL */}
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <h3 className="text-lg font-semibold text-yellow-900 mb-3 flex items-center">
+            🔍 Podgląd danych dla DHL WebAPI2
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div>
+              <h4 className="font-medium text-yellow-800 mb-2">Nadawca:</h4>
+              <div className="bg-white p-3 rounded border font-mono text-xs space-y-1">
+                <div>postalCode: <span className="text-blue-600">"{formData.nadawcaKodPocztowy || '00000'}"</span></div>
+                <div>contactPhone: <span className="text-blue-600">"{formData.nadawcaTelefon || '000000000'}"</span></div>
+                <div>city: <span className="text-blue-600">"{formData.nadawcaMiasto || 'Miasto'}"</span></div>
+              </div>
+            </div>
+            <div>
+              <h4 className="font-medium text-yellow-800 mb-2">Odbiorca:</h4>
+              <div className="bg-white p-3 rounded border font-mono text-xs space-y-1">
+                <div>postalCode: <span className="text-green-600">"{formData.odbiorcaKodPocztowy || '00000'}"</span></div>
+                <div>contactPhone: <span className="text-green-600">"{formData.odbiorcaTelefon || '000000000'}"</span></div>
+                <div>city: <span className="text-green-600">"{formData.odbiorcaMiasto || 'Miasto'}"</span></div>
+              </div>
+            </div>
+          </div>
+          <p className="text-yellow-700 text-xs mt-3">
+            ✅ Format zoptymalizowany dla DHL WebAPI2: kody pocztowe i telefony tylko w cyfrach
+          </p>
+        </div>
+
         {/* Błędy */}
         {error && (
           <div className="bg-red-50 text-red-700 p-4 rounded-lg border border-red-200">
-            {error}
+            <div className="flex items-center">
+              <div className="text-red-400 mr-2">⚠️</div>
+              <div>{error}</div>
+            </div>
           </div>
         )}
 
@@ -783,7 +981,7 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
             type="submit"
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
           >
-            Zamów kuriera
+            Zamów kuriera (DHL WebAPI2)
           </button>
         </div>
       </div>
