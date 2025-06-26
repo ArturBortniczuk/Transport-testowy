@@ -2,7 +2,16 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronUp, Package, User, Building2, MapPin, Phone, Mail, Box, Weight, Ruler, Clock, CheckCircle, AlertCircle, Truck, RefreshCw } from 'lucide-react'
 
-export default function ZamowieniaList({ zamowienia, onZatwierdz, onUsun, userRole, canApprove, loading, onRefresh }) {
+export default function ZamowieniaList({ 
+  zamowienia, 
+  onZatwierdz, 
+  onUsun, 
+  userRole, 
+  canApprove, 
+  loading, 
+  onRefresh, 
+  processingOrders = new Set() // NOWE: Lista przetwarzanych zamówień
+}) {
   const [expandedId, setExpandedId] = useState(null)
   const [trackingLoading, setTrackingLoading] = useState(null)
 
@@ -71,6 +80,20 @@ export default function ZamowieniaList({ zamowienia, onZatwierdz, onUsun, userRo
     }
   }
 
+  // NOWA FUNKCJA: Obsługa kliknięcia zatwierdź z zabezpieczeniem
+  const handleZatwierdzClick = (zamowienieId) => {
+    // Sprawdź czy zamówienie nie jest już przetwarzane
+    if (processingOrders.has(zamowienieId)) {
+      console.warn(`⚠️ Zamówienie ${zamowienieId} jest już przetwarzane`);
+      return;
+    }
+
+    // Dodatkowe potwierdzenie
+    if (confirm('Czy na pewno chcesz zatwierdzić to zamówienie i wysłać do DHL?')) {
+      onZatwierdz(zamowienieId);
+    }
+  }
+
   if (loading && zamowienia.length === 0) {
     return (
       <div className="bg-white rounded-xl shadow-lg p-6">
@@ -106,11 +129,16 @@ export default function ZamowieniaList({ zamowienia, onZatwierdz, onUsun, userRo
           const nadawca = notes.nadawca || {}
           const odbiorca = notes.odbiorca || {}
           const przesylka = notes.przesylka || {}
+          
+          // NOWE: Sprawdź czy zamówienie jest przetwarzane
+          const isProcessing = processingOrders.has(zamowienie.id)
 
           return (
             <div 
               key={zamowienie.id}
-              className="border rounded-lg overflow-hidden"
+              className={`border rounded-lg overflow-hidden ${
+                isProcessing ? 'bg-blue-50 border-blue-200' : ''
+              }`}
             >
               {/* Nagłówek zamówienia */}
               <div
@@ -127,6 +155,13 @@ export default function ZamowieniaList({ zamowienia, onZatwierdz, onUsun, userRo
                     <div className="text-xs text-gray-400">
                       ID: {zamowienie.id} | Utworzono: {formatDate(zamowienie.created_at)}
                     </div>
+                    {/* NOWE: Wskaźnik przetwarzania */}
+                    {isProcessing && (
+                      <div className="text-xs text-blue-600 font-medium flex items-center">
+                        <div className="animate-spin rounded-full h-3 w-3 border-t-2 border-b-2 border-blue-600 mr-2"></div>
+                        Przetwarzanie...
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center space-x-4">
@@ -407,22 +442,33 @@ export default function ZamowieniaList({ zamowienia, onZatwierdz, onUsun, userRo
                     )}
                   </div>
 
-                  {/* Przyciski akcji */}
+                  {/* POPRAWIONE PRZYCISKI AKCJI z zabezpieczeniem */}
                   {zamowienie.status === 'new' && (
                     <div className="mt-6 flex justify-end space-x-4">
                       <button
                         onClick={() => onUsun(zamowienie.id)}
-                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                        disabled={isProcessing}
+                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Usuń
                       </button>
                       {canApprove && (
                         <button
-                          onClick={() => onZatwierdz(zamowienie.id)}
-                          className="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 transition-colors flex items-center"
+                          onClick={() => handleZatwierdzClick(zamowienie.id)}
+                          disabled={isProcessing}
+                          className="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 transition-colors flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <CheckCircle size={16} className="mr-1" />
-                          Zatwierdź i wyślij do DHL
+                          {isProcessing ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+                              Przetwarzanie...
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle size={16} className="mr-1" />
+                              Zatwierdź i wyślij do DHL
+                            </>
+                          )}
                         </button>
                       )}
                     </div>
