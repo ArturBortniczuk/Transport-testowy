@@ -83,16 +83,23 @@ class DHLApiService {
     }
   }
 
-  // Zaktualizuj metodę prepareCreateShipmentsData
+  // POPRAWIONA METODA: Przygotuj dane zgodnie z dokumentacją DHL
   prepareCreateShipmentsData(shipmentData, notes) {
     const shipperAddress = this.parseAddress(notes.nadawca?.adres || '');
     const receiverAddress = this.parseAddress(shipmentData.recipient_address);
     const piece = this.extractPieceInfo(shipmentData.package_description, notes.przesylka);
-  
+
+    // Wyczyść i sformatuj kody pocztowe
+    const shipperPostcode = this.cleanPostalCode(shipperAddress.postcode || '15169');
+    const receiverPostcode = this.cleanPostalCode(receiverAddress.postcode || '00001');
+
+    console.log('Shipper postal code:', shipperAddress.postcode, '->', shipperPostcode);
+    console.log('Receiver postal code:', receiverAddress.postcode, '->', receiverPostcode);
+
     // STRUKTURA ZGODNA Z DOKUMENTACJĄ DHL WebAPI2
     return {
       authData: {
-        username: this.login,
+        username: this.login,  // ← ZGODNIE Z DOKUMENTACJĄ
         password: this.password
       },
       shipments: {
@@ -101,7 +108,7 @@ class DHLApiService {
             // SHIPPER - nadawca (zgodnie z dokumentacją)
             shipper: {
               name: notes.nadawca?.nazwa || 'Grupa Eltron Sp. z o.o.',
-              postalCode: shipperAddress.postcode || '15-169',
+              postalCode: shipperPostcode, // ← UŻYWAMY WYCZYSZCZONEGO
               city: shipperAddress.city || 'Białystok',
               street: shipperAddress.street || 'Wysockiego',
               houseNumber: shipperAddress.houseNumber || '69B',
@@ -118,7 +125,7 @@ class DHLApiService {
               addressType: 'B', // ← KLUCZOWE: Typ adresu (B = Business, C = Consumer)
               
               name: shipmentData.recipient_name,
-              postalCode: this.cleanPostalCode(receiverAddress.postcode) || '00-001',
+              postalCode: receiverPostcode, // ← UŻYWAMY WYCZYSZCZONEGO
               city: receiverAddress.city || 'Warszawa',
               street: receiverAddress.street || 'Testowa',
               houseNumber: receiverAddress.houseNumber || '1',
@@ -135,7 +142,7 @@ class DHLApiService {
                   type: 'PACKAGE',
                   width: piece.width,
                   height: piece.height,
-                  length: piece.length,
+                  length: piece.length,  // ← length (nie lenght!)
                   weight: piece.weight,
                   quantity: piece.quantity,
                   nonStandard: false
@@ -161,33 +168,85 @@ class DHLApiService {
             content: this.extractContentFromDescription(shipmentData.package_description) || 'Przesyłka',
             comment: notes.przesylka?.uwagi || '',
             reference: `ORDER_${shipmentData.id}`,
-            skipRestrictionCheck: true // Ważne dla sandbox
+            skipRestrictionCheck: true // Ważne dla stałego zbioru
           }
         ]
       }
     };
   }
-  
-  // DODAJ nową metodę do czyszczenia kodów pocztowych
-  cleanPostalCode(postcode) {
-    if (!postcode) return '';
-    // Usuń wszystko oprócz cyfr i myślnika
-    const cleaned = postcode.replace(/[^\d-]/g, '');
-    
-    // Sprawdź czy to polski format XX-XXX
-    if (cleaned.match(/^\d{2}-\d{3}$/)) {
-      return cleaned;
+
+  // WYWOŁANIE createShipments zgodnie z dokumentacją
+  async callCreateShipments(shipmentParams) {
+    try {
+      if (!soap) {
+        throw new Error('Biblioteka SOAP nie jest dostępna');
+      }
+
+      console.log('Creating SOAP client for WebAPI2:', this.wsdlUrl);
+      
+      const client = await soap.createClientAsync(this.wsdlUrl, {
+        timeout: 30000,
+        disableCache: true
+      });
+      
+      console.log('WebAPI2 client created successfully');
+      console.log('Available methods:', Object.keys(client).filter(key => key.includes('createShipments')));
+      
+      console.log('=== WYSYŁANE DANE DO DHL createShipments ===');
+      console.log('Params:', JSON.stringify(shipmentParams, null, 2));
+      console.log('=== KONIEC WYSYŁANYCH DANYCH ===');
+
+      // WYWOŁAJ createShipments (zgodnie z dokumentacją WebAPI2)
+      const [result] = await client.createShipmentsAsync(shipmentParams);
+      
+      console.log('=== PEŁNA ODPOWIEDŹ Z DHL createShipments ===');
+      console.log('Raw result:', JSON.stringify(result, null, 2));
+      console.log('=== KONIEC ODPOWIEDZI ===');
+      
+      // SPRAWDŹ STRUKTURĘ ODPOWIEDZI (zgodnie z dokumentacją)
+      if (result && result.createShipmentsResult) {
+        const shipmentsResult = result.createShipmentsResult;
+        
+        if (shipmentsResult.item && shipmentsResult.item.length > 0) {
+          const shipment = shipmentsResult.item[0];
+          
+          if (shipment.shipmentId) {
+            return {
+              success: true,
+              shipmentNumber: shipment.shipmentId,
+              trackingNumber: shipment.shipmentId,
+              labelUrl: null, // Etykiety pobieramy osobno metodą getLabels
+              labelContent: null,
+              dispatchNumber: null,
+              cost: 'Nieznany',
+              data: shipment
+            };
+          }
+        }
+      }
+      
+      // Sprawdź czy jest informacja o błędzie
+      if (result && (result.error || result.errors)) {
+        throw new Error(`DHL WebAPI2 Error: ${result.error || result.errors}`);
+      }
+      
+      throw new Error(`DHL WebAPI2 zwróciło nieoczekiwaną strukturę: ${JSON.stringify(result)}`);
+      
+    } catch (error) {
+      console.error('DHL WebAPI2 createShipments Error:', error);
+      
+      if (error.body) {
+        console.error('SOAP Error Body:', error.body);
+      }
+      
+      return {
+        success: false,
+        error: `DHL WebAPI2 Error: ${error.message}`
+      };
     }
-    
-    // Jeśli tylko cyfry, sformatuj jako XX-XXX
-    if (cleaned.match(/^\d{5}$/)) {
-      return `${cleaned.substring(0, 2)}-${cleaned.substring(2)}`;
-    }
-    
-    return cleaned || '00-001'; // Domyślny kod dla testów
   }
-  
-  // ZAKTUALIZUJ metodę testową
+
+  // METODA TESTOWA zgodna z dokumentacją
   async testCreateShipments() {
     try {
       console.log('=== TESTOWANIE createShipments WebAPI2 ===');
@@ -195,13 +254,13 @@ class DHLApiService {
       if (!soap) {
         return { success: false, error: 'SOAP not available' };
       }
-  
+
       const client = await soap.createClientAsync(this.wsdlUrl, {
         timeout: 30000,
         disableCache: true
       });
-  
-      // POPRAWIONA STRUKTURA TESTOWA zgodna z dokumentacją DHL
+
+      // POPRAWIONA STRUKTURA z prawidłowymi kodami pocztowymi
       const testParams = {
         authData: {
           username: this.login,
@@ -212,7 +271,7 @@ class DHLApiService {
             {
               shipper: {
                 name: "Grupa Eltron Test",
-                postalCode: "15-169",
+                postalCode: "15-169", // ← POPRAWIONY FORMAT
                 city: "Białystok",
                 street: "Wysockiego",
                 houseNumber: "69B",
@@ -221,13 +280,12 @@ class DHLApiService {
                 contactEmail: "test@grupaeltron.pl"
               },
               receiver: {
-                // KLUCZOWE POLA dla przesyłek krajowych
                 country: "PL",
-                addressType: "B", // Business address
+                addressType: "B",
                 
                 name: "Test Receiver",
-                postalCode: "24-100", // Prawidłowy polski format
-                city: "Puławy",
+                postalCode: "24-100", // ← POPRAWIONY FORMAT
+                city: "Puławy", 
                 street: "Wróblewskiego",
                 houseNumber: "7",
                 contactPerson: "Test Receiver",
@@ -253,7 +311,7 @@ class DHLApiService {
                 accountNumber: parseInt(this.accountNumber)
               },
               service: {
-                product: "AH", // Przesyłka krajowa AH
+                product: "AH",
                 deliveryEvening: false
               },
               shipmentDate: new Date().toISOString().split('T')[0],
@@ -265,24 +323,24 @@ class DHLApiService {
           ]
         }
       };
-  
+
       console.log('=== createShipments TEST PARAMS ===');
       console.log(JSON.stringify(testParams, null, 2));
-  
+
       const [result] = await client.createShipmentsAsync(testParams);
       
       console.log('=== createShipments TEST RESULT ===');
       console.log(JSON.stringify(result, null, 2));
-  
+
       const isSuccess = result?.createShipmentsResult?.item?.[0]?.shipmentId ? true : false;
-  
+
       return {
         success: isSuccess,
         result: result,
         shipmentId: result?.createShipmentsResult?.item?.[0]?.shipmentId,
         error: !isSuccess ? 'No shipmentId returned' : null
       };
-  
+
     } catch (error) {
       console.error('createShipments test error:', error);
       return {
@@ -290,6 +348,31 @@ class DHLApiService {
         error: error.message
       };
     }
+  }
+
+  // NOWA METODA: Czyszczenie kodów pocztowych
+  cleanPostalCode(postcode) {
+    if (!postcode) return '';
+    
+    // Usuń wszystko oprócz cyfr
+    let cleaned = postcode.toString().replace(/[^\d]/g, '');
+    
+    console.log('Cleaning postal code:', postcode, '->', cleaned);
+    
+    // Jeśli ma 5 cyfr, sformatuj jako XX-XXX
+    if (cleaned.length === 5) {
+      const formatted = `${cleaned.substring(0, 2)}-${cleaned.substring(2)}`;
+      console.log('Formatted postal code:', formatted);
+      return formatted;
+    }
+    
+    // Jeśli już ma prawidłowy format XX-XXX
+    if (postcode && postcode.match(/^\d{2}-\d{3}$/)) {
+      return postcode;
+    }
+    
+    console.warn('Invalid postal code format:', postcode, 'using default');
+    return '00-001'; // Domyślny dla testów
   }
 
   // POMOCNICZE METODY (bez zmian)
