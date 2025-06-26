@@ -89,17 +89,17 @@ class DHLApiService {
     const receiverAddress = this.parseAddress(shipmentData.recipient_address);
     const piece = this.extractPieceInfo(shipmentData.package_description, notes.przesylka);
 
-    // Wyczyść i sformatuj kody pocztowe
+    // POPRAWKA: Wyczyść kody pocztowe - tylko cyfry!
     const shipperPostcode = this.cleanPostalCode(shipperAddress.postcode || '15169');
-    const receiverPostcode = this.cleanPostalCode(receiverAddress.postcode || '00001');
+    const receiverPostcode = this.cleanPostalCode(receiverAddress.postcode || '24100');
 
-    console.log('Shipper postal code:', shipperAddress.postcode, '->', shipperPostcode);
-    console.log('Receiver postal code:', receiverAddress.postcode, '->', receiverPostcode);
+    console.log('FIXED Shipper postal code:', shipperAddress.postcode, '->', shipperPostcode);
+    console.log('FIXED Receiver postal code:', receiverAddress.postcode, '->', receiverPostcode);
 
     // STRUKTURA ZGODNA Z DOKUMENTACJĄ DHL WebAPI2
     return {
       authData: {
-        username: this.login,  // ← ZGODNIE Z DOKUMENTACJĄ
+        username: this.login,
         password: this.password
       },
       shipments: {
@@ -108,7 +108,7 @@ class DHLApiService {
             // SHIPPER - nadawca (zgodnie z dokumentacją)
             shipper: {
               name: notes.nadawca?.nazwa || 'Grupa Eltron Sp. z o.o.',
-              postalCode: shipperPostcode, // ← UŻYWAMY WYCZYSZCZONEGO
+              postalCode: shipperPostcode, // ← TYLKO CYFRY!
               city: shipperAddress.city || 'Białystok',
               street: shipperAddress.street || 'Wysockiego',
               houseNumber: shipperAddress.houseNumber || '69B',
@@ -121,11 +121,11 @@ class DHLApiService {
             // RECEIVER - odbiorca - POPRAWIONA STRUKTURA
             receiver: {
               // DODANE: Wymagane pola dla przesyłek krajowych
-              country: 'PL', // ← KLUCZOWE: Kraj odbiorcy
-              addressType: 'B', // ← KLUCZOWE: Typ adresu (B = Business, C = Consumer)
+              country: 'PL',
+              addressType: 'B', // B = Business, C = Consumer
               
               name: shipmentData.recipient_name,
-              postalCode: receiverPostcode, // ← UŻYWAMY WYCZYSZCZONEGO
+              postalCode: receiverPostcode, // ← TYLKO CYFRY!
               city: receiverAddress.city || 'Warszawa',
               street: receiverAddress.street || 'Testowa',
               houseNumber: receiverAddress.houseNumber || '1',
@@ -142,7 +142,7 @@ class DHLApiService {
                   type: 'PACKAGE',
                   width: piece.width,
                   height: piece.height,
-                  length: piece.length,  // ← length (nie lenght!)
+                  length: piece.length,
                   weight: piece.weight,
                   quantity: piece.quantity,
                   nonStandard: false
@@ -154,7 +154,7 @@ class DHLApiService {
             payment: {
               paymentMethod: 'BANK_TRANSFER',
               payerType: 'SHIPPER',
-              accountNumber: parseInt(this.accountNumber) // ← MUSI BYĆ LICZBĄ!
+              accountNumber: parseInt(this.accountNumber)
             },
             
             // SERVICE - usługa (zgodnie z dokumentacją)
@@ -168,7 +168,7 @@ class DHLApiService {
             content: this.extractContentFromDescription(shipmentData.package_description) || 'Przesyłka',
             comment: notes.przesylka?.uwagi || '',
             reference: `ORDER_${shipmentData.id}`,
-            skipRestrictionCheck: true // Ważne dla stałego zbioru
+            skipRestrictionCheck: true
           }
         ]
       }
@@ -215,7 +215,7 @@ class DHLApiService {
               success: true,
               shipmentNumber: shipment.shipmentId,
               trackingNumber: shipment.shipmentId,
-              labelUrl: null, // Etykiety pobieramy osobno metodą getLabels
+              labelUrl: null,
               labelContent: null,
               dispatchNumber: null,
               cost: 'Nieznany',
@@ -246,7 +246,7 @@ class DHLApiService {
     }
   }
 
-  // METODA TESTOWA zgodna z dokumentacją
+  // METODA TESTOWA zgodna z dokumentacją - POPRAWIONA
   async testCreateShipments() {
     try {
       console.log('=== TESTOWANIE createShipments WebAPI2 ===');
@@ -260,7 +260,7 @@ class DHLApiService {
         disableCache: true
       });
 
-      // POPRAWIONA STRUKTURA z prawidłowymi kodami pocztowymi
+      // POPRAWIONA STRUKTURA z kodami pocztowymi TYLKO w cyfrach
       const testParams = {
         authData: {
           username: this.login,
@@ -271,7 +271,7 @@ class DHLApiService {
             {
               shipper: {
                 name: "Grupa Eltron Test",
-                postalCode: "15-169", // ← POPRAWIONY FORMAT
+                postalCode: "15169", // ← POPRAWIONY: tylko cyfry!
                 city: "Białystok",
                 street: "Wysockiego",
                 houseNumber: "69B",
@@ -284,7 +284,7 @@ class DHLApiService {
                 addressType: "B",
                 
                 name: "Test Receiver",
-                postalCode: "24-100", // ← POPRAWIONY FORMAT
+                postalCode: "24100", // ← POPRAWIONY: tylko cyfry!
                 city: "Puławy", 
                 street: "Wróblewskiego",
                 houseNumber: "7",
@@ -350,7 +350,7 @@ class DHLApiService {
     }
   }
 
-  // NOWA METODA: Czyszczenie kodów pocztowych
+  // POPRAWIONA METODA: Czyszczenie kodów pocztowych - TYLKO CYFRY!
   cleanPostalCode(postcode) {
     if (!postcode) return '';
     
@@ -359,28 +359,26 @@ class DHLApiService {
     
     console.log('Cleaning postal code:', postcode, '->', cleaned);
     
-    // Jeśli ma 5 cyfr, sformatuj jako XX-XXX
+    // DHL WebAPI2 wymaga TYLKO cyfr (bez myślników!)
     if (cleaned.length === 5) {
-      const formatted = `${cleaned.substring(0, 2)}-${cleaned.substring(2)}`;
-      console.log('Formatted postal code:', formatted);
-      return formatted;
+      return cleaned; // ← Zwróć same cyfry!
     }
     
-    // Jeśli już ma prawidłowy format XX-XXX
-    if (postcode && postcode.match(/^\d{2}-\d{3}$/)) {
+    // Jeśli już ma prawidłowy format (tylko cyfry)
+    if (postcode && postcode.match(/^\d{5}$/)) {
       return postcode;
     }
     
     console.warn('Invalid postal code format:', postcode, 'using default');
-    return '00-001'; // Domyślny dla testów
+    return '00001'; // Domyślny dla testów (same cyfry)
   }
 
-  // POMOCNICZE METODY (bez zmian)
+  // POPRAWIONA METODA parseAddress - usuwa myślniki
   parseAddress(addressString) {
     if (!addressString) return {};
     
     const parts = addressString.split(',').map(p => p.trim());
-    const postcodeMatch = addressString.match(/(\d{2}-\d{3})/);
+    const postcodeMatch = addressString.match(/(\d{2}-?\d{3})/); // Znajdź kod z lub bez myślnika
     
     const streetPart = parts[0] || '';
     const cityPart = parts[parts.length - 1] || '';
@@ -390,13 +388,19 @@ class DHLApiService {
     const houseNumber = streetMatch ? streetMatch[2] : '';
     const apartmentNumber = streetMatch ? streetMatch[4] : '';
     
-    const city = cityPart.replace(/\d{2}-\d{3}\s*/, '').trim();
+    const city = cityPart.replace(/\d{2}-?\d{3}\s*/, '').trim();
+    
+    // POPRAWKA: Wyczyść kod pocztowy z myślników
+    let postcode = '';
+    if (postcodeMatch) {
+      postcode = postcodeMatch[1].replace(/[^\d]/g, ''); // Usuń myślniki!
+    }
     
     return {
       street: street,
       houseNumber: houseNumber,
       apartmentNumber: apartmentNumber,
-      postcode: postcodeMatch ? postcodeMatch[1] : '',
+      postcode: postcode, // Same cyfry!
       city: city
     };
   }
@@ -408,7 +412,7 @@ class DHLApiService {
       type: 'PACKAGE',
       width: parseInt(wymiary.szerokosc) || 10,
       height: parseInt(wymiary.wysokosc) || 10,
-      length: parseInt(wymiary.dlugosc) || 10, // length (nie lenght!)
+      length: parseInt(wymiary.dlugosc) || 10,
       weight: parseFloat(przesylka?.waga) || 1,
       quantity: parseInt(przesylka?.ilosc) || 1
     };
