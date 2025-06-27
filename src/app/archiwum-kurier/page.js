@@ -1,40 +1,92 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
+import { ArrowLeft, Package } from 'lucide-react'
 import ZamowieniaList from '../kurier/components/ZamowieniaList'
 import KurierStats from '../kurier/components/KurierStats'
 import KurierFilters from '../kurier/components/KurierFilters'
-import Link from 'next/link'
-import { ArrowLeft, Archive } from 'lucide-react'
 
 export default function ArchiwumKurierPage() {
   const [zamowienia, setZamowienia] = useState([])
   const [filteredZamowienia, setFilteredZamowienia] = useState([])
+  const [userRole, setUserRole] = useState(null)
+  const [userName, setUserName] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [filters, setFilters] = useState({
-    magazyn: '',
+    zleca: 'wszystkie',
+    status: 'wszystkie', // Zmienione dla archiwum
     dataOd: '',
     dataDo: '',
-    status: 'all'
+    szukaj: '',
+    sortowanie: 'data_desc'
   })
 
-  // Pobierz zrealizowane zamówienia przy ładowaniu
+  // Pobierz dane użytkownika przy ładowaniu
   useEffect(() => {
-    fetchArchiwalneZamowienia()
+    fetchUserData()
+    fetchArchivedZamowienia()
   }, [])
 
-  // Funkcja filtrowania zamówień
+  const fetchUserData = async () => {
+    try {
+      const response = await fetch('/api/user')
+      const data = await response.json()
+      
+      if (data.isAuthenticated && data.user) {
+        setUserRole(data.user.role)
+        setUserName(data.user.name)
+      }
+    } catch (error) {
+      console.error('Błąd pobierania danych użytkownika:', error)
+    }
+  }
+
+  // Funkcja filtrowania zamówień - taka sama jak w głównym module
   const applyFilters = useCallback((zamowieniaList, currentFilters) => {
     let filtered = [...zamowieniaList]
 
-    // Filtr magazynu
-    if (currentFilters.magazyn) {
-      filtered = filtered.filter(z => z.magazine_source === currentFilters.magazyn)
+    // Filtr typu zlecenia
+    if (currentFilters.zleca !== 'wszystkie') {
+      filtered = filtered.filter(z => {
+        try {
+          const notes = JSON.parse(z.notes || '{}')
+          const typZlecenia = notes.typZlecenia || ''
+          
+          switch (currentFilters.zleca) {
+            case 'nadawca':
+              return typZlecenia.includes('nadawca_')
+            case 'trzecia_strona':
+              return typZlecenia === 'trzecia_strona'
+            case 'odbiorca':
+              return typZlecenia.includes('odbiorca_')
+            default:
+              return true
+          }
+        } catch (error) {
+          return true
+        }
+      })
     }
 
-    // Filtr statusu dla archiwum
-    if (currentFilters.status && currentFilters.status !== 'all') {
+    // Filtr statusu - dla archiwum
+    if (currentFilters.status !== 'wszystkie') {
       filtered = filtered.filter(z => z.status === currentFilters.status)
+    }
+
+    // Filtr wyszukiwania
+    if (currentFilters.szukaj) {
+      const searchTerm = currentFilters.szukaj.toLowerCase()
+      filtered = filtered.filter(z => {
+        const notes = JSON.parse(z.notes || '{}')
+        return (
+          z.recipient_name?.toLowerCase().includes(searchTerm) ||
+          z.recipient_address?.toLowerCase().includes(searchTerm) ||
+          z.package_description?.toLowerCase().includes(searchTerm) ||
+          notes.przesylka?.mpk?.toLowerCase().includes(searchTerm) ||
+          z.created_by_email?.toLowerCase().includes(searchTerm)
+        )
+      })
     }
 
     // Filtr daty od
@@ -46,9 +98,25 @@ export default function ArchiwumKurierPage() {
     // Filtr daty do
     if (currentFilters.dataDo) {
       const dataDo = new Date(currentFilters.dataDo)
-      dataDo.setHours(23, 59, 59) // Koniec dnia
+      dataDo.setHours(23, 59, 59)
       filtered = filtered.filter(z => new Date(z.created_at) <= dataDo)
     }
+
+    // Sortowanie
+    filtered.sort((a, b) => {
+      switch (currentFilters.sortowanie) {
+        case 'data_asc':
+          return new Date(a.created_at) - new Date(b.created_at)
+        case 'data_desc':
+          return new Date(b.created_at) - new Date(a.created_at)
+        case 'nazwa_asc':
+          return a.recipient_name.localeCompare(b.recipient_name)
+        case 'nazwa_desc':
+          return b.recipient_name.localeCompare(a.recipient_name)
+        default:
+          return new Date(b.created_at) - new Date(a.created_at)
+      }
+    })
 
     return filtered
   }, [])
@@ -60,23 +128,36 @@ export default function ArchiwumKurierPage() {
     setFilteredZamowienia(filtered)
   }, [zamowienia, applyFilters])
 
-  const fetchArchiwalneZamowienia = async () => {
+  // POPRAWIONA FUNKCJA: Pobierz zarchiwizowane zamówienia
+  const fetchArchivedZamowienia = async () => {
     try {
       setLoading(true)
+      console.log('🗃️ Pobieranie zarchiwizowanych zamówień...')
+      
+      // Pobierz zamówienia z statusem 'completed' (archiwum)
       const response = await fetch('/api/kurier?status=completed')
       const data = await response.json()
       
+      console.log('📦 Odpowiedź API archiwum:', data)
+      
       if (data.success) {
+        console.log('✅ Pobrano zamówienia z archiwum:', data.zamowienia.length)
         setZamowienia(data.zamowienia)
         // Zastosuj aktualne filtry do nowych danych
         const filtered = applyFilters(data.zamowienia, filters)
         setFilteredZamowienia(filtered)
+        setError(null)
       } else {
+        console.error('❌ Błąd API archiwum:', data.error)
         setError(data.error)
+        setZamowienia([])
+        setFilteredZamowienia([])
       }
     } catch (error) {
-      console.error('Błąd pobierania archiwalnych zamówień:', error)
-      setError('Nie udało się pobrać archiwalnych zamówień kurierskich')
+      console.error('💥 Błąd pobierania archiwum:', error)
+      setError('Nie udało się pobrać zarchiwizowanych zamówień')
+      setZamowienia([])
+      setFilteredZamowienia([])
     } finally {
       setLoading(false)
     }
@@ -90,71 +171,108 @@ export default function ArchiwumKurierPage() {
     }
   }, [zamowienia, filters, applyFilters])
 
+  // PLACEHOLDER funkcje - w archiwum nie można zatwierdzać ani usuwać
+  const handleZatwierdzZamowienie = async (zamowienieId) => {
+    alert('W archiwum nie można zatwierdzać zamówień')
+  }
+
+  const handleUsunZamowienie = async (zamowienieId) => {
+    alert('W archiwum nie można usuwać zamówień')
+  }
+
+  if (loading && zamowienia.length === 0) {
+    return (
+      <div className="max-w-6xl mx-auto p-6">
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          <span className="ml-3 text-gray-600">Ładowanie archiwum...</span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-6xl mx-auto p-6">
-      {/* Nagłówek z nawigacją */}
-      <div className="mb-8">
-        <div className="flex items-center space-x-4 mb-4">
-          <Link 
-            href="/kurier" 
-            className="flex items-center text-blue-600 hover:text-blue-800 transition-colors"
-          >
-            <ArrowLeft size={20} className="mr-2" />
-            Wróć do aktywnych zamówień
-          </Link>
+      <div className="mb-8 flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">
+            Archiwum zamówień kuriera
+          </h1>
+          <p className="text-gray-600 mt-2">
+            Przeglądaj zatwierdzone, wysłane i dostarczone zamówienia
+          </p>
         </div>
-        
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-              <Archive className="mr-3 text-gray-600" />
-              Archiwum zamówień kuriera
-            </h1>
-            <p className="text-gray-600 mt-2">
-              Historia zrealizowanych zamówień kurierskich
-            </p>
-          </div>
+        <div className="flex space-x-4">
+          {/* Link powrotu do aktywnych */}
+          <Link
+            href="/kurier"
+            className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg shadow hover:bg-blue-200 flex items-center space-x-2 transition-all"
+          >
+            <ArrowLeft size={20} />
+            <span>Aktywne zamówienia</span>
+          </Link>
           
-          {/* Statystyki w nagłówku */}
-          <div className="bg-gray-100 rounded-lg p-4">
-            <div className="text-2xl font-bold text-gray-900">{filteredZamowienia.length}</div>
-            <div className="text-sm text-gray-600">
-              {filters.magazyn || filters.dataOd || filters.dataDo || (filters.status !== 'all') 
-                ? 'Przefiltrowanych' 
-                : 'Zrealizowanych zamówień'
-              }
+          <button
+            onClick={fetchArchivedZamowienia}
+            disabled={loading}
+            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg shadow hover:bg-gray-200 flex items-center space-x-2 transition-all disabled:opacity-50"
+          >
+            <Package size={20} />
+            <span>{loading ? 'Odświeżanie...' : 'Odśwież'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Statystyki dla archiwum */}
+      <KurierStats isArchive={true} />
+
+      {/* Filtry dla archiwum */}
+      <div className="mb-6">
+        <KurierFilters 
+          onFiltersChange={handleFiltersChange}
+          isArchive={true}
+        />
+      </div>
+
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200">
+          <div className="flex items-center">
+            <div className="text-red-400 mr-2">⚠️</div>
+            <div>
+              <div className="font-medium">Błąd:</div>
+              <div>{error}</div>
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Statystyki */}
-      <KurierStats isArchive={true} />
-
-      {/* Filtry */}
-      <KurierFilters 
-        onFiltersChange={handleFiltersChange}
-        isArchive={true}
-      />
-
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg">
-          Błąd: {error}
-        </div>
       )}
 
-      {/* Lista archiwalnych zamówień */}
+      {/* Lista zarchiwizowanych zamówień */}
       <div className="mt-6">
         <ZamowieniaList
           zamowienia={filteredZamowienia}
-          onZatwierdz={() => {}} // Brak akcji dla archiwalnych
-          onUsun={() => {}} // Brak akcji dla archiwalnych
-          userRole="archive" // Specjalna rola dla archiwum
-          canApprove={false} // Brak możliwości zatwierdzania w archiwum
+          onZatwierdz={handleZatwierdzZamowienie} // Nie działa w archiwum
+          onUsun={handleUsunZamowienie} // Nie działa w archiwum
+          userRole={userRole}
+          canApprove={false} // WYŁĄCZONE w archiwum
           loading={loading}
-          isArchive={true} // Nowy prop informujący o trybie archiwum
+          onRefresh={fetchArchivedZamowienia}
+          processingOrders={new Set()} // Puste - nic się nie przetwarza w archiwum
         />
       </div>
+
+      {/* Debug info - tylko w development */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="mt-8 p-4 bg-gray-100 rounded-lg text-sm text-gray-600">
+          <div className="font-mono">
+            <div>🗃️ <strong>ARCHIWUM KURIERA</strong></div>
+            <div>Łącznie w archiwum: {zamowienia.length}</div>
+            <div>Po filtrach: {filteredZamowienia.length}</div>
+            <div>Użytkownik: {userName} ({userRole})</div>
+            <div>Aktywne filtry: {JSON.stringify(filters)}</div>
+            <div>Statusy w danych: {[...new Set(zamowienia.map(z => z.status))].join(', ')}</div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
