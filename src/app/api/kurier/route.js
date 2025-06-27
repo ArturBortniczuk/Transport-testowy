@@ -37,27 +37,47 @@ export async function GET(request) {
 
     let query = db('kuriers');
 
-    // Filtrowanie według statusu
+    console.log('🔍 Kurier API - parametr status:', statusFilter);
+
+    // POPRAWIONA LOGIKA FILTROWANIA
     if (statusFilter === 'completed') {
-      // Archiwum - zamówienia zatwierdzone i dostarczone
+      // Archiwum - zamówienia zatwierdzone, wysłane i dostarczone
+      console.log('📦 Pobieranie archiwum - statusy: approved, sent, delivered');
       query = query.whereIn('status', ['approved', 'sent', 'delivered']);
     } else if (statusFilter === 'active') {
       // Aktywne - tylko nowe zamówienia
+      console.log('🆕 Pobieranie aktywnych - status: new');
       query = query.where('status', 'new');
-    } else if (!statusFilter) {
+    } else if (statusFilter === 'all') {
+      // Wszystkie zamówienia
+      console.log('🌍 Pobieranie wszystkich zamówień');
+      // Nie dodawaj filtra - pokaż wszystko
+    } else {
       // Domyślnie pokazuj tylko aktywne zamówienia (nowe)
+      console.log('🔄 Domyślnie - pokazuj aktywne (new)');
       query = query.where('status', 'new');
     }
 
     // Pobierz zamówienia, sortowane od najnowszych
     const zamowienia = await query.orderBy('created_at', 'desc');
 
+    console.log(`✅ Pobrano ${zamowienia.length} zamówień dla statusu: ${statusFilter || 'default(active)'}`);
+    
+    // DEBUG: Pokaż statusy w danych
+    const statusy = [...new Set(zamowienia.map(z => z.status))];
+    console.log('📊 Statusy w zwróconych danych:', statusy);
+
     return NextResponse.json({ 
       success: true, 
-      zamowienia: zamowienia || []
+      zamowienia: zamowienia || [],
+      debug: {
+        statusFilter: statusFilter,
+        count: zamowienia.length,
+        statusyWDanych: statusy
+      }
     });
   } catch (error) {
-    console.error('Error fetching kurier orders:', error);
+    console.error('❌ Error fetching kurier orders:', error);
     return NextResponse.json({ 
       success: false, 
       error: error.message 
@@ -65,7 +85,7 @@ export async function GET(request) {
   }
 }
 
-// POST - Dodaj nowe zamówienie kurierskie
+// POST - Dodaj nowe zamówienie kurierskie (BEZ ZMIAN)
 export async function POST(request) {
   try {
     // Sprawdzamy uwierzytelnienie
