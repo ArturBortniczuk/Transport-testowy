@@ -109,6 +109,119 @@ export default function KurierQueryForm({ onSubmit, onCancel, userName }) {
     { value: 'pallet', label: 'Paleta', icon: '🏗️' }
   ]
 
+// Funkcja sprawdzania usług DHL
+  const checkPostalServices = async (postCode, city = '') => {
+    if (!postCode || postCode.length < 5) return;
+    
+    const cleanedCode = postCode.replace(/[^\d]/g, '');
+    if (cleanedCode.length !== 5) return;
+    
+    setCheckingServices(true);
+    setServicesError('');
+    
+    try {
+      const response = await fetch('/api/kurier/postal-services', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          postCode: cleanedCode,
+          pickupDate: formData.preferredDate || new Date().toISOString().split('T')[0],
+          city: city,
+          street: formData.address
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setPostalServices({
+          ...data.services,
+          postCode: cleanedCode,
+          city: city,
+          checkedAt: new Date().toISOString()
+        });
+      } else {
+        setServicesError(data.error || 'Nie udało się sprawdzić usług DHL');
+        setPostalServices(null);
+      }
+    } catch (error) {
+      console.error('Błąd sprawdzania usług DHL:', error);
+      setServicesError('Błąd połączenia z API DHL');
+      setPostalServices(null);
+    } finally {
+      setCheckingServices(false);
+    }
+  };
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target
+    
+    let processedValue = type === 'checkbox' ? checked : value
+    
+    // Automatyczne formatowanie kodu pocztowego
+    if (name === 'postalCode') {
+      // Usuń wszystko oprócz cyfr i myślników
+      let cleaned = value.replace(/[^\d\-]/g, '');
+      
+      // Automatycznie dodaj myślnik po 2 cyfrach
+      if (cleaned.length >= 2 && !cleaned.includes('-')) {
+        cleaned = cleaned.substring(0, 2) + '-' + cleaned.substring(2, 5);
+      }
+      
+      processedValue = cleaned;
+      
+      // Sprawdź usługi DHL gdy kod jest kompletny
+      if (cleaned.replace('-', '').length === 5) {
+        setTimeout(() => checkPostalServices(cleaned, formData.city), 500);
+      } else {
+        setPostalServices(null);
+        setServicesError('');
+      }
+    }
+    
+    setFormData(prev => ({
+      ...prev,
+      [name]: processedValue
+    }))
+  }export default function KurierQueryForm({ onSubmit, onCancel, userName }) {
+  const [formData, setFormData] = useState({
+    // Podstawowe dane
+    queryType: 'pickup', // pickup, delivery, info
+    priority: 'normal', // low, normal, high, urgent
+    description: '',
+    
+    // Lokalizacja
+    address: '',
+    city: '',
+    postalCode: '',
+    contactPerson: '',
+    contactPhone: '',
+    contactEmail: '',
+    
+    // Szczegóły przesyłki
+    packageType: 'package', // document, package, pallet
+    weight: '',
+    dimensions: '',
+    quantity: 1,
+    contentDescription: '',
+    
+    // Preferencje czasowe
+    preferredDate: '',
+    preferredTime: 'morning', // morning, afternoon, evening
+    isUrgent: false,
+    
+    // Dane finansowe
+    paymentMethod: 'company', // company, cash, card
+    estimatedCost: '',
+    costNotes: '',
+    
+    // Dodatkowe informacje
+    specialInstructions: ''
+  })
+
+  
   const timeOptions = [
     { value: 'morning', label: 'Rano (8:00-12:00)' },
     { value: 'afternoon', label: 'Popołudnie (12:00-17:00)' },
