@@ -216,7 +216,7 @@ const initializeDatabase = async () => {
       });
     }
 
-    // ISTNIEJĄCA Tabela kurierów - SPRAWDZAMY CZY ISTNIEJE, ALE NIE TWORZYMY PONOWNIE
+    // Tabela kurierów - TYLKO ZAMÓWIENIA (bez zapytań)
     const kuriersExists = await db.schema.hasTable('kuriers');
     if (!kuriersExists) {
       await db.schema.createTable('kuriers', table => {
@@ -239,71 +239,7 @@ const initializeDatabase = async () => {
       console.log('Tabela kuriers już istnieje');
     }
 
-    // NOWA: Tabela zapytań kurierskich
-    const kurierQueriesExists = await db.schema.hasTable('kurier_queries');
-    if (!kurierQueriesExists) {
-      await db.schema.createTable('kurier_queries', table => {
-        table.increments('id').primary();
-        table.string('status').defaultTo('new'); // new, approved, rejected
-        table.string('created_by_email').notNullable();
-        table.string('created_by_name');
-        
-        // Podstawowe dane zapytania
-        table.string('query_type').notNullable(); // pickup, delivery, info
-        table.string('priority').defaultTo('normal'); // low, normal, high, urgent
-        table.text('description').notNullable();
-        
-        // Lokalizacja
-        table.string('address');
-        table.string('city');
-        table.string('postal_code');
-        table.string('contact_person');
-        table.string('contact_phone');
-        table.string('contact_email');
-        
-        // Szczegóły przesyłki (opcjonalne)
-        table.string('package_type'); // document, package, pallet
-        table.float('weight');
-        table.string('dimensions'); // "długość x szerokość x wysokość"
-        table.integer('quantity').defaultTo(1);
-        table.string('content_description');
-        
-        // Preferencje czasowe
-        table.date('preferred_date');
-        table.string('preferred_time'); // morning, afternoon, evening
-        table.boolean('is_urgent').defaultTo(false);
-        
-        // Dane finansowe
-        table.string('payment_method'); // company, cash, card
-        table.float('estimated_cost');
-        table.text('cost_notes');
-        
-        // Dodatkowe informacje
-        table.text('special_instructions');
-        table.text('internal_notes'); // Notatki dla administratorów
-        
-        // Dane przetwarzania
-        table.string('processed_by'); // Email osoby która zaakceptowała
-        table.timestamp('processed_at');
-        table.text('processing_notes'); // Notatki z akceptacji/odrzucenia
-        
-        // Dane DHL (po zaakceptowaniu i wysłaniu)
-        table.text('dhl_data'); // JSON z danymi DHL
-        
-        // Timestamps
-        table.timestamp('created_at').defaultTo(db.fn.now());
-        table.timestamp('updated_at').defaultTo(db.fn.now());
-        
-        // Indeksy
-        table.index('status');
-        table.index('created_by_email');
-        table.index('query_type');
-        table.index('created_at');
-      });
-      console.log('Tabela kurier_queries została utworzona');
-    } else {
-      console.log('Tabela kurier_queries już istnieje');
-    }
+    // NIE TWORZYMY TABELI kurier_queries - zostajemy tylko przy zamówieniach
 
     return true;
   } catch (error) {
@@ -652,70 +588,6 @@ const createRatingSummaryView = async () => {
   }
 };
 
-// NOWA FUNKCJA: Sprawdź i dodaj uprawnienia do zapytań kurierskich
-const checkKurierQueryPermissions = async () => {
-  if (isBuildPhase) {
-    return;
-  }
-  
-  try {
-    console.log('Sprawdzanie uprawnień do zapytań kurierskich...');
-    
-    // Pobierz wszystkich użytkowników
-    const users = await db('users').select('email', 'role', 'permissions');
-    
-    for (const user of users) {
-      let permissions = {};
-      let needsUpdate = false;
-      
-      try {
-        if (user.permissions && typeof user.permissions === 'string') {
-          permissions = JSON.parse(user.permissions);
-        }
-      } catch (error) {
-        console.error('Błąd parsowania uprawnień dla użytkownika:', user.email);
-        permissions = {};
-      }
-
-      // Sprawdź czy ma już uprawnienia do zapytań kurierskich
-      if (!permissions.kurier) {
-        permissions.kurier = {
-          queries: {
-            add: true, // Każdy może dodawać zapytania
-            approve: user.role === 'admin' ? true : false, // Domyślnie tylko admin może akceptować
-            view: true, // Każdy może przeglądać swoje zapytania
-            viewAll: user.role === 'admin' ? true : false // Tylko admin może widzieć wszystkie
-          }
-        };
-        needsUpdate = true;
-      } else if (!permissions.kurier.queries) {
-        permissions.kurier.queries = {
-          add: true,
-          approve: user.role === 'admin' ? true : false,
-          view: true,
-          viewAll: user.role === 'admin' ? true : false
-        };
-        needsUpdate = true;
-      }
-
-      // Zaktualizuj jeśli potrzeba
-      if (needsUpdate) {
-        await db('users')
-          .where('email', user.email)
-          .update({
-            permissions: JSON.stringify(permissions)
-          });
-
-        console.log(`✅ Dodano uprawnienia kuriera dla: ${user.email} (rola: ${user.role})`);
-      }
-    }
-    
-    console.log('Sprawdzenie uprawnień kurierskich zakończone');
-  } catch (error) {
-    console.error('Błąd sprawdzania uprawnień kurierskich:', error);
-  }
-};
-
 // Wykonaj inicjalizację asynchronicznie tylko jeśli nie jesteśmy w fazie budowania
 if (!isBuildPhase) {
   (async () => {
@@ -730,10 +602,7 @@ if (!isBuildPhase) {
       await checkTransportsTableForRatings();
       await checkDetailedRatingsTable();
       
-      // NOWE: Sprawdź uprawnienia do zapytań kurierskich
-      await checkKurierQueryPermissions();
-      
-      console.log('Wszystkie tabele zostały sprawdzone i utworzone');
+      console.log('Wszystkie tabele zostały sprawdzone i utworzone (bez zapytań kurierskich)');
     } catch (error) {
       console.error('Błąd inicjalizacji:', error);
     }
