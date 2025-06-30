@@ -5,6 +5,9 @@ import { Building, Package2, ArrowRight, ArrowLeft } from 'lucide-react'
 export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCancel }) {
   const [typZlecenia, setTypZlecenia] = useState('nadawca_bialystok') 
   const [error, setError] = useState('')
+  const [postalServices, setPostalServices] = useState(null)
+  const [checkingServices, setCheckingServices] = useState(false)
+  const [servicesError, setServicesError] = useState('')
   
   const [formData, setFormData] = useState({
     // Dane nadawcy
