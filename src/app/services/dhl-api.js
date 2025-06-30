@@ -1,5 +1,5 @@
 // src/app/services/dhl-api.js
-// POPRAWIONA WERSJA zgodnie z dokumentacją DHL
+// ZAKTUALIZOWANA WERSJA z metodą getPostalCodeServices
 
 // Dynamiczny import soap dla środowiska serverless
 let soap;
@@ -28,6 +28,99 @@ class DHLApiService {
       accountNumber: this.accountNumber ? `SET (${this.accountNumber})` : 'NOT SET',
       testMode: this.isTestMode
     });
+  }
+
+  // NOWA METODA: Sprawdzanie dostępnych usług dla kodu pocztowego
+  async getPostalCodeServices(postCode, pickupDate, city = '', street = '', houseNumber = '', apartmentNumber = '') {
+    try {
+      console.log('🔍 Sprawdzanie usług DHL dla kodu:', postCode);
+      
+      if (!postCode || postCode.length !== 5) {
+        return {
+          success: false,
+          error: 'Nieprawidłowy kod pocztowy - wymagane 5 cyfr'
+        };
+      }
+
+      if (this.isTestMode) {
+        console.log('TEST MODE: Simulating postal code services');
+        return {
+          success: true,
+          services: {
+            domesticExpress9: true,
+            domesticExpress12: true,
+            deliveryEvening: true,
+            pickupOnSaturday: false,
+            deliverySaturday: false,
+            exPickupFrom: '08:00',
+            exPickupTo: '16:00',
+            drPickupFrom: '08:00',
+            drPickupTo: '18:00'
+          },
+          message: 'Wszystkie standardowe usługi dostępne dla tego kodu pocztowego (TEST MODE)'
+        };
+      }
+
+      if (!soap) {
+        throw new Error('Biblioteka SOAP nie jest dostępna');
+      }
+
+      console.log('🌐 Tworzenie klienta SOAP dla getPostalCodeServices...');
+      const client = await soap.createClientAsync(this.wsdlUrl, {
+        timeout: 30000,
+        disableCache: true
+      });
+
+      const params = {
+        authData: {
+          username: this.login,
+          password: this.password
+        },
+        postCode: postCode, // Już oczyszczony kod (same cyfry)
+        pickupDate: pickupDate,
+        ...(city && { city }),
+        ...(street && { street }),
+        ...(houseNumber && { houseNumber }),
+        ...(apartmentNumber && { apartmentNumber })
+      };
+
+      console.log('📋 Parametry getPostalCodeServices:', params);
+
+      const [result] = await client.getPostalCodeServicesAsync(params);
+      
+      console.log('📦 Odpowiedź getPostalCodeServices:', result);
+
+      if (result && result.getPostalCodeServicesResult) {
+        const services = result.getPostalCodeServicesResult;
+        
+        return {
+          success: true,
+          services: {
+            domesticExpress9: services.domesticExpress9 || false,
+            domesticExpress12: services.domesticExpress12 || false,
+            deliveryEvening: services.deliveryEvening || false,
+            pickupOnSaturday: services.pickupOnSaturday || false,
+            deliverySaturday: services.deliverySaturday || false,
+            exPickupFrom: services.exPickupFrom || null,
+            exPickupTo: services.exPickupTo || null,
+            drPickupFrom: services.drPickupFrom || null,
+            drPickupTo: services.drPickupTo || null
+          },
+          message: 'Usługi DHL zostały sprawdzone pomyślnie'
+        };
+      } else {
+        return {
+          success: false,
+          error: 'Brak dostępnych usług DHL dla podanego kodu pocztowego'
+        };
+      }
+    } catch (error) {
+      console.error('Błąd sprawdzania usług DHL:', error);
+      return {
+        success: false,
+        error: `Błąd sprawdzania usług: ${error.message}`
+      };
+    }
   }
 
   // GŁÓWNA METODA - zgodna z dokumentacją DHL
@@ -175,139 +268,6 @@ class DHLApiService {
     };
   }
 
-  // NOWA METODA: Sprawdzanie dostępnych usług dla kodu pocztowego
-  async getPostalCodeServices(postCode, pickupDate, city = '', street = '', houseNumber = '', apartmentNumber = '') {
-    try {
-      console.log('🔍 Sprawdzanie usług DHL dla kodu:', postCode);
-      
-      if (!postCode || postCode.length !== 5) {
-        return {
-          success: false,
-          error: 'Nieprawidłowy kod pocztowy - wymagane 5 cyfr'
-        };
-      }
-
-      if (this.isTestMode) {
-        console.log('TEST MODE: Simulating postal code services');
-        return {
-          success: true,
-          services: {
-            domesticExpress9: true,
-            domesticExpress12: true,
-            deliveryEvening: true,
-            pickupOnSaturday: false,
-            deliverySaturday: false,
-            exPickupFrom: '08:00',
-            exPickupTo: '16:00',
-            drPickupFrom: '08:00',
-            drPickupTo: '18:00'
-          },
-          message: 'Wszystkie standardowe usługi dostępne dla tego kodu pocztowego'
-        };
-      }
-
-      if (!soap) {
-        throw new Error('Biblioteka SOAP nie jest dostępna');
-      }
-
-      const client = await soap.createClientAsync(this.wsdlUrl, {
-        timeout: 30000,
-        disableCache: true
-      });
-
-      const params = {
-        authData: {
-          username: this.login,
-          password: this.password
-        },
-        postCode: postCode, // Już oczyszczony kod (same cyfry)
-        pickupDate: pickupDate,
-        ...(city && { city }),
-        ...(street && { street }),
-        ...(houseNumber && { houseNumber }),
-        ...(apartmentNumber && { apartmentNumber })
-      };
-
-      console.log('📋 Parametry sprawdzania usług DHL:', params);
-
-      const [result] = await client.getPostalCodeServicesAsync(params);
-      
-      console.log('📦 Odpowiedź getPostalCodeServices:', result);
-
-      if (result && result.getPostalCodeServicesResult) {
-        const services = result.getPostalCodeServicesResult;
-        
-        return {
-          success: true,
-          services: {
-            domesticExpress9: services.domesticExpress9 || false,
-            domesticExpress12: services.domesticExpress12 || false,
-            deliveryEvening: services.deliveryEvening || false,
-            pickupOnSaturday: services.pickupOnSaturday || false,
-            deliverySaturday: services.deliverySaturday || false,
-            exPickupFrom: services.exPickupFrom || null,
-            exPickupTo: services.exPickupTo || null,
-            drPickupFrom: services.drPickupFrom || null,
-            drPickupTo: services.drPickupTo || null
-          },
-          message: 'Usługi DHL zostały sprawdzone pomyślnie'
-        };
-      } else {
-        return {
-          success: false,
-          error: 'Brak dostępnych usług DHL dla podanego kodu pocztowego'
-        };
-      }
-    } catch (error) {
-      console.error('Błąd sprawdzania usług DHL:', error);
-      return {
-        success: false,
-        error: `Błąd sprawdzania usług: ${error.message}`
-      };
-    }
-  }
-
-  // Śledzenie przesyłek
-  async getShipmentStatus(trackingNumber) {
-    try {
-      console.log('Tracking DHL shipment:', trackingNumber);
-      
-      if (this.isTestMode) {
-        console.log('TEST MODE: Simulating tracking data');
-        return {
-          success: true,
-          status: 'IN_TRANSIT',
-          events: [
-            {
-              status: 'PICKED_UP',
-              timestamp: new Date(Date.now() - 86400000).toISOString(),
-              location: 'Białystok'
-            },
-            {
-              status: 'IN_TRANSIT',
-              timestamp: new Date().toISOString(),
-              location: 'Warszawa'
-            }
-          ],
-          estimatedDelivery: new Date(Date.now() + 86400000).toISOString()
-        };
-      }
-
-      return {
-        success: false,
-        error: 'Śledzenie przesyłek nie jest jeszcze zaimplementowane dla WebAPI2'
-      };
-    } catch (error) {
-      console.error('DHL tracking error:', error);
-      return {
-        success: false,
-        error: error.message
-      };
-    }
-  }
-
-
-  
   // WYWOŁANIE createShipments zgodnie z dokumentacją
   async callCreateShipments(shipmentParams) {
     try {
