@@ -1,31 +1,19 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { Archive, HelpCircle, Package, Plus } from 'lucide-react'
+import { Archive, Package, Plus } from 'lucide-react'
 import KurierForm from './components/KurierForm'
 import ZamowieniaList from './components/ZamowieniaList'
 import KurierStats from './components/KurierStats'
 import KurierFilters from './components/KurierFilters'
-import KurierQueryForm from './components/KurierQueryForm'
-import KurierQueriesList from './components/KurierQueriesList'
 
 export default function KurierPage() {
-  const [activeTab, setActiveTab] = useState('zamowienia') // 'zamowienia' lub 'zapytania'
   const [zamowienia, setZamowienia] = useState([])
-  const [queries, setQueries] = useState([])
   const [filteredZamowienia, setFilteredZamowienia] = useState([])
-  const [filteredQueries, setFilteredQueries] = useState([])
   const [userRole, setUserRole] = useState(null)
   const [userName, setUserName] = useState('')
-  const [userPermissions, setUserPermissions] = useState({
-    canAdd: true,
-    canApprove: false,
-    canViewAll: false
-  })
   const [showForm, setShowForm] = useState(false)
-  const [showQueryForm, setShowQueryForm] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [queriesLoading, setQueriesLoading] = useState(false)
   const [error, setError] = useState(null)
   const [processingOrders, setProcessingOrders] = useState(new Set())
   const [filters, setFilters] = useState({
@@ -41,10 +29,7 @@ export default function KurierPage() {
   useEffect(() => {
     fetchUserData()
     fetchZamowienia()
-    if (activeTab === 'zapytania') {
-      fetchQueries()
-    }
-  }, [activeTab])
+  }, [])
 
   const fetchUserData = async () => {
     try {
@@ -54,24 +39,13 @@ export default function KurierPage() {
       if (data.isAuthenticated && data.user) {
         setUserRole(data.user.role)
         setUserName(data.user.name)
-        
-        // Sprawdź uprawnienia do zapytań kurierskich
-        const permissions = data.user.permissions || {}
-        const isAdmin = data.user.role === 'admin'
-        const kurierPerms = permissions.kurier?.queries || {}
-        
-        setUserPermissions({
-          canAdd: isAdmin || kurierPerms.add !== false,
-          canApprove: isAdmin || kurierPerms.approve === true,
-          canViewAll: isAdmin || kurierPerms.viewAll === true
-        })
       }
     } catch (error) {
       console.error('Błąd pobierania danych użytkownika:', error)
     }
   }
 
-  // Funkcja filtrowania zamówień (bez zmian)
+  // Funkcja filtrowania zamówień
   const applyFilters = useCallback((zamowieniaList, currentFilters) => {
     let filtered = [...zamowieniaList]
 
@@ -178,33 +152,6 @@ export default function KurierPage() {
     }
   }
 
-  // NOWE: Pobierz zapytania kurierskie
-  const fetchQueries = async () => {
-    try {
-      setQueriesLoading(true)
-      const response = await fetch('/api/kurier/queries')
-      const data = await response.json()
-      
-      if (data.success) {
-        console.log('Pobrano zapytania:', data.queries.length)
-        setQueries(data.queries)
-        setFilteredQueries(data.queries) // Na razie bez zaawansowanych filtrów
-        setError(null)
-      } else {
-        setError(data.error)
-        setQueries([])
-        setFilteredQueries([])
-      }
-    } catch (error) {
-      console.error('Błąd pobierania zapytań:', error)
-      setError('Nie udało się pobrać zapytań kurierskich')
-      setQueries([])
-      setFilteredQueries([])
-    } finally {
-      setQueriesLoading(false)
-    }
-  }
-
   useEffect(() => {
     if (zamowienia.length > 0) {
       const filtered = applyFilters(zamowienia, filters)
@@ -212,7 +159,7 @@ export default function KurierPage() {
     }
   }, [zamowienia, filters, applyFilters])
 
-  // ZAMÓWIENIA - funkcje bez zmian
+  // Dodawanie zamówienia
   const handleDodajZamowienie = async (noweZamowienie) => {
     try {
       setLoading(true)
@@ -248,6 +195,7 @@ export default function KurierPage() {
     }
   }
 
+  // Zatwierdzanie zamówienia
   const handleZatwierdzZamowienie = async (zamowienieId) => {
     if (processingOrders.has(zamowienieId)) {
       console.warn(`⚠️ Zamówienie ${zamowienieId} jest już przetwarzane, ignoruję żądanie`)
@@ -298,6 +246,7 @@ export default function KurierPage() {
     }
   }
 
+  // Usuwanie zamówienia
   const handleUsunZamowienie = async (zamowienieId) => {
     if (!confirm('Czy na pewno chcesz usunąć to zamówienie? Jeśli ma numer DHL, zostanie także anulowane.')) {
       return
@@ -326,112 +275,11 @@ export default function KurierPage() {
     }
   }
 
-  // NOWE: Funkcje dla zapytań kurierskich
-  const handleDodajZapytanie = async (noweZapytanie) => {
-    try {
-      setQueriesLoading(true)
-      console.log('Dodawanie nowego zapytania:', noweZapytanie)
-      
-      const response = await fetch('/api/kurier/queries', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(noweZapytanie),
-      })
-
-      const data = await response.json()
-      
-      if (data.success) {
-        console.log('Zapytanie dodane pomyślnie, ID:', data.id)
-        await fetchQueries()
-        setShowQueryForm(false)
-        alert('Zapytanie kurierskie zostało wysłane! Otrzymasz odpowiedź w ciągu 24h.')
-      } else {
-        console.error('Błąd dodawania zapytania:', data.error)
-        alert('Błąd: ' + data.error)
-      }
-    } catch (error) {
-      console.error('Błąd dodawania zapytania:', error)
-      alert('Wystąpił błąd podczas wysyłania zapytania')
-    } finally {
-      setQueriesLoading(false)
-    }
-  }
-
-  const handleApproveQuery = async (queryId, notes) => {
-    try {
-      console.log(`✅ Akceptacja zapytania ${queryId}`)
-      
-      const response = await fetch(`/api/kurier/queries/${queryId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'approve',
-          notes: notes,
-          autoCreateShipment: true // Automatycznie utwórz przesyłkę DHL
-        }),
-      })
-
-      const data = await response.json()
-      
-      if (data.success) {
-        console.log(`✅ Zapytanie ${queryId} zaakceptowane:`, data)
-        await fetchQueries()
-        
-        if (data.dhlResult?.success) {
-          alert('Zapytanie zaakceptowane i przesyłka DHL została utworzona! 🚚')
-        } else {
-          alert('Zapytanie zaakceptowane. ' + (data.message || ''))
-        }
-      } else {
-        console.error(`❌ Błąd akceptacji zapytania ${queryId}:`, data.error)
-        alert('Błąd: ' + data.error)
-      }
-    } catch (error) {
-      console.error(`💥 Błąd akceptacji zapytania ${queryId}:`, error)
-      alert('Wystąpił błąd podczas akceptacji zapytania')
-    }
-  }
-
-  const handleRejectQuery = async (queryId, reason) => {
-    try {
-      console.log(`❌ Odrzucenie zapytania ${queryId}`)
-      
-      const response = await fetch(`/api/kurier/queries/${queryId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'reject',
-          notes: reason
-        }),
-      })
-
-      const data = await response.json()
-      
-      if (data.success) {
-        console.log(`❌ Zapytanie ${queryId} odrzucone`)
-        await fetchQueries()
-        alert('Zapytanie zostało odrzucone.')
-      } else {
-        console.error(`❌ Błąd odrzucenia zapytania ${queryId}:`, data.error)
-        alert('Błąd: ' + data.error)
-      }
-    } catch (error) {
-      console.error(`💥 Błąd odrzucenia zapytania ${queryId}:`, error)
-      alert('Wystąpił błąd podczas odrzucania zapytania')
-    }
-  }
-
   // Sprawdź uprawnienia
   const canAddOrder = userRole === 'handlowiec' || userRole === 'admin' || userRole?.includes('magazyn')
   const canApprove = userRole === 'admin' || userRole?.includes('magazyn')
   
-  if (loading && zamowienia.length === 0 && activeTab === 'zamowienia') {
+  if (loading && zamowienia.length === 0) {
     return (
       <div className="max-w-6xl mx-auto p-6">
         <div className="flex justify-center items-center h-64">
@@ -444,7 +292,7 @@ export default function KurierPage() {
 
   return (
     <div className="max-w-6xl mx-auto p-6">
-      {/* Nagłówek z tabami */}
+      {/* Nagłówek */}
       <div className="mb-8">
         <div className="flex justify-between items-center mb-6">
           <div>
@@ -452,7 +300,7 @@ export default function KurierPage() {
               Moduł kuriera
             </h1>
             <p className="text-gray-600 mt-2">
-              Zarządzaj zamówieniami i zapytaniami kurierskimi z integracją DHL
+              Zarządzaj zamówieniami kurierskimi z integracją DHL
             </p>
           </div>
           <div className="flex space-x-4">
@@ -465,8 +313,8 @@ export default function KurierPage() {
               <span>Archiwum</span>
             </Link>
             
-            {/* Przyciski akcji */}
-            {activeTab === 'zamowienia' && canAddOrder && (
+            {/* Przycisk nowego zamówienia */}
+            {canAddOrder && (
               <button
                 onClick={() => setShowForm(!showForm)}
                 className="px-6 py-3 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 flex items-center space-x-2 transition-all"
@@ -475,127 +323,63 @@ export default function KurierPage() {
                 <span>{showForm ? 'Anuluj' : 'Nowe zamówienie'}</span>
               </button>
             )}
-            
-            {activeTab === 'zapytania' && userPermissions.canAdd && (
-              <button
-                onClick={() => setShowQueryForm(!showQueryForm)}
-                className="px-6 py-3 bg-green-600 text-white rounded-lg shadow hover:bg-green-700 flex items-center space-x-2 transition-all"
-              >
-                <Plus size={20} />
-                <span>{showQueryForm ? 'Anuluj' : 'Nowe zapytanie'}</span>
-              </button>
-            )}
           </div>
         </div>
 
-        {/* Taby */}
-        <div className="border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8">
-            <button
-              onClick={() => setActiveTab('zamowienia')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
-                activeTab === 'zamowienia'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <Package className="inline-block w-5 h-5 mr-2" />
-              Zamówienia kurierskie
+        {/* Nagłówek z ikoną */}
+        <div className="border-b border-gray-200 pb-4">
+          <div className="flex items-center space-x-3">
+            <Package className="w-8 h-8 text-blue-600" />
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">
+                Zamówienia kurierskie
+              </h2>
               {zamowienia.length > 0 && (
-                <span className="ml-2 bg-blue-100 text-blue-800 py-1 px-2 rounded-full text-xs">
-                  {zamowienia.length}
+                <span className="text-sm text-gray-500">
+                  {zamowienia.length} {zamowienia.length === 1 ? 'zamówienie' : 'zamówień'}
                 </span>
               )}
-            </button>
-            <button
-              onClick={() => setActiveTab('zapytania')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
-                activeTab === 'zapytania'
-                  ? 'border-green-500 text-green-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <HelpCircle className="inline-block w-5 h-5 mr-2" />
-              Zapytania kurierskie
-              {queries.length > 0 && (
-                <span className="ml-2 bg-green-100 text-green-800 py-1 px-2 rounded-full text-xs">
-                  {queries.length}
-                </span>
-              )}
-            </button>
-          </nav>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Statystyki */}
       <KurierStats isArchive={false} />
 
-      {/* Zawartość w zależności od aktywnej zakładki */}
-      {activeTab === 'zamowienia' && (
-        <>
-          {/* Filtry */}
-          <div className="mb-6">
-            <KurierFilters 
-              onFiltersChange={handleFiltersChange}
-              isArchive={false}
-            />
-          </div>
+      {/* Filtry */}
+      <div className="mb-6">
+        <KurierFilters 
+          onFiltersChange={handleFiltersChange}
+          isArchive={false}
+        />
+      </div>
 
-          {error && (
-            <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200">
-              <div className="flex items-center">
-                <div className="text-red-400 mr-2">⚠️</div>
-                <div>
-                  <div className="font-medium">Błąd:</div>
-                  <div>{error}</div>
-                </div>
-              </div>
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200">
+          <div className="flex items-center">
+            <div className="text-red-400 mr-2">⚠️</div>
+            <div>
+              <div className="font-medium">Błąd:</div>
+              <div>{error}</div>
             </div>
-          )}
-
-          {/* Lista zamówień */}
-          <div className={`transition-all duration-500 ${showForm ? 'opacity-50' : 'opacity-100'} mt-6`}>
-            <ZamowieniaList
-              zamowienia={filteredZamowienia}
-              onZatwierdz={handleZatwierdzZamowienie}
-              onUsun={handleUsunZamowienie}
-              userRole={userRole}
-              canApprove={canApprove}
-              loading={loading}
-              onRefresh={fetchZamowienia}
-              processingOrders={processingOrders}
-            />
           </div>
-        </>
+        </div>
       )}
 
-      {activeTab === 'zapytania' && (
-        <>
-          {error && (
-            <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200">
-              <div className="flex items-center">
-                <div className="text-red-400 mr-2">⚠️</div>
-                <div>
-                  <div className="font-medium">Błąd:</div>
-                  <div>{error}</div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Lista zapytań */}
-          <div className={`transition-all duration-500 ${showQueryForm ? 'opacity-50' : 'opacity-100'} mt-6`}>
-            <KurierQueriesList
-              queries={filteredQueries}
-              onApprove={handleApproveQuery}
-              onReject={handleRejectQuery}
-              userPermissions={userPermissions}
-              loading={queriesLoading}
-              onRefresh={fetchQueries}
-            />
-          </div>
-        </>
-      )}
+      {/* Lista zamówień */}
+      <div className={`transition-all duration-500 ${showForm ? 'opacity-50' : 'opacity-100'} mt-6`}>
+        <ZamowieniaList
+          zamowienia={filteredZamowienia}
+          onZatwierdz={handleZatwierdzZamowienie}
+          onUsun={handleUsunZamowienie}
+          userRole={userRole}
+          canApprove={canApprove}
+          loading={loading}
+          onRefresh={fetchZamowienia}
+          processingOrders={processingOrders}
+        />
+      </div>
 
       {/* Modal formularza zamówienia */}
       {showForm && (
@@ -611,29 +395,13 @@ export default function KurierPage() {
         </div>
       )}
 
-      {/* Modal formularza zapytania */}
-      {showQueryForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <KurierQueryForm 
-              onSubmit={handleDodajZapytanie} 
-              userName={userName}
-              onCancel={() => setShowQueryForm(false)}
-            />
-          </div>
-        </div>
-      )}
-
       {/* Debug info - tylko w development */}
       {process.env.NODE_ENV === 'development' && (
         <div className="mt-8 p-4 bg-gray-100 rounded-lg text-sm text-gray-600">
           <div className="font-mono">
-            <div><strong>Aktywna zakładka:</strong> {activeTab}</div>
             <div><strong>Zamówienia:</strong> {zamowienia.length} (po filtrach: {filteredZamowienia.length})</div>
-            <div><strong>Zapytania:</strong> {queries.length}</div>
             <div><strong>Użytkownik:</strong> {userName} ({userRole})</div>
-            <div><strong>Uprawnienia zamówień:</strong> Dodawanie: {canAddOrder ? 'TAK' : 'NIE'}, Zatwierdzanie: {canApprove ? 'TAK' : 'NIE'}</div>
-            <div><strong>Uprawnienia zapytań:</strong> Dodawanie: {userPermissions.canAdd ? 'TAK' : 'NIE'}, Akceptacja: {userPermissions.canApprove ? 'TAK' : 'NIE'}, Wszystkie: {userPermissions.canViewAll ? 'TAK' : 'NIE'}</div>
+            <div><strong>Uprawnienia:</strong> Dodawanie: {canAddOrder ? 'TAK' : 'NIE'}, Zatwierdzanie: {canApprove ? 'TAK' : 'NIE'}</div>
             <div><strong>Przetwarzane zamówienia:</strong> {Array.from(processingOrders).join(', ') || 'Brak'}</div>
           </div>
         </div>
