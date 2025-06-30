@@ -1,5 +1,6 @@
 // src/app/services/dhl-api.js
-// ZAKTUALIZOWANA WERSJA z metodą getPostalCodeServices
+// 🔥 MEGA DHL API SERVICE - PEŁNA IMPLEMENTACJA WebAPI2
+// Wszystkie funkcje z dokumentacji DHL + zaawansowane features
 
 // Dynamiczny import soap dla środowiska serverless
 let soap;
@@ -14,14 +15,16 @@ class DHLApiService {
     // URL dla WebAPI2 zgodnie z dokumentacją
     this.wsdlUrl = 'https://sandbox.dhl24.com.pl/webapi2';
     
-    console.log('DHL WebAPI2 URL:', this.wsdlUrl);
-    
     this.login = process.env.DHL_LOGIN;
     this.password = process.env.DHL_PASSWORD_DHL24;
     this.accountNumber = process.env.DHL_ACCOUNT_NUMBER;
     this.isTestMode = process.env.DHL_TEST_MODE === 'true';
     
-    console.log('DHL WebAPI2 Service initialized:', {
+    // Cache dla często używanych danych
+    this.cache = new Map();
+    this.cacheTimeout = 5 * 60 * 1000; // 5 minut
+    
+    console.log('🚀 MEGA DHL WebAPI2 Service initialized:', {
       wsdlUrl: this.wsdlUrl,
       login: this.login ? `SET (${this.login})` : 'NOT SET',
       password: this.password ? `SET (${this.password.substring(0, 3)}...)` : 'NOT SET',
@@ -30,103 +33,135 @@ class DHLApiService {
     });
   }
 
-  // NOWA METODA: Sprawdzanie dostępnych usług dla kodu pocztowego
-  async getPostalCodeServices(postCode, pickupDate, city = '', street = '', houseNumber = '', apartmentNumber = '') {
+  // ============================================================================
+  // 🔧 HELPER METHODS
+  // ============================================================================
+
+  // Cache management
+  getCached(key) {
+    const cached = this.cache.get(key);
+    if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+      return cached.data;
+    }
+    this.cache.delete(key);
+    return null;
+  }
+
+  setCache(key, data) {
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now()
+    });
+  }
+
+  // Tworzenie klienta SOAP z retry mechanism
+  async createSoapClient(retries = 3) {
+    for (let i = 0; i < retries; i++) {
+      try {
+        if (!soap) {
+          throw new Error('Biblioteka SOAP nie jest dostępna');
+        }
+
+        const client = await soap.createClientAsync(this.wsdlUrl, {
+          timeout: 30000,
+          disableCache: true,
+          wsdl_options: {
+            timeout: 30000
+          }
+        });
+
+        return client;
+      } catch (error) {
+        console.error(`SOAP client creation attempt ${i + 1} failed:`, error);
+        if (i === retries - 1) throw error;
+        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+      }
+    }
+  }
+
+  // Czyszczenie kodu pocztowego - tylko cyfry dla DHL
+  cleanPostalCode(postcode) {
+    if (!postcode) return '';
+    let cleaned = postcode.toString().replace(/[^\d]/g, '');
+    return cleaned.length === 5 ? cleaned : '00001';
+  }
+
+  // Czyszczenie numeru telefonu
+  cleanPhoneNumber(phone) {
+    if (!phone) return '';
+    let cleaned = phone.replace(/[^\d]/g, '');
+    if (cleaned.startsWith('48')) cleaned = cleaned.substring(2);
+    if (cleaned.startsWith('0')) cleaned = cleaned.substring(1);
+    return cleaned.substring(0, 9);
+  }
+
+  // Parsowanie adresu
+  parseAddress(addressString) {
+    if (!addressString) return {};
+    
+    const parts = addressString.split(',').map(p => p.trim());
+    const postcodeMatch = addressString.match(/(\d{2}-?\d{3})/);
+    
+    const streetPart = parts[0] || '';
+    const cityPart = parts[parts.length - 1] || '';
+    
+    const streetMatch = streetPart.match(/^(.+?)[\s]+([0-9]+[A-Za-z]*)(\/([0-9]+))?$/);
+    const street = streetMatch ? streetMatch[1] : streetPart;
+    const houseNumber = streetMatch ? streetMatch[2] : '';
+    const apartmentNumber = streetMatch ? streetMatch[4] : '';
+    
+    const city = cityPart.replace(/\d{2}-?\d{3}\s*/, '').trim();
+    
+    let postcode = '';
+    if (postcodeMatch) {
+      postcode = postcodeMatch[1].replace(/[^\d]/g, '');
+    }
+    
+    return {
+      street: street,
+      houseNumber: houseNumber,
+      apartmentNumber: apartmentNumber,
+      postcode: postcode,
+      city: city
+    };
+  }
+
+  // ============================================================================
+  // 📦 CORE SHIPMENT METHODS
+  // ============================================================================
+
+  // 1. getVersion - Sprawdzanie wersji API
+  async getVersion() {
     try {
-      console.log('🔍 Sprawdzanie usług DHL dla kodu:', postCode);
+      console.log('🔍 Checking DHL API version...');
       
-      if (!postCode || postCode.length !== 5) {
-        return {
-          success: false,
-          error: 'Nieprawidłowy kod pocztowy - wymagane 5 cyfr'
-        };
-      }
-
       if (this.isTestMode) {
-        console.log('TEST MODE: Simulating postal code services');
         return {
           success: true,
-          services: {
-            domesticExpress9: true,
-            domesticExpress12: true,
-            deliveryEvening: true,
-            pickupOnSaturday: false,
-            deliverySaturday: false,
-            exPickupFrom: '08:00',
-            exPickupTo: '16:00',
-            drPickupFrom: '08:00',
-            drPickupTo: '18:00'
-          },
-          message: 'Wszystkie standardowe usługi dostępne dla tego kodu pocztowego (TEST MODE)'
+          version: 'TEST_VERSION_2.4'
         };
       }
 
-      if (!soap) {
-        throw new Error('Biblioteka SOAP nie jest dostępna');
-      }
-
-      console.log('🌐 Tworzenie klienta SOAP dla getPostalCodeServices...');
-      const client = await soap.createClientAsync(this.wsdlUrl, {
-        timeout: 30000,
-        disableCache: true
-      });
-
-      const params = {
-        authData: {
-          username: this.login,
-          password: this.password
-        },
-        postCode: postCode, // Już oczyszczony kod (same cyfry)
-        pickupDate: pickupDate,
-        ...(city && { city }),
-        ...(street && { street }),
-        ...(houseNumber && { houseNumber }),
-        ...(apartmentNumber && { apartmentNumber })
-      };
-
-      console.log('📋 Parametry getPostalCodeServices:', params);
-
-      const [result] = await client.getPostalCodeServicesAsync(params);
+      const client = await this.createSoapClient();
+      const [result] = await client.getVersionAsync();
       
-      console.log('📦 Odpowiedź getPostalCodeServices:', result);
-
-      if (result && result.getPostalCodeServicesResult) {
-        const services = result.getPostalCodeServicesResult;
-        
-        return {
-          success: true,
-          services: {
-            domesticExpress9: services.domesticExpress9 || false,
-            domesticExpress12: services.domesticExpress12 || false,
-            deliveryEvening: services.deliveryEvening || false,
-            pickupOnSaturday: services.pickupOnSaturday || false,
-            deliverySaturday: services.deliverySaturday || false,
-            exPickupFrom: services.exPickupFrom || null,
-            exPickupTo: services.exPickupTo || null,
-            drPickupFrom: services.drPickupFrom || null,
-            drPickupTo: services.drPickupTo || null
-          },
-          message: 'Usługi DHL zostały sprawdzone pomyślnie'
-        };
-      } else {
-        return {
-          success: false,
-          error: 'Brak dostępnych usług DHL dla podanego kodu pocztowego'
-        };
-      }
+      return {
+        success: true,
+        version: result?.version || 'Unknown'
+      };
     } catch (error) {
-      console.error('Błąd sprawdzania usług DHL:', error);
+      console.error('getVersion error:', error);
       return {
         success: false,
-        error: `Błąd sprawdzania usług: ${error.message}`
+        error: error.message
       };
     }
   }
 
-  // GŁÓWNA METODA - zgodna z dokumentacją DHL
+  // 2. createShipments - Tworzenie przesyłek (ULEPSZONE)
   async createShipment(shipmentData) {
     try {
-      console.log('Creating DHL shipment for order:', shipmentData.id);
+      console.log('📦 Creating DHL shipment for order:', shipmentData.id);
       
       if (!this.login || !this.password || !this.accountNumber) {
         return {
@@ -139,7 +174,6 @@ class DHLApiService {
         ? JSON.parse(shipmentData.notes) 
         : shipmentData.notes;
 
-      // W trybie testowym zwróć sukces bez prawdziwego API
       if (this.isTestMode) {
         console.log('TEST MODE: Simulating successful DHL shipment creation');
         const mockShipmentNumber = `TEST_${Date.now()}`;
@@ -159,13 +193,10 @@ class DHLApiService {
         };
       }
 
-      // UŻYJ createShipments zgodnie z dokumentacją WebAPI2
       const shipmentParams = this.prepareCreateShipmentsData(shipmentData, notes);
-      
       console.log('Prepared createShipments data:', JSON.stringify(shipmentParams, null, 2));
       
       const result = await this.callCreateShipments(shipmentParams);
-      
       return result;
     } catch (error) {
       console.error('DHL shipment creation error:', error);
@@ -176,20 +207,678 @@ class DHLApiService {
     }
   }
 
-  // POPRAWIONA METODA: Przygotuj dane zgodnie z dokumentacją DHL
+  // 3. getMyShipments - Pobieranie listy przesyłek użytkownika
+  async getMyShipments(dateFrom, dateTo, offset = 0) {
+    try {
+      console.log('📋 Getting my shipments:', { dateFrom, dateTo, offset });
+      
+      const cacheKey = `myShipments_${dateFrom}_${dateTo}_${offset}`;
+      const cached = this.getCached(cacheKey);
+      if (cached) return cached;
+
+      if (this.isTestMode) {
+        const mockShipments = [
+          {
+            shipmentId: 'TEST_001',
+            created: new Date().toISOString(),
+            orderStatus: 'COURIER_BOOKED',
+            shipper: { name: 'Test Shipper' },
+            receiver: { name: 'Test Receiver' },
+            service: { product: 'AH' },
+            content: 'Test content'
+          }
+        ];
+        
+        const result = {
+          success: true,
+          shipments: mockShipments
+        };
+        
+        this.setCache(cacheKey, result);
+        return result;
+      }
+
+      const client = await this.createSoapClient();
+      
+      const params = {
+        authData: {
+          username: this.login,
+          password: this.password
+        },
+        createdFrom: dateFrom,
+        createdTo: dateTo,
+        offset: offset
+      };
+
+      const [result] = await client.getMyShipmentsAsync(params);
+      
+      if (result?.shipments) {
+        const response = {
+          success: true,
+          shipments: result.shipments
+        };
+        
+        this.setCache(cacheKey, response);
+        return response;
+      } else {
+        throw new Error('No shipments data received');
+      }
+    } catch (error) {
+      console.error('getMyShipments error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // 4. getMyShipmentsCount - Liczba przesyłek
+  async getMyShipmentsCount(dateFrom, dateTo) {
+    try {
+      console.log('🔢 Getting shipments count:', { dateFrom, dateTo });
+      
+      if (this.isTestMode) {
+        return {
+          success: true,
+          count: 42
+        };
+      }
+
+      const client = await this.createSoapClient();
+      
+      const params = {
+        authData: {
+          username: this.login,
+          password: this.password
+        },
+        createdFrom: dateFrom,
+        createdTo: dateTo
+      };
+
+      const [result] = await client.getMyShipmentsCountAsync(params);
+      
+      return {
+        success: true,
+        count: result?.shipmentsCount || 0
+      };
+    } catch (error) {
+      console.error('getMyShipmentsCount error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // ============================================================================
+  // 🚚 COURIER BOOKING METHODS  
+  // ============================================================================
+
+  // 5. bookCourier - Zamawianie kuriera
+  async bookCourier(courierData) {
+    try {
+      console.log('🚚 Booking courier:', courierData);
+      
+      if (this.isTestMode) {
+        return {
+          success: true,
+          orderId: [`TEST_ORDER_${Date.now()}`],
+          message: 'Kurier zamówiony w trybie testowym'
+        };
+      }
+
+      const client = await this.createSoapClient();
+      
+      const params = {
+        authData: {
+          username: this.login,
+          password: this.password
+        },
+        pickupDate: courierData.pickupDate,
+        pickupTimeFrom: courierData.pickupTimeFrom,
+        pickupTimeTo: courierData.pickupTimeTo,
+        additionalInfo: courierData.additionalInfo || '',
+        courierWithLabel: courierData.courierWithLabel || false
+      };
+
+      // Opcja 1: Zamówienie kuriera dla istniejących przesyłek
+      if (courierData.shipmentIds && courierData.shipmentIds.length > 0) {
+        params.shipmentIdList = courierData.shipmentIds.map(id => ({ item: id }));
+      }
+      
+      // Opcja 2: Zamówienie kuriera bez przesyłek
+      if (courierData.shipmentOrderInfo) {
+        params.shipmentOrderInfo = {
+          shipper: courierData.shipmentOrderInfo.shipper,
+          numberOfExPieces: courierData.shipmentOrderInfo.numberOfExPieces || 0,
+          numberOfDrPieces: courierData.shipmentOrderInfo.numberOfDrPieces || 0,
+          totalWeight: courierData.shipmentOrderInfo.totalWeight || 0,
+          heaviestPieceWeight: courierData.shipmentOrderInfo.heaviestPieceWeight || 0
+        };
+      }
+
+      const [result] = await client.bookCourierAsync(params);
+      
+      if (result?.orderId) {
+        return {
+          success: true,
+          orderId: Array.isArray(result.orderId) ? result.orderId : [result.orderId],
+          message: 'Kurier został zamówiony pomyślnie'
+        };
+      } else {
+        throw new Error('No order ID received from courier booking');
+      }
+    } catch (error) {
+      console.error('bookCourier error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // ============================================================================
+  // 🏷️ LABELS & DOCUMENTS METHODS
+  // ============================================================================
+
+  // 6. getLabels - Pobieranie etykiet (PDF, ZPL)
+  async getLabels(labelRequests) {
+    try {
+      console.log('🏷️ Getting labels:', labelRequests);
+      
+      if (this.isTestMode) {
+        return {
+          success: true,
+          labels: labelRequests.map(req => ({
+            shipmentId: req.shipmentId,
+            labelType: req.labelType,
+            labelData: 'VEVTVCBMQUJFTCBEQVRB', // base64 dla "TEST LABEL DATA"
+            labelMimeType: req.labelType === 'BLP' ? 'application/pdf' : 'text/plain',
+            labelName: `${req.shipmentId}_${req.labelType}.pdf`
+          }))
+        };
+      }
+
+      const client = await this.createSoapClient();
+      
+      const params = {
+        authData: {
+          username: this.login,
+          password: this.password
+        },
+        itemsToPrint: labelRequests.map(req => ({
+          item: {
+            labelType: req.labelType, // LP, BLP, ZBLP, ZBLP300
+            shipmentId: req.shipmentId
+          }
+        }))
+      };
+
+      const [result] = await client.getLabelsAsync(params);
+      
+      if (result?.itemsToPrintResponse) {
+        return {
+          success: true,
+          labels: result.itemsToPrintResponse.map(item => ({
+            shipmentId: item.shipmentId,
+            labelType: item.labelType,
+            labelData: item.labelData,
+            labelMimeType: item.labelMimeType,
+            labelName: `${item.shipmentId}_${item.labelType}.${item.labelMimeType === 'application/pdf' ? 'pdf' : 'zpl'}`,
+            cn23Data: item.cn23Data,
+            cn23MimeType: item.cn23MimeType,
+            fvProformaData: item.fvProformaData,
+            fvProformaMimeType: item.fvProformaMimeType
+          }))
+        };
+      } else {
+        throw new Error('No labels data received');
+      }
+    } catch (error) {
+      console.error('getLabels error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // 7. getShipmentScan - Skan listu przewozowego
+  async getShipmentScan(shipmentId) {
+    try {
+      console.log('📸 Getting shipment scan:', shipmentId);
+      
+      if (this.isTestMode) {
+        return {
+          success: true,
+          scanData: 'VEVTVCBTQ0FOIERBVEE=', // base64
+          scanMimeType: 'image/jpeg',
+          message: 'Skan pobrany w trybie testowym'
+        };
+      }
+
+      const client = await this.createSoapClient();
+      
+      const params = {
+        authData: {
+          username: this.login,
+          password: this.password
+        },
+        shipmentId: shipmentId
+      };
+
+      const [result] = await client.getShipmentScanAsync(params);
+      
+      if (result?.scanData) {
+        return {
+          success: true,
+          scanData: result.scanData,
+          scanMimeType: result.scanMimeType || 'image/jpeg'
+        };
+      } else {
+        throw new Error('No scan data available for this shipment');
+      }
+    } catch (error) {
+      console.error('getShipmentScan error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // ============================================================================
+  // 💰 PRICING METHODS
+  // ============================================================================
+
+  // 8. getPrice - Kalkulacja ceny przesyłki
+  async getPrice(priceRequest) {
+    try {
+      console.log('💰 Calculating price:', priceRequest);
+      
+      const cacheKey = `price_${JSON.stringify(priceRequest)}`;
+      const cached = this.getCached(cacheKey);
+      if (cached) return cached;
+
+      if (this.isTestMode) {
+        const mockPrice = {
+          success: true,
+          price: '25.50',
+          fuelSurcharge: '15.2',
+          currency: 'PLN',
+          breakdown: {
+            basePrice: '22.17',
+            fuelSurcharge: '3.33',
+            totalNet: '25.50',
+            vat: '5.87',
+            totalGross: '31.37'
+          }
+        };
+        
+        this.setCache(cacheKey, mockPrice);
+        return mockPrice;
+      }
+
+      const client = await this.createSoapClient();
+      
+      const params = {
+        authData: {
+          username: this.login,
+          password: this.password
+        },
+        shipment: {
+          payment: {
+            accountNumber: this.accountNumber
+          },
+          shipper: {
+            country: priceRequest.shipper.country || 'PL',
+            name: priceRequest.shipper.name,
+            postalCode: this.cleanPostalCode(priceRequest.shipper.postalCode),
+            city: priceRequest.shipper.city,
+            street: priceRequest.shipper.street,
+            houseNumber: priceRequest.shipper.houseNumber,
+            apartmentNumber: priceRequest.shipper.apartmentNumber || ''
+          },
+          receiver: {
+            country: priceRequest.receiver.country || 'PL',
+            addressType: priceRequest.receiver.addressType || 'B',
+            name: priceRequest.receiver.name,
+            postalCode: this.cleanPostalCode(priceRequest.receiver.postalCode),
+            city: priceRequest.receiver.city,
+            street: priceRequest.receiver.street,
+            houseNumber: priceRequest.receiver.houseNumber,
+            apartmentNumber: priceRequest.receiver.apartmentNumber || ''
+          },
+          service: {
+            product: priceRequest.service.product || 'AH',
+            deliveryEvening: priceRequest.service.deliveryEvening || false,
+            deliveryOnSaturday: priceRequest.service.deliveryOnSaturday || false,
+            pickupOnSaturday: priceRequest.service.pickupOnSaturday || false,
+            collectOnDelivery: priceRequest.service.collectOnDelivery || false,
+            collectOnDeliveryValue: priceRequest.service.collectOnDeliveryValue || 0,
+            insurance: priceRequest.service.insurance || false,
+            insuranceValue: priceRequest.service.insuranceValue || 0
+          },
+          pieceList: priceRequest.pieceList.map(piece => ({
+            item: {
+              type: piece.type || 'PACKAGE',
+              weight: piece.weight,
+              width: piece.width,
+              height: piece.height,
+              length: piece.length,
+              quantity: piece.quantity || 1,
+              nonStandard: piece.nonStandard || false
+            }
+          }))
+        }
+      };
+
+      const [result] = await client.getPriceAsync(params);
+      
+      if (result?.price !== undefined) {
+        const priceResult = {
+          success: true,
+          price: result.price,
+          fuelSurcharge: result.fuelSurcharge || '0',
+          currency: 'PLN'
+        };
+        
+        this.setCache(cacheKey, priceResult);
+        return priceResult;
+      } else {
+        throw new Error('No price data received');
+      }
+    } catch (error) {
+      console.error('getPrice error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // ============================================================================
+  // 📍 POSTAL CODE & SERVICES METHODS
+  // ============================================================================
+
+  // 9. getPostalCodeServices - Sprawdzanie usług dla kodu pocztowego (ROZSZERZONE)
+  async getPostalCodeServices(postCode, pickupDate, city = '', street = '', houseNumber = '', apartmentNumber = '') {
+    try {
+      console.log('🔍 Checking postal code services:', postCode);
+      
+      if (!postCode || postCode.length !== 5) {
+        return {
+          success: false,
+          error: 'Nieprawidłowy kod pocztowy - wymagane 5 cyfr'
+        };
+      }
+
+      const cacheKey = `postalServices_${postCode}_${pickupDate}`;
+      const cached = this.getCached(cacheKey);
+      if (cached) return cached;
+
+      if (this.isTestMode) {
+        const mockServices = {
+          success: true,
+          services: {
+            domesticExpress9: true,
+            domesticExpress12: true,
+            deliveryEvening: true,
+            pickupOnSaturday: false,
+            deliverySaturday: true,
+            exPickupFrom: '08:00',
+            exPickupTo: '16:00',
+            drPickupFrom: '08:00',
+            drPickupTo: '18:00'
+          },
+          message: 'Wszystkie standardowe usługi dostępne (TEST MODE)'
+        };
+        
+        this.setCache(cacheKey, mockServices);
+        return mockServices;
+      }
+
+      const client = await this.createSoapClient();
+
+      const params = {
+        authData: {
+          username: this.login,
+          password: this.password
+        },
+        postCode: postCode,
+        pickupDate: pickupDate,
+        ...(city && { city }),
+        ...(street && { street }),
+        ...(houseNumber && { houseNumber }),
+        ...(apartmentNumber && { apartmentNumber })
+      };
+
+      const [result] = await client.getPostalCodeServicesAsync(params);
+      
+      if (result?.getPostalCodeServicesResult) {
+        const services = result.getPostalCodeServicesResult;
+        
+        const serviceResult = {
+          success: true,
+          services: {
+            domesticExpress9: services.domesticExpress9 || false,
+            domesticExpress12: services.domesticExpress12 || false,
+            deliveryEvening: services.deliveryEvening || false,
+            pickupOnSaturday: services.pickupOnSaturday || false,
+            deliverySaturday: services.deliverySaturday || false,
+            exPickupFrom: services.exPickupFrom || null,
+            exPickupTo: services.exPickupTo || null,
+            drPickupFrom: services.drPickupFrom || null,
+            drPickupTo: services.drPickupTo || null
+          },
+          message: 'Usługi DHL sprawdzone pomyślnie'
+        };
+        
+        this.setCache(cacheKey, serviceResult);
+        return serviceResult;
+      } else {
+        return {
+          success: false,
+          error: 'Brak dostępnych usług DHL dla podanego kodu pocztowego'
+        };
+      }
+    } catch (error) {
+      console.error('getPostalCodeServices error:', error);
+      return {
+        success: false,
+        error: `Błąd sprawdzania usług: ${error.message}`
+      };
+    }
+  }
+
+  // 10. getRouting - Pobieranie tras kurierskich
+  async getRouting(routingRequest) {
+    try {
+      console.log('🗺️ Getting routing info:', routingRequest);
+      
+      if (this.isTestMode) {
+        return {
+          success: true,
+          routing: {
+            EX_PN: 'EX_ROUTE_MON',
+            EX_WT: 'EX_ROUTE_TUE', 
+            EX_SR: 'EX_ROUTE_WED',
+            EX_CZ: 'EX_ROUTE_THU',
+            EX_PT: 'EX_ROUTE_FRI',
+            EX_SO: 'EX_ROUTE_SAT',
+            DR_PN: 'DR_ROUTE_MON',
+            DR_WT: 'DR_ROUTE_TUE',
+            DR_SR: 'DR_ROUTE_WED', 
+            DR_CZ: 'DR_ROUTE_THU',
+            DR_PT: 'DR_ROUTE_FRI',
+            DR_SO: 'DR_ROUTE_SAT',
+            W_PN: 'EVENING_MON',
+            W_WT: 'EVENING_TUE',
+            W_SR: 'EVENING_WED',
+            W_CZ: 'EVENING_THU',
+            W_PT: 'EVENING_FRI'
+          }
+        };
+      }
+
+      const client = await this.createSoapClient();
+      
+      const params = {
+        getRoutingRequest: {
+          authData: {
+            username: this.login,
+            password: this.password
+          },
+          postalCode: this.cleanPostalCode(routingRequest.postalCode),
+          city: routingRequest.city,
+          street: routingRequest.street,
+          houseNumber: routingRequest.houseNumber,
+          apartmentNumber: routingRequest.apartmentNumber || ''
+        }
+      };
+
+      const [result] = await client.getRoutingAsync(params);
+      
+      return {
+        success: true,
+        routing: result || {}
+      };
+    } catch (error) {
+      console.error('getRouting error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // ============================================================================
+  // 📊 TRACKING & MONITORING METHODS
+  // ============================================================================
+
+  // 11. getTrackAndTraceInfo - Pełne śledzenie przesyłki
+  async getTrackAndTraceInfo(shipmentId) {
+    try {
+      console.log('📊 Getting tracking info:', shipmentId);
+      
+      if (this.isTestMode) {
+        return {
+          success: true,
+          shipmentId: shipmentId,
+          receivedBy: 'Jan Kowalski',
+          events: [
+            {
+              timestamp: new Date(Date.now() - 86400000).toISOString(),
+              description: 'Przesyłka została odebrana od nadawcy',
+              location: 'Białystok',
+              status: 'PICKED_UP'
+            },
+            {
+              timestamp: new Date(Date.now() - 43200000).toISOString(), 
+              description: 'Przesyłka w transporcie',
+              location: 'Warszawa Hub',
+              status: 'IN_TRANSIT'
+            },
+            {
+              timestamp: new Date().toISOString(),
+              description: 'Przesyłka dostarczona',
+              location: 'Warszawa',
+              status: 'DELIVERED'
+            }
+          ]
+        };
+      }
+
+      const client = await this.createSoapClient();
+      
+      const params = {
+        authData: {
+          username: this.login,
+          password: this.password
+        },
+        shipmentId: shipmentId
+      };
+
+      const [result] = await client.getTrackAndTraceInfoAsync(params);
+      
+      if (result) {
+        return {
+          success: true,
+          shipmentId: result.shipmentId,
+          receivedBy: result.receivedBy || '',
+          events: result.events || []
+        };
+      } else {
+        throw new Error('No tracking data available');
+      }
+    } catch (error) {
+      console.error('getTrackAndTraceInfo error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // ============================================================================
+  // 🗑️ MANAGEMENT METHODS
+  // ============================================================================
+
+  // 12. deleteShipments - Usuwanie przesyłek
+  async deleteShipments(shipmentIds) {
+    try {
+      console.log('🗑️ Deleting shipments:', shipmentIds);
+      
+      if (this.isTestMode) {
+        return {
+          success: true,
+          deletedShipments: shipmentIds,
+          message: 'Przesyłki usunięte w trybie testowym'
+        };
+      }
+
+      const client = await this.createSoapClient();
+      
+      const params = {
+        authData: {
+          username: this.login,
+          password: this.password
+        },
+        shipments: shipmentIds.map(id => ({ item: id }))
+      };
+
+      const [result] = await client.deleteShipmentsAsync(params);
+      
+      if (result?.shipments) {
+        return {
+          success: true,
+          deletedShipments: result.shipments,
+          message: 'Przesyłki zostały usunięte'
+        };
+      } else {
+        throw new Error('Failed to delete shipments');
+      }
+    } catch (error) {
+      console.error('deleteShipments error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // ============================================================================
+  // 🔧 EXISTING METHODS (Enhanced)
+  // ============================================================================
+
   prepareCreateShipmentsData(shipmentData, notes) {
     const shipperAddress = this.parseAddress(notes.nadawca?.adres || '');
     const receiverAddress = this.parseAddress(shipmentData.recipient_address);
     const piece = this.extractPieceInfo(shipmentData.package_description, notes.przesylka);
 
-    // POPRAWKA: Wyczyść kody pocztowe - tylko cyfry!
     const shipperPostcode = this.cleanPostalCode(shipperAddress.postcode || '15169');
     const receiverPostcode = this.cleanPostalCode(receiverAddress.postcode || '24100');
 
-    console.log('FIXED Shipper postal code:', shipperAddress.postcode, '->', shipperPostcode);
-    console.log('FIXED Receiver postal code:', receiverAddress.postcode, '->', receiverPostcode);
-
-    // STRUKTURA ZGODNA Z DOKUMENTACJĄ DHL WebAPI2
     return {
       authData: {
         username: this.login,
@@ -198,10 +887,9 @@ class DHLApiService {
       shipments: {
         item: [
           {
-            // SHIPPER - nadawca (zgodnie z dokumentacją)
             shipper: {
               name: notes.nadawca?.nazwa || 'Grupa Eltron Sp. z o.o.',
-              postalCode: shipperPostcode, // ← TYLKO CYFRY!
+              postalCode: shipperPostcode,
               city: shipperAddress.city || 'Białystok',
               street: shipperAddress.street || 'Wysockiego',
               houseNumber: shipperAddress.houseNumber || '69B',
@@ -210,15 +898,11 @@ class DHLApiService {
               contactPhone: this.cleanPhoneNumber(notes.nadawca?.telefon || '857152705'),
               contactEmail: notes.nadawca?.email || 'bialystok@grupaeltron.pl'
             },
-            
-            // RECEIVER - odbiorca - POPRAWIONA STRUKTURA
             receiver: {
-              // DODANE: Wymagane pola dla przesyłek krajowych
               country: 'PL',
-              addressType: 'B', // B = Business, C = Consumer
-              
+              addressType: 'B',
               name: shipmentData.recipient_name,
-              postalCode: receiverPostcode, // ← TYLKO CYFRY!
+              postalCode: receiverPostcode,
               city: receiverAddress.city || 'Warszawa',
               street: receiverAddress.street || 'Testowa',
               houseNumber: receiverAddress.houseNumber || '1',
@@ -227,8 +911,6 @@ class DHLApiService {
               contactPhone: this.cleanPhoneNumber(shipmentData.recipient_phone),
               contactEmail: notes.odbiorca?.email || ''
             },
-            
-            // PIECE LIST - lista paczek (zgodnie z dokumentacją)
             pieceList: {
               item: [
                 {
@@ -242,22 +924,16 @@ class DHLApiService {
                 }
               ]
             },
-            
-            // PAYMENT - płatność (zgodnie z dokumentacją)
             payment: {
               paymentMethod: 'BANK_TRANSFER',
               payerType: 'SHIPPER',
               accountNumber: parseInt(this.accountNumber)
             },
-            
-            // SERVICE - usługa (zgodnie z dokumentacją)
             service: {
-              product: 'AH', // Przesyłka krajowa
+              product: 'AH',
               deliveryEvening: false
             },
-            
-            // INNE POLA (zgodnie z dokumentacją)
-            shipmentDate: new Date().toISOString().split('T')[0], // YYYY-MM-DD
+            shipmentDate: new Date().toISOString().split('T')[0],
             content: this.extractContentFromDescription(shipmentData.package_description) || 'Przesyłka',
             comment: notes.przesylka?.uwagi || '',
             reference: `ORDER_${shipmentData.id}`,
@@ -268,70 +944,32 @@ class DHLApiService {
     };
   }
 
-  // WYWOŁANIE createShipments zgodnie z dokumentacją
   async callCreateShipments(shipmentParams) {
     try {
-      if (!soap) {
-        throw new Error('Biblioteka SOAP nie jest dostępna');
-      }
-
-      console.log('Creating SOAP client for WebAPI2:', this.wsdlUrl);
-      
-      const client = await soap.createClientAsync(this.wsdlUrl, {
-        timeout: 30000,
-        disableCache: true
-      });
-      
-      console.log('WebAPI2 client created successfully');
-      console.log('Available methods:', Object.keys(client).filter(key => key.includes('createShipments')));
-      
-      console.log('=== WYSYŁANE DANE DO DHL createShipments ===');
-      console.log('Params:', JSON.stringify(shipmentParams, null, 2));
-      console.log('=== KONIEC WYSYŁANYCH DANYCH ===');
-
-      // WYWOŁAJ createShipments (zgodnie z dokumentacją WebAPI2)
+      const client = await this.createSoapClient();
       const [result] = await client.createShipmentsAsync(shipmentParams);
       
-      console.log('=== PEŁNA ODPOWIEDŹ Z DHL createShipments ===');
-      console.log('Raw result:', JSON.stringify(result, null, 2));
-      console.log('=== KONIEC ODPOWIEDZI ===');
+      console.log('DHL createShipments result:', JSON.stringify(result, null, 2));
       
-      // SPRAWDŹ STRUKTURĘ ODPOWIEDZI (zgodnie z dokumentacją)
-      if (result && result.createShipmentsResult) {
-        const shipmentsResult = result.createShipmentsResult;
+      if (result?.createShipmentsResult?.item?.[0]?.shipmentId) {
+        const shipment = result.createShipmentsResult.item[0];
         
-        if (shipmentsResult.item && shipmentsResult.item.length > 0) {
-          const shipment = shipmentsResult.item[0];
-          
-          if (shipment.shipmentId) {
-            return {
-              success: true,
-              shipmentNumber: shipment.shipmentId,
-              trackingNumber: shipment.shipmentId,
-              labelUrl: null,
-              labelContent: null,
-              dispatchNumber: null,
-              cost: 'Nieznany',
-              data: shipment
-            };
-          }
-        }
-      }
-      
-      // Sprawdź czy jest informacja o błędzie
-      if (result && (result.error || result.errors)) {
-        throw new Error(`DHL WebAPI2 Error: ${result.error || result.errors}`);
+        return {
+          success: true,
+          shipmentNumber: shipment.shipmentId,
+          trackingNumber: shipment.shipmentId,
+          labelUrl: null,
+          labelContent: null,
+          dispatchNumber: null,
+          cost: 'Nieznany',
+          data: shipment
+        };
       }
       
       throw new Error(`DHL WebAPI2 zwróciło nieoczekiwaną strukturę: ${JSON.stringify(result)}`);
       
     } catch (error) {
       console.error('DHL WebAPI2 createShipments Error:', error);
-      
-      if (error.body) {
-        console.error('SOAP Error Body:', error.body);
-      }
-      
       return {
         success: false,
         error: `DHL WebAPI2 Error: ${error.message}`
@@ -339,7 +977,28 @@ class DHLApiService {
     }
   }
 
-  // METODA TESTOWA zgodna z dokumentacją - POPRAWIONA
+  extractPieceInfo(packageDescription, przesylka) {
+    const wymiary = przesylka?.wymiary || {};
+    
+    return {
+      type: 'PACKAGE',
+      width: parseInt(wymiary.szerokosc) || 10,
+      height: parseInt(wymiary.wysokosc) || 10,
+      length: parseInt(wymiary.dlugosc) || 10,
+      weight: parseFloat(przesylka?.waga) || 1,
+      quantity: parseInt(przesylka?.ilosc) || 1
+    };
+  }
+
+  extractContentFromDescription(description) {
+    if (!description) return 'Przesyłka';
+    return description.split('|')[0]?.trim() || 'Przesyłka';
+  }
+
+  // ============================================================================
+  // 🧪 TESTING & DIAGNOSTICS
+  // ============================================================================
+
   async testCreateShipments() {
     try {
       console.log('=== TESTOWANIE createShipments WebAPI2 ===');
@@ -348,12 +1007,8 @@ class DHLApiService {
         return { success: false, error: 'SOAP not available' };
       }
 
-      const client = await soap.createClientAsync(this.wsdlUrl, {
-        timeout: 30000,
-        disableCache: true
-      });
+      const client = await this.createSoapClient();
 
-      // POPRAWIONA STRUKTURA z kodami pocztowymi TYLKO w cyfrach
       const testParams = {
         authData: {
           username: this.login,
@@ -364,7 +1019,7 @@ class DHLApiService {
             {
               shipper: {
                 name: "Grupa Eltron Test",
-                postalCode: "15169", // ← POPRAWIONY: tylko cyfry!
+                postalCode: "15169",
                 city: "Białystok",
                 street: "Wysockiego",
                 houseNumber: "69B",
@@ -375,9 +1030,8 @@ class DHLApiService {
               receiver: {
                 country: "PL",
                 addressType: "B",
-                
                 name: "Test Receiver",
-                postalCode: "24100", // ← POPRAWIONY: tylko cyfry!
+                postalCode: "24100",
                 city: "Puławy", 
                 street: "Wróblewskiego",
                 houseNumber: "7",
@@ -417,14 +1071,8 @@ class DHLApiService {
         }
       };
 
-      console.log('=== createShipments TEST PARAMS ===');
-      console.log(JSON.stringify(testParams, null, 2));
-
       const [result] = await client.createShipmentsAsync(testParams);
       
-      console.log('=== createShipments TEST RESULT ===');
-      console.log(JSON.stringify(result, null, 2));
-
       const isSuccess = result?.createShipmentsResult?.item?.[0]?.shipmentId ? true : false;
 
       return {
@@ -443,171 +1091,15 @@ class DHLApiService {
     }
   }
 
-  // POPRAWIONA METODA: Czyszczenie kodów pocztowych - TYLKO CYFRY!
-  cleanPostalCode(postcode) {
-    if (!postcode) return '';
-    
-    // Usuń wszystko oprócz cyfr
-    let cleaned = postcode.toString().replace(/[^\d]/g, '');
-    
-    console.log('Cleaning postal code:', postcode, '->', cleaned);
-    
-    // DHL WebAPI2 wymaga TYLKO cyfr (bez myślników!)
-    if (cleaned.length === 5) {
-      return cleaned; // ← Zwróć same cyfry!
-    }
-    
-    // Jeśli już ma prawidłowy format (tylko cyfry)
-    if (postcode && postcode.match(/^\d{5}$/)) {
-      return postcode;
-    }
-    
-    console.warn('Invalid postal code format:', postcode, 'using default');
-    return '00001'; // Domyślny dla testów (same cyfry)
-  }
-
-  // POPRAWIONA METODA parseAddress - usuwa myślniki
-  parseAddress(addressString) {
-    if (!addressString) return {};
-    
-    const parts = addressString.split(',').map(p => p.trim());
-    const postcodeMatch = addressString.match(/(\d{2}-?\d{3})/); // Znajdź kod z lub bez myślnika
-    
-    const streetPart = parts[0] || '';
-    const cityPart = parts[parts.length - 1] || '';
-    
-    const streetMatch = streetPart.match(/^(.+?)[\s]+([0-9]+[A-Za-z]*)(\/([0-9]+))?$/);
-    const street = streetMatch ? streetMatch[1] : streetPart;
-    const houseNumber = streetMatch ? streetMatch[2] : '';
-    const apartmentNumber = streetMatch ? streetMatch[4] : '';
-    
-    const city = cityPart.replace(/\d{2}-?\d{3}\s*/, '').trim();
-    
-    // POPRAWKA: Wyczyść kod pocztowy z myślników
-    let postcode = '';
-    if (postcodeMatch) {
-      postcode = postcodeMatch[1].replace(/[^\d]/g, ''); // Usuń myślniki!
-    }
-    
-    return {
-      street: street,
-      houseNumber: houseNumber,
-      apartmentNumber: apartmentNumber,
-      postcode: postcode, // Same cyfry!
-      city: city
-    };
-  }
-
-  extractPieceInfo(packageDescription, przesylka) {
-    const wymiary = przesylka?.wymiary || {};
-    
-    return {
-      type: 'PACKAGE',
-      width: parseInt(wymiary.szerokosc) || 10,
-      height: parseInt(wymiary.wysokosc) || 10,
-      length: parseInt(wymiary.dlugosc) || 10,
-      weight: parseFloat(przesylka?.waga) || 1,
-      quantity: parseInt(przesylka?.ilosc) || 1
-    };
-  }
-
-  extractContentFromDescription(description) {
-    if (!description) return 'Przesyłka';
-    return description.split('|')[0]?.trim() || 'Przesyłka';
-  }
-
-  cleanPhoneNumber(phone) {
-    if (!phone) return '';
-    // DHL wymaga 9 cyfr bez prefiksu (zgodnie z dokumentacją FAQ)
-    let cleaned = phone.replace(/[^\d]/g, '');
-    if (cleaned.startsWith('48')) {
-      cleaned = cleaned.substring(2);
-    }
-    if (cleaned.startsWith('0')) {
-      cleaned = cleaned.substring(1);
-    }
-    return cleaned.substring(0, 9); // Maksymalnie 9 cyfr
-  }
-
-  // Anulowanie przesyłki
-  async cancelShipment(shipmentNumber) {
-    try {
-      console.log('Cancelling DHL shipment (WebAPI2):', shipmentNumber);
-      
-      if (this.isTestMode) {
-        console.log('TEST MODE: Simulating successful cancellation');
-        return { success: true };
-      }
-
-      const client = await soap.createClientAsync(this.wsdlUrl, {
-        timeout: 30000,
-        disableCache: true
-      });
-      
-      const params = {
-        authData: {
-          username: this.login,
-          password: this.password
-        },
-        shipmentIdList: [shipmentNumber]
-      };
-
-      const [result] = await client.deleteShipmentsAsync(params);
-      
-      if (result && result.deleteShipmentsResult) {
-        return { success: true };
-      } else {
-        throw new Error('Anulowanie nie powiodło się');
-      }
-    } catch (error) {
-      console.error('DHL cancellation error:', error);
-      return {
-        success: false,
-        error: error.message
-      };
-    }
-  }
-
-  // Śledzenie przesyłek
+  // BACKWARD COMPATIBILITY METHODS
   async getShipmentStatus(trackingNumber) {
-    try {
-      console.log('Tracking DHL shipment:', trackingNumber);
-      
-      if (this.isTestMode) {
-        console.log('TEST MODE: Simulating tracking data');
-        return {
-          success: true,
-          status: 'IN_TRANSIT',
-          events: [
-            {
-              status: 'PICKED_UP',
-              timestamp: new Date(Date.now() - 86400000).toISOString(),
-              location: 'Białystok'
-            },
-            {
-              status: 'IN_TRANSIT',
-              timestamp: new Date().toISOString(),
-              location: 'Warszawa'
-            }
-          ],
-          estimatedDelivery: new Date(Date.now() + 86400000).toISOString()
-        };
-      }
-
-      return {
-        success: false,
-        error: 'Śledzenie przesyłek nie jest jeszcze zaimplementowane dla WebAPI2'
-      };
-    } catch (error) {
-      console.error('DHL tracking error:', error);
-      return {
-        success: false,
-        error: error.message
-      };
-    }
+    return await this.getTrackAndTraceInfo(trackingNumber);
   }
 
-  // BACKWARD COMPATIBILITY
+  async cancelShipment(shipmentNumber) {
+    return await this.deleteShipments([shipmentNumber]);
+  }
+
   async testDHLConnection() {
     return await this.testCreateShipments();
   }
