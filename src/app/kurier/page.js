@@ -1,411 +1,507 @@
+// src/app/kurier/page.js
 'use client'
-import { useState, useEffect, useCallback } from 'react'
-import Link from 'next/link'
-import { Archive, Package, Plus } from 'lucide-react'
-import KurierForm from './components/KurierForm'
-import ZamowieniaList from './components/ZamowieniaList'
-import KurierStats from './components/KurierStats'
-import KurierFilters from './components/KurierFilters'
+import React, { useState, useEffect } from 'react'
+import { 
+  Package, Plus, RefreshCw, Filter, Download, Archive, 
+  CheckCircle, AlertCircle, Clock, Truck, Eye, Search,
+  Calendar, BarChart3, Settings, Bell, Mail, User
+} from 'lucide-react'
+
+// Import komponentów (z fallback jeśli nie istnieją)
+let KurierForm, ZamowieniaList, KurierStats, AdvancedComponents
+
+try {
+  KurierForm = require('./components/KurierForm').default
+} catch (error) {
+  console.warn('KurierForm component not found, using fallback')
+  KurierForm = ({ onSubmit, onCancel }) => (
+    <div className="bg-white p-6 rounded-lg shadow">
+      <h3 className="text-lg font-semibold mb-4">Formularz zamówienia kuriera</h3>
+      <p className="text-gray-600 mb-4">Komponent formularza w przygotowaniu...</p>
+      <div className="flex space-x-2">
+        <button 
+          onClick={onCancel}
+          className="px-4 py-2 text-gray-600 border rounded hover:bg-gray-50"
+        >
+          Anuluj
+        </button>
+        <button 
+          onClick={() => onSubmit({ test: true })}
+          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+        >
+          Test Submit
+        </button>
+      </div>
+    </div>
+  )
+}
+
+try {
+  ZamowieniaList = require('./components/ZamowieniaList').default
+} catch (error) {
+  console.warn('ZamowieniaList component not found, using fallback')
+  ZamowieniaList = ({ zamowienia, loading }) => (
+    <div className="bg-white p-6 rounded-lg shadow">
+      <h3 className="text-lg font-semibold mb-4">Lista zamówień</h3>
+      {loading ? (
+        <div className="text-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-2 text-gray-600">Ładowanie zamówień...</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {zamowienia?.length > 0 ? (
+            zamowienia.map((zamowienie, index) => (
+              <div key={zamowienie.id || index} className="p-3 border rounded">
+                <div className="flex justify-between items-center">
+                  <span className="font-medium">
+                    Zamówienie #{zamowienie.id}
+                  </span>
+                  <span className={`px-2 py-1 rounded text-xs ${
+                    zamowienie.status === 'new' ? 'bg-blue-100 text-blue-800' :
+                    zamowienie.status === 'approved' ? 'bg-green-100 text-green-800' :
+                    zamowienie.status === 'sent' ? 'bg-yellow-100 text-yellow-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>
+                    {zamowienie.status}
+                  </span>
+                </div>
+                <p className="text-sm text-gray-600 mt-1">
+                  Do: {zamowienie.recipient_city || 'Brak danych'}
+                </p>
+              </div>
+            ))
+          ) : (
+            <p className="text-gray-500 text-center py-8">Brak zamówień</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+try {
+  KurierStats = require('./components/KurierStats').default
+} catch (error) {
+  console.warn('KurierStats component not found, using fallback')
+  KurierStats = ({ isArchive, refreshTrigger }) => (
+    <div className="bg-white p-6 rounded-lg shadow">
+      <h3 className="text-lg font-semibold mb-4">Statystyki</h3>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-blue-50 p-4 rounded text-center">
+          <Package className="w-8 h-8 text-blue-600 mx-auto mb-2" />
+          <div className="text-2xl font-bold text-blue-700">-</div>
+          <div className="text-sm text-blue-600">Aktywne</div>
+        </div>
+        <div className="bg-green-50 p-4 rounded text-center">
+          <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
+          <div className="text-2xl font-bold text-green-700">-</div>
+          <div className="text-sm text-green-600">Ukończone</div>
+        </div>
+        <div className="bg-yellow-50 p-4 rounded text-center">
+          <Clock className="w-8 h-8 text-yellow-600 mx-auto mb-2" />
+          <div className="text-2xl font-bold text-yellow-700">-</div>
+          <div className="text-sm text-yellow-600">W trakcie</div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function KurierPage() {
+  // Stan główny
+  const [activeView, setActiveView] = useState('active') // 'active', 'archive', 'new'
   const [zamowienia, setZamowienia] = useState([])
-  const [filteredZamowienia, setFilteredZamowienia] = useState([])
-  const [userRole, setUserRole] = useState(null)
-  const [userName, setUserName] = useState('')
-  const [showForm, setShowForm] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [userRole, setUserRole] = useState(null)
+  const [canApprove, setCanApprove] = useState(false)
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [processingOrders, setProcessingOrders] = useState(new Set())
-  const [filters, setFilters] = useState({
-    zleca: 'wszystkie',
-    status: 'nowe',
-    dataOd: '',
-    dataDo: '',
-    szukaj: '',
-    sortowanie: 'data_desc'
-  })
 
-  // Pobierz dane użytkownika i zamówienia przy ładowaniu
+  // Stan filtrów i wyszukiwania
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [showFilters, setShowFilters] = useState(false)
+
+  // Stan formularza
+  const [showForm, setShowForm] = useState(false)
+
+  // Stan statystyk
+  const [stats, setStats] = useState(null)
+  const [statsLoading, setStatsLoading] = useState(false)
+
+  // Pobierz rolę użytkownika
   useEffect(() => {
-    fetchUserData()
-    fetchZamowienia()
+    fetchUserRole()
   }, [])
 
-  const fetchUserData = async () => {
+  // Pobierz zamówienia gdy zmienia się widok lub filtr
+  useEffect(() => {
+    fetchZamowienia()
+  }, [activeView, statusFilter, refreshTrigger])
+
+  // Pobierz statystyki
+  useEffect(() => {
+    fetchStats()
+  }, [activeView, refreshTrigger])
+
+  const fetchUserRole = async () => {
     try {
-      const response = await fetch('/api/user')
-      const data = await response.json()
+      const response = await fetch('/api/auth/session', {
+        credentials: 'include'
+      })
       
-      if (data.isAuthenticated && data.user) {
-        setUserRole(data.user.role)
-        setUserName(data.user.name)
+      if (response.ok) {
+        const data = await response.json()
+        setUserRole(data.user?.role)
+        setCanApprove(data.user?.role === 'admin' || data.user?.role?.includes('magazyn'))
       }
     } catch (error) {
-      console.error('Błąd pobierania danych użytkownika:', error)
+      console.error('Error fetching user role:', error)
     }
   }
 
-  // Funkcja filtrowania zamówień
-  const applyFilters = useCallback((zamowieniaList, currentFilters) => {
-    let filtered = [...zamowieniaList]
+  const fetchZamowienia = async () => {
+    setLoading(true)
+    setError(null)
+    
+    try {
+      // Ustaw parametr statusu na podstawie aktywnego widoku
+      let statusParam = 'active'
+      if (activeView === 'archive') {
+        statusParam = 'completed'
+      } else if (activeView === 'all') {
+        statusParam = 'all'
+      }
 
-    if (currentFilters.zleca !== 'wszystkie') {
-      filtered = filtered.filter(z => {
-        try {
-          const notes = JSON.parse(z.notes || '{}')
-          const typZlecenia = notes.typZlecenia || ''
-          
-          switch (currentFilters.zleca) {
-            case 'nadawca':
-              return typZlecenia.includes('nadawca_')
-            case 'trzecia_strona':
-              return typZlecenia === 'trzecia_strona'
-            case 'odbiorca':
-              return typZlecenia.includes('odbiorca_')
-            default:
-              return true
-          }
-        } catch (error) {
-          return true
+      const url = `/api/kurier?status=${statusParam}&limit=50&offset=0`
+      console.log('🔍 Pobieranie zamówień:', url)
+
+      const response = await fetch(url, {
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
         }
       })
-    }
 
-    if (currentFilters.status === 'nowe') {
-      filtered = filtered.filter(z => z.status === 'new')
-    }
-
-    if (currentFilters.szukaj) {
-      const searchTerm = currentFilters.szukaj.toLowerCase()
-      filtered = filtered.filter(z => {
-        const notes = JSON.parse(z.notes || '{}')
-        return (
-          z.recipient_name?.toLowerCase().includes(searchTerm) ||
-          z.recipient_address?.toLowerCase().includes(searchTerm) ||
-          z.package_description?.toLowerCase().includes(searchTerm) ||
-          notes.przesylka?.mpk?.toLowerCase().includes(searchTerm) ||
-          z.created_by_email?.toLowerCase().includes(searchTerm)
-        )
-      })
-    }
-
-    if (currentFilters.dataOd) {
-      const dataOd = new Date(currentFilters.dataOd)
-      filtered = filtered.filter(z => new Date(z.created_at) >= dataOd)
-    }
-
-    if (currentFilters.dataDo) {
-      const dataDo = new Date(currentFilters.dataDo)
-      dataDo.setHours(23, 59, 59)
-      filtered = filtered.filter(z => new Date(z.created_at) <= dataDo)
-    }
-
-    filtered.sort((a, b) => {
-      switch (currentFilters.sortowanie) {
-        case 'data_asc':
-          return new Date(a.created_at) - new Date(b.created_at)
-        case 'data_desc':
-          return new Date(b.created_at) - new Date(a.created_at)
-        case 'nazwa_asc':
-          return a.recipient_name.localeCompare(b.recipient_name)
-        case 'nazwa_desc':
-          return b.recipient_name.localeCompare(a.recipient_name)
-        default:
-          return new Date(b.created_at) - new Date(a.created_at)
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
-    })
 
-    return filtered
-  }, [])
-
-  const handleFiltersChange = useCallback((newFilters) => {
-    setFilters(newFilters)
-    const filtered = applyFilters(zamowienia, newFilters)
-    setFilteredZamowienia(filtered)
-  }, [zamowienia, applyFilters])
-
-  // Pobierz zamówienia
-  const fetchZamowienia = async () => {
-    try {
-      setLoading(true)
-      const response = await fetch('/api/kurier?status=active')
       const data = await response.json()
       
       if (data.success) {
-        console.log('Pobrano zamówienia:', data.zamowienia.length)
-        setZamowienia(data.zamowienia)
-        const filtered = applyFilters(data.zamowienia, filters)
-        setFilteredZamowienia(filtered)
-        setError(null)
+        setZamowienia(data.zamowienia || [])
+        console.log(`✅ Pobrano ${data.zamowienia?.length || 0} zamówień`)
       } else {
-        setError(data.error)
-        setZamowienia([])
-        setFilteredZamowienia([])
+        throw new Error(data.error || 'Błąd pobierania zamówień')
       }
     } catch (error) {
-      console.error('Błąd pobierania zamówień:', error)
-      setError('Nie udało się pobrać zamówień kurierskich')
+      console.error('❌ Error fetching orders:', error)
+      setError(error.message)
       setZamowienia([])
-      setFilteredZamowienia([])
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => {
-    if (zamowienia.length > 0) {
-      const filtered = applyFilters(zamowienia, filters)
-      setFilteredZamowienia(filtered)
-    }
-  }, [zamowienia, filters, applyFilters])
-
-  // Dodawanie zamówienia
-  const handleDodajZamowienie = async (noweZamowienie) => {
+  const fetchStats = async () => {
+    setStatsLoading(true)
+    
     try {
-      setLoading(true)
-      console.log('Dodawanie nowego zamówienia:', noweZamowienie)
-      
+      const response = await fetch('/api/kurier/stats', {
+        credentials: 'include'
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          setStats(data.stats)
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching stats:', error)
+    } finally {
+      setStatsLoading(false)
+    }
+  }
+
+  const handleCreateOrder = async (orderData) => {
+    try {
       const response = await fetch('/api/kurier', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          ...noweZamowienie,
-          magazynZamawiajacy: userRole
-        }),
+        credentials: 'include',
+        body: JSON.stringify(orderData),
       })
 
       const data = await response.json()
-      
+
       if (data.success) {
-        console.log('Zamówienie dodane pomyślnie, ID:', data.id)
-        await fetchZamowienia()
         setShowForm(false)
-        alert('Zamówienie kurierskie zostało dodane pomyślnie!')
+        setRefreshTrigger(prev => prev + 1)
+        alert('Zamówienie zostało utworzone pomyślnie!')
       } else {
-        console.error('Błąd dodawania zamówienia:', data.error)
-        alert('Błąd: ' + data.error)
+        alert('Błąd: ' + (data.error || 'Nie udało się utworzyć zamówienia'))
       }
     } catch (error) {
-      console.error('Błąd dodawania zamówienia:', error)
-      alert('Wystąpił błąd podczas dodawania zamówienia')
-    } finally {
-      setLoading(false)
+      console.error('Error creating order:', error)
+      alert('Błąd połączenia z serwerem')
     }
   }
 
-  // Zatwierdzanie zamówienia
-  const handleZatwierdzZamowienie = async (zamowienieId) => {
-    if (processingOrders.has(zamowienieId)) {
-      console.warn(`⚠️ Zamówienie ${zamowienieId} jest już przetwarzane, ignoruję żądanie`)
-      return
-    }
-
+  const handleApproveOrder = async (orderId) => {
+    setProcessingOrders(prev => new Set([...prev, orderId]))
+    
     try {
-      setProcessingOrders(prev => new Set([...prev, zamowienieId]))
-      
-      console.log(`🚀 Rozpoczynam zatwierdzanie zamówienia: ${zamowienieId}`)
-      
-      const response = await fetch(`/api/kurier/${zamowienieId}`, {
+      const response = await fetch(`/api/kurier/${orderId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          status: 'approved'
-        }),
+        credentials: 'include',
+        body: JSON.stringify({ status: 'approved' }),
       })
 
       const data = await response.json()
-      
+
       if (data.success) {
-        console.log(`✅ Zamówienie ${zamowienieId} zatwierdzone:`, data)
-        await fetchZamowienia()
-        
-        if (data.dhlStatus === 'sent') {
-          alert('Zamówienie zostało zatwierdzone i wysłane do DHL! 🚚')
-        } else {
-          alert('Zamówienie zostało zatwierdzone. ' + (data.message || ''))
-        }
+        setRefreshTrigger(prev => prev + 1)
+        alert('Zamówienie zostało zatwierdzone!')
       } else {
-        console.error(`❌ Błąd zatwierdzania zamówienia ${zamowienieId}:`, data.error)
-        alert('Błąd: ' + data.error)
+        alert('Błąd: ' + (data.error || 'Nie udało się zatwierdzić zamówienia'))
       }
     } catch (error) {
-      console.error(`💥 Błąd zatwierdzania zamówienia ${zamowienieId}:`, error)
-      alert('Wystąpił błąd podczas zatwierdzania zamówienia')
+      console.error('Error approving order:', error)
+      alert('Błąd połączenia z serwerem')
     } finally {
-      setTimeout(() => {
-        setProcessingOrders(prev => {
-          const newSet = new Set(prev)
-          newSet.delete(zamowienieId)
-          return newSet
-        })
-      }, 5000)
+      setProcessingOrders(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(orderId)
+        return newSet
+      })
     }
   }
 
-  // Usuwanie zamówienia
-  const handleUsunZamowienie = async (zamowienieId) => {
-    if (!confirm('Czy na pewno chcesz usunąć to zamówienie? Jeśli ma numer DHL, zostanie także anulowane.')) {
+  const handleDeleteOrder = async (orderId) => {
+    if (!confirm('Czy na pewno chcesz usunąć to zamówienie?')) {
       return
     }
 
+    setProcessingOrders(prev => new Set([...prev, orderId]))
+    
     try {
-      console.log('Usuwanie zamówienia:', zamowienieId)
-      
-      const response = await fetch(`/api/kurier/${zamowienieId}`, {
-        method: 'DELETE'
+      const response = await fetch(`/api/kurier/${orderId}`, {
+        method: 'DELETE',
+        credentials: 'include'
       })
 
       const data = await response.json()
-      
+
       if (data.success) {
-        console.log('Zamówienie usunięte pomyślnie')
-        await fetchZamowienia()
-        alert('Zamówienie zostało usunięte!')
+        setRefreshTrigger(prev => prev + 1)
+        alert('Zamówienie zostało usunięte')
       } else {
-        console.error('Błąd usuwania:', data.error)
-        alert('Błąd: ' + data.error)
+        alert('Błąd: ' + (data.error || 'Nie udało się usunąć zamówienia'))
       }
     } catch (error) {
-      console.error('Błąd usuwania zamówienia:', error)
-      alert('Wystąpił błąd podczas usuwania zamówienia')
+      console.error('Error deleting order:', error)
+      alert('Błąd połączenia z serwerem')
+    } finally {
+      setProcessingOrders(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(orderId)
+        return newSet
+      })
     }
   }
 
-  // Sprawdź uprawnienia
-  const canAddOrder = userRole === 'handlowiec' || userRole === 'admin' || userRole?.includes('magazyn')
-  const canApprove = userRole === 'admin' || userRole?.includes('magazyn')
-  
-  if (loading && zamowienia.length === 0) {
-    return (
-      <div className="max-w-6xl mx-auto p-6">
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-          <span className="ml-3 text-gray-600">Ładowanie...</span>
-        </div>
-      </div>
-    )
-  }
+  const filteredZamowienia = zamowienia.filter(zamowienie => {
+    // Filtruj według wyszukiwania
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
+      const matchesSearch = 
+        zamowienie.recipient_name?.toLowerCase().includes(query) ||
+        zamowienie.recipient_city?.toLowerCase().includes(query) ||
+        zamowienie.id?.toString().includes(query)
+      
+      if (!matchesSearch) return false
+    }
+
+    // Filtruj według statusu
+    if (statusFilter !== 'all' && zamowienie.status !== statusFilter) {
+      return false
+    }
+
+    return true
+  })
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      {/* Nagłówek */}
-      <div className="mb-8">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              Moduł kuriera
-            </h1>
-            <p className="text-gray-600 mt-2">
-              Zarządzaj zamówieniami kurierskimi z integracją DHL
-            </p>
-          </div>
-          <div className="flex space-x-4">
-            {/* Link do archiwum */}
-            <Link
-              href="/archiwum-kurier"
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg shadow hover:bg-gray-200 flex items-center space-x-2 transition-all"
-            >
-              <Archive size={20} />
-              <span>Archiwum</span>
-            </Link>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 flex items-center">
+                <Package className="mr-3" size={32} />
+                System Kurierski
+              </h1>
+              <p className="mt-1 text-gray-600">
+                Zarządzanie zamówieniami kurierskimi DHL
+              </p>
+            </div>
             
-            {/* Przycisk nowego zamówienia */}
-            {canAddOrder && (
+            <div className="flex space-x-3">
               <button
-                onClick={() => setShowForm(!showForm)}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 flex items-center space-x-2 transition-all"
+                onClick={() => setRefreshTrigger(prev => prev + 1)}
+                disabled={loading}
+                className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
               >
-                <Plus size={20} />
-                <span>{showForm ? 'Anuluj' : 'Nowe zamówienie'}</span>
+                <RefreshCw className={`mr-2 ${loading ? 'animate-spin' : ''}`} size={16} />
+                Odśwież
               </button>
-            )}
-          </div>
-        </div>
-
-        {/* Nagłówek z ikoną */}
-        <div className="border-b border-gray-200 pb-4">
-          <div className="flex items-center space-x-3">
-            <Package className="w-8 h-8 text-blue-600" />
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900">
-                Zamówienia kurierskie
-              </h2>
-              {zamowienia.length > 0 && (
-                <span className="text-sm text-gray-500">
-                  {zamowienia.length} {zamowienia.length === 1 ? 'zamówienie' : 'zamówień'}
-                </span>
-              )}
+              
+              <button
+                onClick={() => setShowForm(true)}
+                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                <Plus className="mr-2" size={16} />
+                Nowe zamówienie
+              </button>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Statystyki */}
-      <KurierStats isArchive={false} />
+        {/* Statystyki */}
+        <div className="mb-8">
+          <KurierStats 
+            isArchive={activeView === 'archive'} 
+            refreshTrigger={refreshTrigger}
+          />
+        </div>
 
-      {/* Filtry */}
-      <div className="mb-6">
-        <KurierFilters 
-          onFiltersChange={handleFiltersChange}
-          isArchive={false}
-        />
-      </div>
+        {/* Nawigacja widoków */}
+        <div className="mb-6">
+          <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg w-fit">
+            <button
+              onClick={() => setActiveView('active')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeView === 'active'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Clock className="inline-block mr-2" size={16} />
+              Aktywne ({stats?.activeCount || 0})
+            </button>
+            
+            <button
+              onClick={() => setActiveView('archive')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeView === 'archive'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Archive className="inline-block mr-2" size={16} />
+              Archiwum ({stats?.archivedCount || 0})
+            </button>
+            
+            <button
+              onClick={() => setActiveView('all')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeView === 'all'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <BarChart3 className="inline-block mr-2" size={16} />
+              Wszystkie ({stats?.totalCount || 0})
+            </button>
+          </div>
+        </div>
 
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200">
-          <div className="flex items-center">
-            <div className="text-red-400 mr-2">⚠️</div>
-            <div>
-              <div className="font-medium">Błąd:</div>
-              <div>{error}</div>
+        {/* Filtry i wyszukiwanie */}
+        <div className="mb-6 bg-white p-4 rounded-lg shadow">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0 sm:space-x-4">
+            {/* Wyszukiwanie */}
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+              <input
+                type="text"
+                placeholder="Szukaj po nazwie, mieście lub ID..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            
+            {/* Filtry */}
+            <div className="flex items-center space-x-3">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">Wszystkie statusy</option>
+                <option value="new">Nowe</option>
+                <option value="approved">Zatwierdzone</option>
+                <option value="sent">Wysłane</option>
+                <option value="delivered">Dostarczone</option>
+              </select>
+              
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                <Filter className="mr-2" size={16} />
+                Filtry
+              </button>
             </div>
           </div>
         </div>
-      )}
 
-      {/* Lista zamówień */}
-      <div className={`transition-all duration-500 ${showForm ? 'opacity-50' : 'opacity-100'} mt-6`}>
+        {/* Błąd */}
+        {error && (
+          <div className="mb-6 bg-red-50 text-red-700 p-4 rounded-lg border border-red-200">
+            <div className="flex items-center">
+              <AlertCircle className="mr-2" size={20} />
+              <div>
+                <strong>Błąd:</strong> {error}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Lista zamówień */}
         <ZamowieniaList
           zamowienia={filteredZamowienia}
-          onZatwierdz={handleZatwierdzZamowienie}
-          onUsun={handleUsunZamowienie}
+          onZatwierdz={handleApproveOrder}
+          onUsun={handleDeleteOrder}
           userRole={userRole}
           canApprove={canApprove}
           loading={loading}
-          onRefresh={fetchZamowienia}
+          onRefresh={() => setRefreshTrigger(prev => prev + 1)}
           processingOrders={processingOrders}
+          isArchive={activeView === 'archive'}
         />
+
+        {/* Modal formularza */}
+        {showForm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <KurierForm
+                onSubmit={handleCreateOrder}
+                onCancel={() => setShowForm(false)}
+              />
+            </div>
+          </div>
+        )}
       </div>
-
-      {/* Modal formularza zamówienia */}
-      {showForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <KurierForm 
-              onSubmit={handleDodajZamowienie} 
-              magazynNadawcy={userRole}
-              userName={userName}
-              onCancel={() => setShowForm(false)}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Debug info - tylko w development */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="mt-8 p-4 bg-gray-100 rounded-lg text-sm text-gray-600">
-          <div className="font-mono">
-            <div><strong>Zamówienia:</strong> {zamowienia.length} (po filtrach: {filteredZamowienia.length})</div>
-            <div><strong>Użytkownik:</strong> {userName} ({userRole})</div>
-            <div><strong>Uprawnienia:</strong> Dodawanie: {canAddOrder ? 'TAK' : 'NIE'}, Zatwierdzanie: {canApprove ? 'TAK' : 'NIE'}</div>
-            <div><strong>Przetwarzane zamówienia:</strong> {Array.from(processingOrders).join(', ') || 'Brak'}</div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
