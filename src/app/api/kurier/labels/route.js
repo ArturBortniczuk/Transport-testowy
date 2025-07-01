@@ -1,3 +1,6 @@
+// PLIK: src/app/api/kurier/labels/route.js
+// Poprawiony kod - używa dhl_shipment_id zamiast id
+
 // src/app/api/kurier/labels/route.js
 // 🏷️ MEGA LABELS API - Generowanie etykiet DHL (PDF, ZPL, QR)
 import { NextResponse } from 'next/server';
@@ -54,48 +57,88 @@ export async function POST(request) {
 
     // Sprawdź czy użytkownik ma uprawnienia do tych przesyłek
     const { default: db } = await import('@/database/db');
-    const userShipments = await db('kuriers')
-      .whereIn('id', shipmentIds)
-      .where(function() {
-        this.where('created_by_email', userId)
-            .orWhere(function() {
-              // Admin może pobierać wszystkie
-              this.whereExists(function() {
+    
+    // POPRAWKA: Sprawdź czy shipmentIds to numery DHL czy ID zamówień
+    let userShipments = [];
+    
+    // Sprawdź czy pierwsze ID wygląda jak numer DHL (długi string) czy ID bazy (integer)
+    const firstId = shipmentIds[0];
+    const isDhlNumber = isNaN(parseInt(firstId)) || firstId.toString().length > 10;
+    
+    if (isDhlNumber) {
+      // To są numery DHL - szukaj po dhl_shipment_id lub w notes
+      console.log('🔍 Szukam po numerach DHL:', shipmentIds);
+      
+      userShipments = await db('kuriers')
+        .where(function() {
+          // Jeśli mamy kolumnę dhl_shipment_id
+          this.whereIn('dhl_shipment_id', shipmentIds)
+          // LUB szukaj w notes (dla starych rekordów)
+          shipmentIds.forEach(shipmentId => {
+            this.orWhereRaw(`JSON_EXTRACT(notes, '$.dhl.shipmentNumber') = ?`, [shipmentId]);
+          });
+        })
+        .where(function() {
+          this.where('created_by_email', userId)
+              .orWhereExists(function() {
+                // Admin może pobierać wszystkie
                 this.select('*')
                     .from('users')
                     .where('email', userId)
                     .where('is_admin', true);
               });
-            });
-      })
-      .select('id', 'notes');
+        })
+        .select('id', 'notes', 'dhl_shipment_id');
+        
+    } else {
+      // To są ID zamówień z bazy - szukaj po id
+      console.log('🔍 Szukam po ID zamówień:', shipmentIds);
+      
+      userShipments = await db('kuriers')
+        .whereIn('id', shipmentIds.map(id => parseInt(id)))
+        .where(function() {
+          this.where('created_by_email', userId)
+              .orWhereExists(function() {
+                // Admin może pobierać wszystkie
+                this.select('*')
+                    .from('users')
+                    .where('email', userId)
+                    .where('is_admin', true);
+              });
+        })
+        .select('id', 'notes', 'dhl_shipment_id');
+    }
 
-    if (userShipments.length !== shipmentIds.length) {
+    if (userShipments.length === 0) {
       return NextResponse.json({ 
         success: false, 
-        error: 'Brak uprawnień do niektórych przesyłek' 
+        error: 'Brak uprawnień do tych przesyłek lub nie znaleziono przesyłek' 
       }, { status: 403 });
     }
 
     // Przygotuj żądania etykiet dla DHL
     const labelRequests = [];
     
-    for (const shipmentId of shipmentIds) {
-      // Znajdź DHL shipment number w notes
-      const shipment = userShipments.find(s => s.id === parseInt(shipmentId));
-      if (!shipment) continue;
-
-      let notes = {};
-      try {
-        notes = JSON.parse(shipment.notes || '{}');
-      } catch (e) {
-        console.warn(`Nie można parsować notes dla zamówienia ${shipmentId}`);
-        continue;
+    for (const shipment of userShipments) {
+      let dhlShipmentNumber = null;
+      
+      // Sprawdź czy mamy dhl_shipment_id
+      if (shipment.dhl_shipment_id) {
+        dhlShipmentNumber = shipment.dhl_shipment_id;
+      } else {
+        // Fallback do notes
+        let notes = {};
+        try {
+          notes = JSON.parse(shipment.notes || '{}');
+        } catch (e) {
+          console.warn(`Nie można parsować notes dla zamówienia ${shipment.id}`);
+          continue;
+        }
+        dhlShipmentNumber = notes.dhl?.shipmentNumber;
       }
 
-      const dhlShipmentNumber = notes.dhl?.shipmentNumber;
       if (!dhlShipmentNumber) {
-        console.warn(`Brak numeru DHL dla zamówienia ${shipmentId}`);
+        console.warn(`Brak numeru DHL dla zamówienia ${shipment.id}`);
         continue;
       }
 
@@ -104,7 +147,7 @@ export async function POST(request) {
         labelRequests.push({
           shipmentId: dhlShipmentNumber,
           labelType: labelType,
-          originalOrderId: shipmentId
+          originalOrderId: shipment.id
         });
       }
     }
@@ -134,27 +177,30 @@ export async function POST(request) {
         };
       });
 
-      // Zapisz informacje o pobranych etykietach w bazie
-      await saveLabelDownloadHistory(processedLabels, userId);
+      // Zapisz historię generowania etykiet
+      await saveLabelGenerationHistory(labelRequests, processedLabels, userId);
 
-      return NextResponse.json({
+      return NextResponse.json({ 
         success: true,
+        message: `Wygenerowano ${processedLabels.length} etykiet`,
         labels: processedLabels,
-        summary: {
-          totalLabels: processedLabels.length,
-          labelTypes: [...new Set(processedLabels.map(l => l.labelType))],
-          shipmentIds: [...new Set(processedLabels.map(l => l.shipmentId))],
-          totalSize: processedLabels.reduce((sum, l) => sum + l.size, 0)
+        stats: {
+          requested: labelRequests.length,
+          generated: processedLabels.length,
+          shipments: [...new Set(labelRequests.map(req => req.shipmentId))].length
         }
       });
+      
     } else {
+      console.error('💥 Błąd generowania etykiet:', labelsResult.error);
       return NextResponse.json({ 
         success: false, 
-        error: labelsResult.error 
-      });
+        error: labelsResult.error || 'Nie udało się wygenerować etykiet' 
+      }, { status: 500 });
     }
+
   } catch (error) {
-    console.error('💥 Błąd generowania etykiet:', error);
+    console.error('💥 Błąd w Labels API:', error);
     return NextResponse.json({ 
       success: false, 
       error: 'Błąd serwera: ' + error.message 
@@ -162,186 +208,43 @@ export async function POST(request) {
   }
 }
 
-// GET - Pobierz dostępne typy etykiet i opcje
-export async function GET(request) {
+// Helper functions
+function calculateLabelSize(labelData) {
   try {
-    const authToken = request.cookies.get('authToken')?.value;
-    const userId = await validateSession(authToken);
-    
-    if (!userId) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Unauthorized' 
-      }, { status: 401 });
+    if (!labelData) return 0;
+    // Jeśli to base64, oblicz rozmiar
+    if (typeof labelData === 'string') {
+      return Math.round(labelData.length * 0.75); // base64 to bytes approximation
     }
-
-    const labelTypes = {
-      success: true,
-      availableLabelTypes: [
-        {
-          type: 'LP',
-          name: 'List przewozowy',
-          description: 'Standardowy list przewozowy DHL',
-          format: 'PDF',
-          size: 'A4',
-          use: 'Dokumentacja przesyłki',
-          icon: '📄'
-        },
-        {
-          type: 'BLP',
-          name: 'Etykieta BLP (PDF)',
-          description: 'Etykieta BLP w formacie PDF dla drukarek laserowych',
-          format: 'PDF',
-          size: '10x15 cm',
-          use: 'Drukarka laserowa',
-          icon: '🏷️',
-          recommended: true
-        },
-        {
-          type: 'LBLP',
-          name: 'Etykieta BLP (A4)',
-          description: 'Etykieta BLP na całą stronę A4',
-          format: 'PDF',
-          size: 'A4',
-          use: 'Drukarka laserowa - duży format',
-          icon: '📋'
-        },
-        {
-          type: 'ZBLP',
-          name: 'Etykieta ZPL (Zebra)',
-          description: 'Etykieta w formacie ZPL dla drukarek Zebra',
-          format: 'ZPL',
-          size: '10x15 cm',
-          use: 'Drukarka termiczna Zebra',
-          icon: '🖨️'
-        },
-        {
-          type: 'ZBLP300',
-          name: 'Etykieta ZPL 300dpi',
-          description: 'Etykieta ZPL w wysokiej rozdzielczości 300dpi',
-          format: 'ZPL',
-          size: '10x15 cm',
-          use: 'Drukarka Zebra 300dpi',
-          icon: '🖨️⚡'
-        },
-        {
-          type: 'QR_PDF',
-          name: 'Kod QR (PDF)',
-          description: 'Kod QR w formacie PDF dla przesyłek ZK',
-          format: 'PDF',
-          size: '5x5 cm',
-          use: 'Przesyłki ZK',
-          icon: '📱'
-        },
-        {
-          type: 'QR2_IMG',
-          name: 'Kod QR 2cm (PNG)',
-          description: 'Kod QR 2x2 cm w formacie PNG',
-          format: 'PNG',
-          size: '2x2 cm',
-          use: 'Małe etykiety',
-          icon: '🔲'
-        },
-        {
-          type: 'QR4_IMG',
-          name: 'Kod QR 4cm (PNG)',
-          description: 'Kod QR 4x4 cm w formacie PNG',
-          format: 'PNG',
-          size: '4x4 cm',
-          use: 'Standardowe etykiety',
-          icon: '🔳'
-        },
-        {
-          type: 'QR6_IMG',
-          name: 'Kod QR 6cm (PNG)',
-          description: 'Kod QR 6x6 cm w formacie PNG',
-          format: 'PNG',
-          size: '6x6 cm',
-          use: 'Duże etykiety',
-          icon: '⬛'
-        }
-      ],
-      recommendations: {
-        'Drukarka laserowa': ['BLP', 'LP'],
-        'Drukarka termiczna Zebra': ['ZBLP', 'ZBLP300'],
-        'Przesyłki krajowe': ['BLP', 'LP'],
-        'Przesyłki międzynarodowe': ['LP', 'BLP'],
-        'Przesyłki ZK': ['QR_PDF', 'QR4_IMG'],
-        'Masowe drukowanie': ['ZBLP', 'ZBLP300']
-      },
-      notes: [
-        'Etykiety BLP są najbardziej uniwersalne',
-        'Format ZPL jest szybszy dla drukarek termicznych',
-        'Etykiety QR są wymagane dla niektórych usług',
-        'Zawsze możesz pobrać kilka formatów jednocześnie'
-      ]
-    };
-
-    return NextResponse.json(labelTypes);
+    return labelData.length || 0;
   } catch (error) {
-    console.error('Error getting label types:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: error.message 
-    }, { status: 500 });
+    return 0;
   }
 }
 
-// Helper functions
-function calculateLabelSize(labelData) {
-  if (!labelData) return 0;
-  
-  // Base64 string size to bytes
-  const base64Length = labelData.length;
-  const padding = (labelData.match(/=/g) || []).length;
-  const bytes = (base64Length * 3) / 4 - padding;
-  
-  return Math.round(bytes);
-}
-
-async function saveLabelDownloadHistory(labels, userId) {
+async function saveLabelGenerationHistory(labelRequests, processedLabels, userId) {
   try {
     const { default: db } = await import('@/database/db');
     
     // Sprawdź czy tabela istnieje
-    const tableExists = await db.schema.hasTable('kurier_label_downloads');
+    const tableExists = await db.schema.hasTable('kurier_label_history');
     
-    if (!tableExists) {
-      await db.schema.createTable('kurier_label_downloads', table => {
-        table.increments('id').primary();
-        table.string('shipment_id').notNullable();
-        table.string('label_type').notNullable();
-        table.string('downloaded_by').notNullable();
-        table.timestamp('downloaded_at').defaultTo(db.fn.now());
-        table.integer('file_size');
-        table.string('file_format');
-        table.text('notes');
-        
-        table.index(['shipment_id', 'downloaded_by']);
-        table.index('downloaded_at');
-      });
-      
-      console.log('Created kurier_label_downloads table');
+    if (tableExists) {
+      for (const label of processedLabels) {
+        await db('kurier_label_history').insert({
+          shipment_id: label.shipmentId,
+          label_type: label.labelType,
+          generated_by: userId,
+          file_size: label.size,
+          notes: JSON.stringify({
+            generatedAt: label.createdAt,
+            originalOrderId: label.originalOrderId
+          })
+        });
+      }
     }
-
-    // Zapisz historię pobrań
-    const downloadRecords = labels.map(label => ({
-      shipment_id: label.shipmentId,
-      label_type: label.labelType,
-      downloaded_by: userId,
-      file_size: label.size,
-      file_format: label.labelMimeType,
-      notes: JSON.stringify({
-        originalOrderId: label.originalOrderId,
-        labelName: label.labelName
-      })
-    }));
-
-    await db('kurier_label_downloads').insert(downloadRecords);
-    
-    console.log(`Zapisano ${downloadRecords.length} rekordów pobrań etykiet`);
   } catch (error) {
-    console.error('Błąd zapisywania historii pobrań:', error);
-    // Nie przerywaj procesu jeśli zapisywanie historii nie powiedzie się
+    console.error('Błąd zapisywania historii etykiet:', error);
+    // Nie przerywaj procesu
   }
 }
