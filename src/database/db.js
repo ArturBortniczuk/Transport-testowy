@@ -244,7 +244,7 @@ const initializeDatabase = async () => {
     console.error('Błąd inicjalizacji bazy danych:', error);
     return false;
   }
-};
+}
 
 // Funkcja do inicjalizacji użytkowników z pliku Excel
 const initializeUsersFromExcel = async () => {
