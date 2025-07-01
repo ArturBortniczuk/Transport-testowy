@@ -1,3 +1,6 @@
+// PLIK: src/app/api/kurier/stats/route.js
+// Poprawiony kod - usuwa błędne zapytanie o updated_at
+
 // src/app/api/kurier/stats/route.js
 import { NextResponse } from 'next/server';
 import db from '@/database/db';
@@ -19,6 +22,24 @@ const validateSession = async (authToken) => {
   } catch (error) {
     console.error('Session validation error:', error);
     return null;
+  }
+};
+
+// Funkcja pomocnicza do sprawdzania czy kolumna istnieje
+const checkColumnExists = async (tableName, columnName) => {
+  try {
+    const columns = await db.raw(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = ? 
+      AND column_name = ?
+      AND table_schema = 'public'
+    `, [tableName, columnName]);
+    
+    return columns.rows.length > 0;
+  } catch (error) {
+    console.error(`Błąd sprawdzania kolumny ${columnName}:`, error);
+    return false;
   }
 };
 
@@ -44,6 +65,10 @@ export async function GET(request) {
         error: 'Tabela kuriers nie istnieje' 
       }, { status: 500 });
     }
+
+    // Sprawdź jakie kolumny istnieją
+    const hasUpdatedAt = await checkColumnExists('kuriers', 'updated_at');
+    console.log(`📊 Kolumna updated_at istnieje: ${hasUpdatedAt}`);
 
     // Pobierz liczby zamówień według statusów
     const stats = await db('kuriers')
@@ -80,13 +105,23 @@ export async function GET(request) {
       .count('* as count')
       .first();
 
-    // Pobierz średni czas realizacji (dla dostarczonych zamówień)
-    const avgDeliveryTime = await db('kuriers')
-      .whereIn('status', ['delivered'])
-      .whereNotNull('updated_at')
-      .whereNotNull('created_at')
-      .select(db.raw('AVG(EXTRACT(EPOCH FROM (updated_at - created_at))/3600) as avg_hours'))
-      .first();
+    // Pobierz średni czas realizacji (tylko jeśli kolumna updated_at istnieje)
+    let avgDeliveryTime = null;
+    if (hasUpdatedAt) {
+      try {
+        avgDeliveryTime = await db('kuriers')
+          .whereIn('status', ['delivered'])
+          .whereNotNull('updated_at')
+          .whereNotNull('created_at')
+          .select(db.raw('AVG(EXTRACT(EPOCH FROM (updated_at - created_at))/3600) as avg_hours'))
+          .first();
+      } catch (error) {
+        console.log('⚠️ Błąd przy obliczaniu średniego czasu realizacji:', error.message);
+        avgDeliveryTime = null;
+      }
+    } else {
+      console.log('⚠️ Kolumna updated_at nie istnieje - pomijam kalkulację średniego czasu realizacji');
+    }
 
     // Formatuj statystyki
     const statusCounts = {
@@ -125,7 +160,9 @@ export async function GET(request) {
         thisMonthCount,
         lastMonthCount,
         growthPercentage,
-        avgDeliveryHours: avgDeliveryTime?.avg_hours ? Math.round(parseFloat(avgDeliveryTime.avg_hours) * 10) / 10 : null,
+        avgDeliveryHours: hasUpdatedAt && avgDeliveryTime?.avg_hours 
+          ? Math.round(parseFloat(avgDeliveryTime.avg_hours) * 10) / 10 
+          : null,
         // Dodatkowe metryki
         deliveryRate: statusCounts.delivered > 0 
           ? Math.round((statusCounts.delivered / (statusCounts.approved + statusCounts.sent + statusCounts.delivered)) * 100)
@@ -134,7 +171,11 @@ export async function GET(request) {
       meta: {
         generatedAt: new Date().toISOString(),
         period: '30days',
-        currency: 'PLN'
+        currency: 'PLN',
+        hasUpdatedAtColumn: hasUpdatedAt,
+        note: hasUpdatedAt 
+          ? 'Wszystkie statystyki dostępne' 
+          : 'Średni czas realizacji niedostępny - brak kolumny updated_at'
       }
     });
   } catch (error) {
@@ -142,7 +183,10 @@ export async function GET(request) {
     return NextResponse.json({ 
       success: false, 
       error: 'Błąd serwera: ' + error.message,
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      details: process.env.NODE_ENV === 'development' ? {
+        message: error.message,
+        stack: error.stack
+      } : undefined
     }, { status: 500 });
   }
 }
