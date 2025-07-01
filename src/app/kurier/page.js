@@ -109,7 +109,7 @@ try {
 }
 
 export default function KurierPage() {
-  // Stan główny
+  // Stan główny - POPRAWKA: Dodano useState('active')
   const [activeView, setActiveView] = useState('active') // 'active', 'archive', 'new'
   const [zamowienia, setZamowienia] = useState([])
   const [loading, setLoading] = useState(false)
@@ -174,33 +174,19 @@ export default function KurierPage() {
       } else if (activeView === 'all') {
         statusParam = 'all'
       }
-
-      const url = `/api/kurier?status=${statusParam}&limit=50&offset=0`
-      console.log('🔍 Pobieranie zamówień:', url)
-
-      const response = await fetch(url, {
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-      }
-
+      
+      const url = `/api/kurier?status=${statusParam}`
+      const response = await fetch(url)
       const data = await response.json()
       
       if (data.success) {
         setZamowienia(data.zamowienia || [])
-        console.log(`✅ Pobrano ${data.zamowienia?.length || 0} zamówień`)
       } else {
-        throw new Error(data.error || 'Błąd pobierania zamówień')
+        setError(data.error || 'Błąd pobierania zamówień')
       }
     } catch (error) {
-      console.error('❌ Error fetching orders:', error)
-      setError(error.message)
-      setZamowienia([])
+      console.error('Error fetching zamowienia:', error)
+      setError('Błąd połączenia z serwerem')
     } finally {
       setLoading(false)
     }
@@ -208,17 +194,12 @@ export default function KurierPage() {
 
   const fetchStats = async () => {
     setStatsLoading(true)
-    
     try {
-      const response = await fetch('/api/kurier/stats', {
-        credentials: 'include'
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success) {
-          setStats(data.stats)
-        }
+      const response = await fetch('/api/kurier/stats')
+      const data = await response.json()
+      
+      if (data.success) {
+        setStats(data.stats)
       }
     } catch (error) {
       console.error('Error fetching stats:', error)
@@ -234,16 +215,15 @@ export default function KurierPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
-        body: JSON.stringify(orderData),
+        body: JSON.stringify(orderData)
       })
-
+      
       const data = await response.json()
-
+      
       if (data.success) {
         setShowForm(false)
         setRefreshTrigger(prev => prev + 1)
-        alert('Zamówienie zostało utworzone pomyślnie!')
+        alert('Zamówienie utworzone pomyślnie!')
       } else {
         alert('Błąd: ' + (data.error || 'Nie udało się utworzyć zamówienia'))
       }
@@ -254,25 +234,22 @@ export default function KurierPage() {
   }
 
   const handleApproveOrder = async (orderId) => {
+    if (processingOrders.has(orderId)) return
+
     setProcessingOrders(prev => new Set([...prev, orderId]))
     
     try {
-      const response = await fetch(`/api/kurier/${orderId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({ status: 'approved' }),
+      const response = await fetch(`/api/kurier/${orderId}/approve`, {
+        method: 'PATCH'
       })
-
+      
       const data = await response.json()
-
+      
       if (data.success) {
         setRefreshTrigger(prev => prev + 1)
-        alert('Zamówienie zostało zatwierdzone!')
+        alert('Zamówienie zatwierdzone!')
       } else {
-        alert('Błąd: ' + (data.error || 'Nie udało się zatwierdzić zamówienia'))
+        alert('Błąd: ' + (data.error || 'Nie udało się zatwierdzić'))
       }
     } catch (error) {
       console.error('Error approving order:', error)
@@ -287,25 +264,23 @@ export default function KurierPage() {
   }
 
   const handleDeleteOrder = async (orderId) => {
-    if (!confirm('Czy na pewno chcesz usunąć to zamówienie?')) {
-      return
-    }
+    if (!confirm('Czy na pewno chcesz usunąć to zamówienie?')) return
+    if (processingOrders.has(orderId)) return
 
     setProcessingOrders(prev => new Set([...prev, orderId]))
     
     try {
       const response = await fetch(`/api/kurier/${orderId}`, {
-        method: 'DELETE',
-        credentials: 'include'
+        method: 'DELETE'
       })
-
+      
       const data = await response.json()
-
+      
       if (data.success) {
         setRefreshTrigger(prev => prev + 1)
-        alert('Zamówienie zostało usunięte')
+        alert('Zamówienie usunięte!')
       } else {
-        alert('Błąd: ' + (data.error || 'Nie udało się usunąć zamówienia'))
+        alert('Błąd: ' + (data.error || 'Nie udało się usunąć'))
       }
     } catch (error) {
       console.error('Error deleting order:', error)
@@ -319,39 +294,32 @@ export default function KurierPage() {
     }
   }
 
+  // Filtrowanie zamówień na podstawie wyszukiwania
   const filteredZamowienia = zamowienia.filter(zamowienie => {
-    // Filtruj według wyszukiwania
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase()
-      const matchesSearch = 
-        zamowienie.recipient_name?.toLowerCase().includes(query) ||
-        zamowienie.recipient_city?.toLowerCase().includes(query) ||
-        zamowienie.id?.toString().includes(query)
-      
-      if (!matchesSearch) return false
-    }
-
-    // Filtruj według statusu
-    if (statusFilter !== 'all' && zamowienie.status !== statusFilter) {
-      return false
-    }
-
-    return true
+    if (!searchQuery) return true
+    
+    const searchLower = searchQuery.toLowerCase()
+    return (
+      zamowienie.id?.toString().includes(searchLower) ||
+      zamowienie.recipient_city?.toLowerCase().includes(searchLower) ||
+      zamowienie.recipient_name?.toLowerCase().includes(searchLower) ||
+      zamowienie.created_by_email?.toLowerCase().includes(searchLower)
+    )
   })
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-                <Package className="mr-3" size={32} />
-                System Kurierski
+                <Truck className="mr-3" size={32} />
+                Zarządzanie Kurierem
               </h1>
-              <p className="mt-1 text-gray-600">
-                Zarządzanie zamówieniami kurierskimi DHL
+              <p className="text-gray-600 mt-2">
+                Kompleksowe zarządzanie zamówieniami kurierskimi
               </p>
             </div>
             
@@ -359,7 +327,7 @@ export default function KurierPage() {
               <button
                 onClick={() => setRefreshTrigger(prev => prev + 1)}
                 disabled={loading}
-                className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+                className="flex items-center px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
               >
                 <RefreshCw className={`mr-2 ${loading ? 'animate-spin' : ''}`} size={16} />
                 Odśwież
