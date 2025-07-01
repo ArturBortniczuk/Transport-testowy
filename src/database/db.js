@@ -94,7 +94,7 @@ const initializeDatabase = async () => {
         table.integer('vehicle_id'); 
         table.string('status').defaultTo('active');
         table.string('wz_number');
-        table.string('client_name');  // Nowe pole dla nazwy klienta/firmy
+        table.string('client_name');
         table.string('market');
         table.string('loading_level');
         table.text('notes');
@@ -104,8 +104,8 @@ const initializeDatabase = async () => {
         table.string('requester_name');
         table.string('requester_email');
         table.string('mpk');
-        table.text('goods_description');  // Nowe pole dla opisu towaru
-        table.text('responsible_constructions');  // Nowe pole dla odpowiedzialnych budów
+        table.text('goods_description');
+        table.text('responsible_constructions');
       });
     }
 
@@ -238,8 +238,6 @@ const initializeDatabase = async () => {
     } else {
       console.log('Tabela kuriers już istnieje');
     }
-
-    // NIE TWORZYMY TABELI kurier_queries - zostajemy tylko przy zamówieniach
 
     return true;
   } catch (error) {
@@ -486,16 +484,16 @@ const checkDetailedRatingsTable = async () => {
         table.timestamp('rated_at').defaultTo(db.fn.now());
         
         // Kategoria: Kierowca
-        table.boolean('driver_professional'); // Kierowca zachował się profesjonalnie wobec klienta
-        table.boolean('driver_tasks_completed'); // Kierowca zrealizował wszystkie ustalone zadania
+        table.boolean('driver_professional');
+        table.boolean('driver_tasks_completed');
         
         // Kategoria: Towar
-        table.boolean('cargo_complete'); // Towar był kompletny i zgodny z zamówieniem
-        table.boolean('cargo_correct'); // Nie doszło do pomyłki – klient dostał właściwy towar
+        table.boolean('cargo_complete');
+        table.boolean('cargo_correct');
         
         // Kategoria: Organizacja dostawy
-        table.boolean('delivery_notified'); // Dostawa została wcześniej awizowana u klienta
-        table.boolean('delivery_on_time'); // Towar dotarł w ustalonym terminie
+        table.boolean('delivery_notified');
+        table.boolean('delivery_on_time');
         
         // Dodatkowy komentarz
         table.text('comment');
