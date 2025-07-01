@@ -43,16 +43,25 @@ export default function Header() {
 
   const fetchUserInfo = async () => {
     try {
-      const response = await fetch('/api/auth/session', {
+      // ZMIANA: Użyj /api/user zamiast /api/auth/session
+      const response = await fetch('/api/user', {
         credentials: 'include'
       })
       
       if (response.ok) {
         const data = await response.json()
-        setUser(data.user)
+        // Sprawdź czy użytkownik jest zalogowany
+        if (data.isAuthenticated && data.user) {
+          setUser(data.user)
+        } else {
+          setUser(null)
+        }
+      } else {
+        setUser(null)
       }
     } catch (error) {
       console.error('Error fetching user info:', error)
+      setUser(null)
     }
   }
 
