@@ -1,3 +1,6 @@
+// PLIK: src/app/api/kurier/stats/[period]/route.js
+// Poprawiony kod - obsługuje brakujące kolumny
+
 // src/app/api/kurier/stats/[period]/route.js
 import { NextResponse } from 'next/server';
 import db from '@/database/db';
@@ -19,6 +22,24 @@ const validateSession = async (authToken) => {
   } catch (error) {
     console.error('Session validation error:', error);
     return null;
+  }
+};
+
+// Funkcja pomocnicza do sprawdzania czy kolumna istnieje
+const checkColumnExists = async (tableName, columnName) => {
+  try {
+    const columns = await db.raw(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = ? 
+      AND column_name = ?
+      AND table_schema = 'public'
+    `, [tableName, columnName]);
+    
+    return columns.rows.length > 0;
+  } catch (error) {
+    console.error(`Błąd sprawdzania kolumny ${columnName}:`, error);
+    return false;
   }
 };
 
@@ -76,6 +97,13 @@ export async function GET(request, { params }) {
       }, { status: 500 });
     }
 
+    // Sprawdź jakie kolumny istnieją
+    const hasServiceType = await checkColumnExists('kuriers', 'service_type');
+    const hasPackageWeight = await checkColumnExists('kuriers', 'package_weight');
+    const hasPackageValue = await checkColumnExists('kuriers', 'package_value');
+    const hasCodAmount = await checkColumnExists('kuriers', 'cod_amount');
+    const hasRecipientCity = await checkColumnExists('kuriers', 'recipient_city');
+
     // Buduj podstawowe zapytanie
     let baseQuery = db('kuriers');
     
@@ -108,12 +136,22 @@ export async function GET(request, { params }) {
       .whereNotNull('magazine_source')
       .groupBy('magazine_source');
 
-    // 4. Statystyki według typów usług
-    const serviceStats = await baseQuery.clone()
-      .select('service_type')
-      .count('* as count')
-      .whereNotNull('service_type')
-      .groupBy('service_type');
+    // 4. Statystyki według typów usług (tylko jeśli kolumna istnieje)
+    let serviceStats = [];
+    if (hasServiceType) {
+      try {
+        serviceStats = await baseQuery.clone()
+          .select('service_type')
+          .count('* as count')
+          .whereNotNull('service_type')
+          .groupBy('service_type');
+      } catch (error) {
+        console.log('Błąd pobierania statystyk service_type:', error.message);
+        serviceStats = [];
+      }
+    } else {
+      console.log('⚠️ Kolumna service_type nie istnieje - pomijam statystyki usług');
+    }
 
     // 5. Trendy dzienne (ostatnie 30 dni dla okresów dłuższych niż tydzień)
     let dailyTrends = [];
@@ -122,56 +160,92 @@ export async function GET(request, { params }) {
       const trendCondition = getTimeCondition(trendPeriod);
       
       if (trendCondition) {
-        dailyTrends = await db('kuriers')
-          .select(db.raw("DATE(created_at) as date"))
-          .count('* as count')
-          .whereRaw(trendCondition)
-          .groupBy(db.raw("DATE(created_at)"))
-          .orderBy('date', 'desc')
-          .limit(30);
+        try {
+          dailyTrends = await db('kuriers')
+            .select(db.raw("DATE(created_at) as date"))
+            .count('* as count')
+            .whereRaw(trendCondition)
+            .groupBy(db.raw("DATE(created_at)"))
+            .orderBy('date', 'desc')
+            .limit(30);
+        } catch (error) {
+          console.log('Błąd pobierania trendów dziennych:', error.message);
+          dailyTrends = [];
+        }
       }
     }
 
-    // 6. Średnie wartości
-    const averages = await baseQuery.clone()
-      .select(
-        db.raw('AVG(package_weight) as avg_weight'),
-        db.raw('AVG(package_value) as avg_value'),
-        db.raw('AVG(cod_amount) as avg_cod'),
-        db.raw('COUNT(CASE WHEN cod_amount > 0 THEN 1 END) as cod_count')
-      )
-      .first();
+    // 6. Średnie wartości (tylko dostępne kolumny)
+    let averages = {};
+    try {
+      const selectFields = [];
+      
+      if (hasPackageWeight) {
+        selectFields.push('AVG(package_weight) as avg_weight');
+      }
+      if (hasPackageValue) {
+        selectFields.push('AVG(package_value) as avg_value');
+      }
+      if (hasCodAmount) {
+        selectFields.push('AVG(cod_amount) as avg_cod');
+        selectFields.push('COUNT(CASE WHEN cod_amount > 0 THEN 1 END) as cod_count');
+      }
+      
+      if (selectFields.length > 0) {
+        averages = await baseQuery.clone()
+          .select(db.raw(selectFields.join(', ')))
+          .first();
+      }
+    } catch (error) {
+      console.log('Błąd pobierania średnich wartości:', error.message);
+      averages = {};
+    }
 
-    // 7. Top miasta (odbiorcy)
-    const topCities = await baseQuery.clone()
-      .select('recipient_city')
-      .count('* as count')
-      .whereNotNull('recipient_city')
-      .groupBy('recipient_city')
-      .orderBy('count', 'desc')
-      .limit(10);
+    // 7. Top miasta (odbiorcy) - tylko jeśli kolumna istnieje
+    let topCities = [];
+    if (hasRecipientCity) {
+      try {
+        topCities = await baseQuery.clone()
+          .select('recipient_city')
+          .count('* as count')
+          .whereNotNull('recipient_city')
+          .groupBy('recipient_city')
+          .orderBy('count', 'desc')
+          .limit(10);
+      } catch (error) {
+        console.log('Błąd pobierania top miast:', error.message);
+        topCities = [];
+      }
+    } else {
+      console.log('⚠️ Kolumna recipient_city nie istnieje - pomijam statystyki miast');
+    }
 
     // 8. Szczegóły czasowe (jeśli wymagane)
     let timeBreakdown = {};
     if (includeDetails) {
-      // Rozkład według godzin utworzenia
-      const hourlyBreakdown = await baseQuery.clone()
-        .select(db.raw('EXTRACT(HOUR FROM created_at) as hour'))
-        .count('* as count')
-        .groupBy(db.raw('EXTRACT(HOUR FROM created_at)'))
-        .orderBy('hour');
+      try {
+        // Rozkład według godzin utworzenia
+        const hourlyBreakdown = await baseQuery.clone()
+          .select(db.raw('EXTRACT(HOUR FROM created_at) as hour'))
+          .count('* as count')
+          .groupBy(db.raw('EXTRACT(HOUR FROM created_at)'))
+          .orderBy('hour');
 
-      // Rozkład według dni tygodnia
-      const weeklyBreakdown = await baseQuery.clone()
-        .select(db.raw('EXTRACT(DOW FROM created_at) as day_of_week'))
-        .count('* as count')
-        .groupBy(db.raw('EXTRACT(DOW FROM created_at)'))
-        .orderBy('day_of_week');
+        // Rozkład według dni tygodnia
+        const weeklyBreakdown = await baseQuery.clone()
+          .select(db.raw('EXTRACT(DOW FROM created_at) as day_of_week'))
+          .count('* as count')
+          .groupBy(db.raw('EXTRACT(DOW FROM created_at)'))
+          .orderBy('day_of_week');
 
-      timeBreakdown = {
-        hourly: hourlyBreakdown,
-        weekly: weeklyBreakdown
-      };
+        timeBreakdown = {
+          hourly: hourlyBreakdown,
+          weekly: weeklyBreakdown
+        };
+      } catch (error) {
+        console.log('Błąd pobierania szczegółów czasowych:', error.message);
+        timeBreakdown = {};
+      }
     }
 
     // Formatuj wyniki
@@ -224,7 +298,14 @@ export async function GET(request, { params }) {
         generatedAt: new Date().toISOString(),
         period: period,
         archive: archive,
-        includeDetails: includeDetails
+        includeDetails: includeDetails,
+        availableColumns: {
+          serviceType: hasServiceType,
+          packageWeight: hasPackageWeight,
+          packageValue: hasPackageValue,
+          codAmount: hasCodAmount,
+          recipientCity: hasRecipientCity
+        }
       }
     };
 
@@ -240,7 +321,10 @@ export async function GET(request, { params }) {
     return NextResponse.json({ 
       success: false, 
       error: 'Błąd serwera: ' + error.message,
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      details: process.env.NODE_ENV === 'development' ? {
+        message: error.message,
+        stack: error.stack
+      } : undefined
     }, { status: 500 });
   }
 }
