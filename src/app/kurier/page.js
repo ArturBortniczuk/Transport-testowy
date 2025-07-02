@@ -7,110 +7,129 @@ import {
   Calendar, BarChart3, Settings, Bell, Mail, User
 } from 'lucide-react'
 
-// Import komponentów (z fallback jeśli nie istnieją)
-let KurierForm
+// Fallback components
+const KurierFormFallback = ({ onSubmit, onCancel }) => (
+  <div className="bg-white p-6 rounded-lg shadow">
+    <h3 className="text-lg font-semibold mb-4">Formularz zamówienia kuriera</h3>
+    <p className="text-gray-600 mb-4">Komponent formularza w przygotowaniu...</p>
+    <div className="flex space-x-2">
+      <button 
+        onClick={onCancel}
+        className="px-4 py-2 text-gray-600 border rounded hover:bg-gray-50"
+      >
+        Anuluj
+      </button>
+      <button 
+        onClick={() => onSubmit({ test: true })}
+        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+      >
+        Test Submit
+      </button>
+    </div>
+  </div>
+)
 
-try {
-  KurierForm = require('./components/KurierForm').default
-} catch (error) {
-  console.warn('KurierForm component not found, using fallback')
-  KurierForm = ({ onSubmit, onCancel }) => (
-    <div className="bg-white p-6 rounded-lg shadow">
-      <h3 className="text-lg font-semibold mb-4">Formularz zamówienia kuriera</h3>
-      <p className="text-gray-600 mb-4">Komponent formularza w przygotowaniu...</p>
-      <div className="flex space-x-2">
-        <button 
-          onClick={onCancel}
-          className="px-4 py-2 text-gray-600 border rounded hover:bg-gray-50"
-        >
-          Anuluj
-        </button>
-        <button 
-          onClick={() => onSubmit({ test: true })}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-        >
-          Test Submit
-        </button>
+const ZamowieniaListFallback = ({ zamowienia, loading }) => (
+  <div className="bg-white p-6 rounded-lg shadow">
+    <h3 className="text-lg font-semibold mb-4">Lista zamówień</h3>
+    {loading ? (
+      <div className="text-center py-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+        <p className="mt-2 text-gray-600">Ładowanie zamówień...</p>
       </div>
-    </div>
-  )
-}
-let ZamowieniaList
-try {
-  ZamowieniaList = require('./components/ZamowieniaList').default
-} catch (error) {
-  console.warn('ZamowieniaList component not found, using fallback')
-  ZamowieniaList = ({ zamowienia, loading }) => (
-    <div className="bg-white p-6 rounded-lg shadow">
-      <h3 className="text-lg font-semibold mb-4">Lista zamówień</h3>
-      {loading ? (
-        <div className="text-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-2 text-gray-600">Ładowanie zamówień...</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {zamowienia?.length > 0 ? (
-            zamowienia.map((zamowienie, index) => (
-              <div key={zamowienie.id || index} className="p-3 border rounded">
-                <div className="flex justify-between items-center">
-                  <span className="font-medium">
-                    Zamówienie #{zamowienie.id}
-                  </span>
-                  <span className={`px-2 py-1 rounded text-xs ${
-                    zamowienie.status === 'new' ? 'bg-blue-100 text-blue-800' :
-                    zamowienie.status === 'approved' ? 'bg-green-100 text-green-800' :
-                    zamowienie.status === 'sent' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {zamowienie.status}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-600 mt-1">
-                  Do: {zamowienie.recipient_city || 'Brak danych'}
-                </p>
+    ) : (
+      <div className="space-y-2">
+        {zamowienia?.length > 0 ? (
+          zamowienia.map((zamowienie, index) => (
+            <div key={zamowienie.id || index} className="p-3 border rounded">
+              <div className="flex justify-between items-center">
+                <span className="font-medium">
+                  Zamówienie #{zamowienie.id}
+                </span>
+                <span className={`px-2 py-1 rounded text-xs ${
+                  zamowienie.status === 'new' ? 'bg-blue-100 text-blue-800' :
+                  zamowienie.status === 'approved' ? 'bg-green-100 text-green-800' :
+                  zamowienie.status === 'sent' ? 'bg-yellow-100 text-yellow-800' :
+                  'bg-gray-100 text-gray-800'
+                }`}>
+                  {zamowienie.status}
+                </span>
               </div>
-            ))
-          ) : (
-            <p className="text-gray-500 text-center py-8">Brak zamówień</p>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-let KurierStats
-try {
-  KurierStats = require('./components/KurierStats').default
-} catch (error) {
-  console.warn('KurierStats component not found, using fallback')
-  KurierStats = ({ isArchive, refreshTrigger }) => (
-    <div className="bg-white p-6 rounded-lg shadow">
-      <h3 className="text-lg font-semibold mb-4">Statystyki</h3>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-blue-50 p-4 rounded text-center">
-          <Package className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-          <div className="text-2xl font-bold text-blue-700">-</div>
-          <div className="text-sm text-blue-600">Aktywne</div>
-        </div>
-        <div className="bg-green-50 p-4 rounded text-center">
-          <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
-          <div className="text-2xl font-bold text-green-700">-</div>
-          <div className="text-sm text-green-600">Ukończone</div>
-        </div>
-        <div className="bg-yellow-50 p-4 rounded text-center">
-          <Clock className="w-8 h-8 text-yellow-600 mx-auto mb-2" />
-          <div className="text-2xl font-bold text-yellow-700">-</div>
-          <div className="text-sm text-yellow-600">W trakcie</div>
-        </div>
+              <p className="text-sm text-gray-600 mt-1">
+                Do: {zamowienie.recipient_city || 'Brak danych'}
+              </p>
+            </div>
+          ))
+        ) : (
+          <p className="text-gray-500 text-center py-8">Brak zamówień</p>
+        )}
+      </div>
+    )}
+  </div>
+)
+
+const KurierStatsFallback = ({ isArchive, refreshTrigger }) => (
+  <div className="bg-white p-6 rounded-lg shadow">
+    <h3 className="text-lg font-semibold mb-4">Statystyki</h3>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="bg-blue-50 p-4 rounded text-center">
+        <Package className="w-8 h-8 text-blue-600 mx-auto mb-2" />
+        <div className="text-2xl font-bold text-blue-700">-</div>
+        <div className="text-sm text-blue-600">Aktywne</div>
+      </div>
+      <div className="bg-green-50 p-4 rounded text-center">
+        <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
+        <div className="text-2xl font-bold text-green-700">-</div>
+        <div className="text-sm text-green-600">Ukończone</div>
+      </div>
+      <div className="bg-yellow-50 p-4 rounded text-center">
+        <Clock className="w-8 h-8 text-yellow-600 mx-auto mb-2" />
+        <div className="text-2xl font-bold text-yellow-700">-</div>
+        <div className="text-sm text-yellow-600">W trakcie</div>
       </div>
     </div>
-  )
+  </div>
+)
+
+// Dynamic imports - funkcje do ładowania komponentów
+const loadKurierForm = async () => {
+  try {
+    const module = await import('./components/KurierForm')
+    return module.default
+  } catch (error) {
+    console.warn('KurierForm component not found, using fallback')
+    return KurierFormFallback
+  }
+}
+
+const loadZamowieniaList = async () => {
+  try {
+    const module = await import('./components/ZamowieniaList')
+    return module.default
+  } catch (error) {
+    console.warn('ZamowieniaList component not found, using fallback')
+    return ZamowieniaListFallback
+  }
+}
+
+const loadKurierStats = async () => {
+  try {
+    const module = await import('./components/KurierStats')
+    return module.default
+  } catch (error) {
+    console.warn('KurierStats component not found, using fallback')
+    return KurierStatsFallback
+  }
 }
 
 export default function KurierPage() {
-  // Stan główny - POPRAWKA: Dodano useState('active')
-  const [activeView, setActiveView] = useState('active') // 'active', 'archive', 'new'
+  // Stan komponentów
+  const [KurierForm, setKurierForm] = useState(() => KurierFormFallback)
+  const [ZamowieniaList, setZamowieniaList] = useState(() => ZamowieniaListFallback)
+  const [KurierStats, setKurierStats] = useState(() => KurierStatsFallback)
+  
+  // Stan główny
+  const [activeView, setActiveView] = useState('active')
   const [zamowienia, setZamowienia] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -130,6 +149,23 @@ export default function KurierPage() {
   // Stan statystyk
   const [stats, setStats] = useState(null)
   const [statsLoading, setStatsLoading] = useState(false)
+
+  // Ładowanie komponentów
+  useEffect(() => {
+    const loadComponents = async () => {
+      const [kurierForm, zamowieniaList, kurierStats] = await Promise.all([
+        loadKurierForm(),
+        loadZamowieniaList(),
+        loadKurierStats()
+      ])
+      
+      setKurierForm(() => kurierForm)
+      setZamowieniaList(() => zamowieniaList)
+      setKurierStats(() => kurierStats)
+    }
+    
+    loadComponents()
+  }, [])
 
   // Pobierz rolę użytkownika
   useEffect(() => {
