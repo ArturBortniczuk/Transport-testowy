@@ -130,24 +130,10 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
     // Usługa DHL
     uslugaDHL: 'AH', // AH, 09, 12, DW, SP, EK, PI, PR, CP, CM
     
-    // Usługi dodatkowe
-    uslugiDodatkowe: {
-      ubezpieczenie: false,
-      wartoscUbezpieczenia: '',
-      pobranie: false,
-      wartoscPobrania: '',
-      doreczenie: false,
-      doreczenieSobota: false,
-      doreczenieTelefon: false,
-      doreczenieSms: false
-    },
-    
-    // Dane międzynarodowe
+    // Dane międzynarodowe (uproszczone)
     daneMiedzynarodowe: {
       typOdprawy: 'U',
       wartoscTowarow: '',
-      opisSzczegolowy: '',
-      wagaBrutto: '',
       krajPochodzenia: 'PL'
     }
   })
@@ -220,7 +206,7 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
     // Resetuj pola gdy wybieramy trzecią stronę (nie auto-uzupełniamy)
   }, [typZlecenia])
 
-  // Calculate price function
+  // Calculate price function - UPROSZCZONA
   const calculatePrice = useCallback(async () => {
     if (!formData.nadawcaKodPocztowy || !formData.odbiorcaKodPocztowy || !formData.paczki[0]?.waga) {
       return
@@ -237,8 +223,7 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
           fromPostalCode: formData.nadawcaKodPocztowy,
           toPostalCode: formData.odbiorcaKodPocztowy,
           packages: formData.paczki,
-          service: formData.uslugaDHL,
-          additionalServices: formData.uslugiDodatkowe
+          service: formData.uslugaDHL
         })
       })
 
@@ -254,9 +239,9 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
     } finally {
       setCalculatingPrice(false)
     }
-  }, [formData.nadawcaKodPocztowy, formData.odbiorcaKodPocztowy, formData.paczki, formData.uslugaDHL, formData.uslugiDodatkowe])
+  }, [formData.nadawcaKodPocztowy, formData.odbiorcaKodPocztowy, formData.paczki, formData.uslugaDHL])
 
-  // Auto-calculate price when data changes
+  // Auto-calculate price when data changes - UPROSZCZONE
   useEffect(() => {
     const debounceTimer = setTimeout(() => {
       calculatePrice()
@@ -359,16 +344,20 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
     }))
   }
 
-  // Step navigation
+  // Step navigation - POMIJAMY KROK 3
   const nextStep = () => {
-    if (currentStep < 4) {
-      setCurrentStep(currentStep + 1)
+    if (currentStep === 1) {
+      setCurrentStep(2) // Z kroku 1 do 2
+    } else if (currentStep === 2) {
+      setCurrentStep(4) // Z kroku 2 BEZPOŚREDNIO do 4 (pomijamy krok 3)
     }
   }
 
   const prevStep = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1)
+    if (currentStep === 4) {
+      setCurrentStep(2) // Z kroku 4 z powrotem do 2
+    } else if (currentStep === 2) {
+      setCurrentStep(1) // Z kroku 2 do 1
     }
   }
 
@@ -376,7 +365,7 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
   const isInternational = formData.nadawcaKraj !== formData.odbiorcaKraj
   const isOutsideEU = !kraje.find(k => k.code === formData.odbiorcaKraj)?.eu
 
-  // Form validation
+  // Form validation - POMIJAMY KROK 3
   const validateStep = (step) => {
     switch (step) {
       case 1:
@@ -385,10 +374,8 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
       case 2:
         return formData.zawartoscPrzesylki && formData.paczki[0].waga && 
                formData.paczki[0].dlugosc && formData.paczki[0].szerokosc && formData.paczki[0].wysokosc
-      case 3:
-        return true // Optional step
-      case 4:
-        return true // Review step
+      case 4: // Krok 4 (podgląd) - zawsze prawda
+        return true
       default:
         return false
     }
@@ -478,7 +465,7 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
         return
       }
 
-      // Prepare data for submission
+      // Prepare data for submission - UPROSZCZONE
       const dataToSubmit = {
         ...formData,
         typZlecenia: typZlecenia,
@@ -513,7 +500,9 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
         <div className="flex justify-between items-center">
           <div>
             <h2 className="text-2xl font-bold">Nowe zamówienie kuriera DHL</h2>
-            <p className="text-blue-100 mt-1">Krok {currentStep} z 4</p>
+            <p className="text-blue-100 mt-1">
+              Krok {currentStep === 4 ? 3 : currentStep} z 3
+            </p>
           </div>
           <button
             type="button"
@@ -544,41 +533,43 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
         </div>
       )}
 
-      {/* Order Type Selection */}
-      <div className="bg-white p-6 rounded-lg border">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Typ zlecenia</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[
-            { value: 'nadawca_bialystok', label: 'Nadawca: Białystok', icon: '📤', desc: 'Wysyłka z magazynu Białystok' },
-            { value: 'nadawca_zielonka', label: 'Nadawca: Zielonka', icon: '📤', desc: 'Wysyłka z magazynu Zielonka' },
-            { value: 'odbiorca_bialystok', label: 'Odbiorca: Białystok', icon: '📥', desc: 'Dostawa do magazynu Białystok' },
-            { value: 'odbiorca_zielonka', label: 'Odbiorca: Zielonka', icon: '📥', desc: 'Dostawa do magazynu Zielonka' },
-            { value: 'trzecia_strona', label: 'Trzecia strona', icon: '🏢', desc: 'Płatnik zewnętrzny' }
-          ].map(option => (
-            <label key={option.value} className="cursor-pointer">
-              <input
-                type="radio"
-                name="typZlecenia"
-                value={option.value}
-                checked={typZlecenia === option.value}
-                onChange={(e) => setTypZlecenia(e.target.value)}
-                className="sr-only"
-              />
-              <div className={`p-4 rounded-lg border-2 transition-colors ${
-                typZlecenia === option.value
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}>
-                <div className="text-center">
-                  <div className="text-2xl mb-2">{option.icon}</div>
-                  <div className="font-medium text-gray-900">{option.label}</div>
-                  <div className="text-xs text-gray-500 mt-1">{option.desc}</div>
+      {/* Order Type Selection - TYLKO W KROKU 1 */}
+      {currentStep === 1 && (
+        <div className="bg-white p-6 rounded-lg border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Typ zlecenia</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[
+              { value: 'nadawca_bialystok', label: 'Nadawca: Białystok', icon: '📤', desc: 'Wysyłka z magazynu Białystok' },
+              { value: 'nadawca_zielonka', label: 'Nadawca: Zielonka', icon: '📤', desc: 'Wysyłka z magazynu Zielonka' },
+              { value: 'odbiorca_bialystok', label: 'Odbiorca: Białystok', icon: '📥', desc: 'Dostawa do magazynu Białystok' },
+              { value: 'odbiorca_zielonka', label: 'Odbiorca: Zielonka', icon: '📥', desc: 'Dostawa do magazynu Zielonka' },
+              { value: 'trzecia_strona', label: 'Trzecia strona', icon: '🏢', desc: 'Płatnik zewnętrzny' }
+            ].map(option => (
+              <label key={option.value} className="cursor-pointer">
+                <input
+                  type="radio"
+                  name="typZlecenia"
+                  value={option.value}
+                  checked={typZlecenia === option.value}
+                  onChange={(e) => setTypZlecenia(e.target.value)}
+                  className="sr-only"
+                />
+                <div className={`p-4 rounded-lg border-2 transition-colors ${
+                  typZlecenia === option.value
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}>
+                  <div className="text-center">
+                    <div className="text-2xl mb-2">{option.icon}</div>
+                    <div className="font-medium text-gray-900">{option.label}</div>
+                    <div className="text-xs text-gray-500 mt-1">{option.desc}</div>
+                  </div>
                 </div>
-              </div>
-            </label>
-          ))}
+              </label>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* STEP 1: SENDER & RECEIVER */}
       {currentStep === 1 && (
@@ -1452,7 +1443,7 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
           ) : (
             <button
               type="submit"
-              disabled={submitting || !validateStep(4)}
+              disabled={submitting}
               className="flex items-center space-x-2 px-6 py-3 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {submitting ? (
@@ -1470,15 +1461,15 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
           )}
         </div>
 
-        {/* STEP INDICATOR */}
+        {/* STEP INDICATOR - TYLKO 3 KROKI */}
         <div className="mt-6 flex justify-center">
           <div className="flex space-x-2">
-            {[1, 2, 3, 4].map(step => (
+            {[1, 2, 4].map(step => ( // Pokazujemy kroki 1, 2, 4 (ale wizualnie jako 1, 2, 3)
               <div
                 key={step}
                 className={`w-3 h-3 rounded-full transition-colors ${
                   step === currentStep ? 'bg-blue-600' :
-                  step < currentStep ? 'bg-green-600' :
+                  step < currentStep || (step === 4 && currentStep === 4) ? 'bg-green-600' :
                   'bg-gray-300'
                 }`}
               />
