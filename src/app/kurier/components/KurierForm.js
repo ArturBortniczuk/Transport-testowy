@@ -171,6 +171,21 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
         nadawcaTelefon: dane.telefon,
         nadawcaEmail: dane.email
       }))
+    } else if (typZlecenia === 'nadawca_zielonka') {
+      const dane = daneMagazynow.zielonka
+      setFormData(prev => ({
+        ...prev,
+        nadawcaTyp: 'firma',
+        nadawcaNazwa: dane.nazwa,
+        nadawcaUlica: dane.ulica,
+        nadawcaNumerDomu: dane.numerDomu,
+        nadawcaKodPocztowy: dane.kodPocztowy,
+        nadawcaMiasto: dane.miasto,
+        nadawcaKraj: dane.kraj,
+        nadawcaOsobaKontaktowa: dane.osobaKontaktowa,
+        nadawcaTelefon: dane.telefon,
+        nadawcaEmail: dane.email
+      }))
     } else if (typZlecenia === 'odbiorca_bialystok') {
       const dane = daneMagazynow.bialystok
       setFormData(prev => ({
@@ -202,6 +217,7 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
         odbiorcaEmail: dane.email
       }))
     }
+    // Resetuj pola gdy wybieramy trzecią stronę (nie auto-uzupełniamy)
   }, [typZlecenia])
 
   // Calculate price function
@@ -314,12 +330,32 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
     }))
   }
 
+  // Funkcja sprawdzająca czy wymiary są niestandardowe
+  const checkNonStandardDimensions = (length, width) => {
+    const l = parseInt(length) || 0
+    const w = parseInt(width) || 0
+    // Niestandardowe jeśli > 120x80 lub 80x120
+    return (l > 120 && w > 80) || (l > 80 && w > 120)
+  }
+
   const updatePackage = (packageId, field, value) => {
     setFormData(prev => ({
       ...prev,
-      paczki: prev.paczki.map(p => 
-        p.id === packageId ? { ...p, [field]: value } : p
-      )
+      paczki: prev.paczki.map(p => {
+        if (p.id !== packageId) return p
+        
+        const updatedPackage = { ...p, [field]: value }
+        
+        // Automatycznie ustaw niestandardowa=true jeśli wymiary są za duże
+        if (field === 'dlugosc' || field === 'szerokosc') {
+          updatedPackage.niestandardowa = checkNonStandardDimensions(
+            updatedPackage.dlugosc, 
+            updatedPackage.szerokosc
+          )
+        }
+        
+        return updatedPackage
+      })
     }))
   }
 
@@ -468,6 +504,7 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
 
   const isNadawcaReadonly = typZlecenia.includes('nadawca_')
   const isOdbiorcaReadonly = typZlecenia.includes('odbiorca_')
+  const isTrzeciaStrona = typZlecenia === 'trzecia_strona'
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -510,11 +547,13 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
       {/* Order Type Selection */}
       <div className="bg-white p-6 rounded-lg border">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Typ zlecenia</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[
-            { value: 'nadawca_bialystok', label: 'Nadawca: Białystok', icon: '📤' },
-            { value: 'odbiorca_bialystok', label: 'Odbiorca: Białystok', icon: '📥' },
-            { value: 'odbiorca_zielonka', label: 'Odbiorca: Zielonka', icon: '📥' }
+            { value: 'nadawca_bialystok', label: 'Nadawca: Białystok', icon: '📤', desc: 'Wysyłka z magazynu Białystok' },
+            { value: 'nadawca_zielonka', label: 'Nadawca: Zielonka', icon: '📤', desc: 'Wysyłka z magazynu Zielonka' },
+            { value: 'odbiorca_bialystok', label: 'Odbiorca: Białystok', icon: '📥', desc: 'Dostawa do magazynu Białystok' },
+            { value: 'odbiorca_zielonka', label: 'Odbiorca: Zielonka', icon: '📥', desc: 'Dostawa do magazynu Zielonka' },
+            { value: 'trzecia_strona', label: 'Trzecia strona', icon: '🏢', desc: 'Płatnik zewnętrzny' }
           ].map(option => (
             <label key={option.value} className="cursor-pointer">
               <input
@@ -533,6 +572,7 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
                 <div className="text-center">
                   <div className="text-2xl mb-2">{option.icon}</div>
                   <div className="font-medium text-gray-900">{option.label}</div>
+                  <div className="text-xs text-gray-500 mt-1">{option.desc}</div>
                 </div>
               </div>
             </label>
@@ -1120,6 +1160,36 @@ export default function KurierForm({ onSubmit, magazynNadawcy, userName, onCance
                       className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500"
                     />
                   </div>
+                </div>
+
+                {/* Informacja o niestandardowych wymiarach */}
+                {paczka.niestandardowa && (
+                  <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-center space-x-2">
+                      <AlertCircle className="text-yellow-600" size={16} />
+                      <span className="text-yellow-800 font-medium text-sm">
+                        Paczka niestandardowa
+                      </span>
+                    </div>
+                    <p className="text-yellow-700 text-xs mt-1">
+                      Wymiary przekraczają 120×80 cm lub 80×120 cm. Mogą wystąpić dodatkowe koszty.
+                    </p>
+                  </div>
+                )}
+
+                {/* Typ paczki */}
+                <div className="mt-3">
+                  <label className="block text-sm font-medium text-gray-700">Typ paczki</label>
+                  <select
+                    value={paczka.typ}
+                    onChange={(e) => updatePackage(paczka.id, 'typ', e.target.value)}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500"
+                  >
+                    <option value="PACKAGE">Paczka</option>
+                    <option value="PALLET">Paleta</option>
+                    <option value="ENVELOPE">Koperta</option>
+                    <option value="DOCUMENT">Dokumenty</option>
+                  </select>
                 </div>
               </div>
             ))}
