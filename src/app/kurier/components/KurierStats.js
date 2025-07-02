@@ -1,50 +1,37 @@
 // src/app/kurier/components/KurierStats.js
+// 🚀 KURIER STATS - Uproszczona wersja która działa z istniejącym API
 'use client'
 import { useState, useEffect } from 'react'
 import { 
-  Package, Clock, CheckCircle, TrendingUp, Building, DollarSign, Target,
-  Calendar, Truck, Award, BarChart3, PieChart, Activity, Zap, Star,
-  MapPin, Shield, CreditCard, Globe, RefreshCw, Download, Eye, Filter,
-  TrendingDown, AlertTriangle, ArrowUp, ArrowDown, Minus, Users,
-  Timer, Hash, Percent, Calculator
+  Package, Clock, CheckCircle, TrendingUp, Building, DollarSign,
+  Calendar, Truck, BarChart3, Activity, RefreshCw, 
+  ArrowUp, ArrowDown, Minus, AlertTriangle
 } from 'lucide-react'
 
 export default function KurierStats({ isArchive = false, refreshTrigger = 0 }) {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [selectedPeriod, setSelectedPeriod] = useState('30')
-  const [showAdvanced, setShowAdvanced] = useState(false)
-  const [activeTab, setActiveTab] = useState('overview')
-
-  // Periods for stats
-  const periods = [
-    { value: '7', label: 'Ostatnie 7 dni', icon: '📅' },
-    { value: '30', label: 'Ostatnie 30 dni', icon: '📊' },
-    { value: '90', label: 'Ostatnie 3 miesiące', icon: '📈' },
-    { value: '365', label: 'Ostatni rok', icon: '📚' },
-    { value: 'all', label: 'Wszystko', icon: '🌐' }
-  ]
-
-  // Tabs for different views
-  const tabs = [
-    { id: 'overview', label: 'Przegląd', icon: BarChart3 },
-    { id: 'performance', label: 'Wydajność', icon: TrendingUp },
-    { id: 'costs', label: 'Koszty', icon: DollarSign },
-    { id: 'timeline', label: 'Czas', icon: Clock }
-  ]
 
   useEffect(() => {
     fetchStats()
-  }, [refreshTrigger, selectedPeriod, isArchive])
+  }, [isArchive, refreshTrigger])
 
   const fetchStats = async () => {
-    setLoading(true)
-    setError(null)
-    
     try {
-      const response = await fetch(`/api/kurier/stats?period=${selectedPeriod}&archive=${isArchive}`)
+      setLoading(true)
+      setError(null)
+
+      // Używamy tylko istniejącego endpointu
+      const url = `/api/kurier/stats`
+      console.log('📊 Fetching stats from:', url)
+      
+      const response = await fetch(url, {
+        credentials: 'include'
+      })
+      
       const data = await response.json()
+      console.log('📊 Stats response:', data)
       
       if (data.success) {
         setStats(data.stats)
@@ -52,52 +39,55 @@ export default function KurierStats({ isArchive = false, refreshTrigger = 0 }) {
         setError(data.error || 'Błąd pobierania statystyk')
       }
     } catch (error) {
-      console.error('Error fetching stats:', error)
-      setError('Błąd połączenia z serwerem')
+      console.error('Błąd pobierania statystyk:', error)
+      setError('Nie udało się połączyć z serwerem')
     } finally {
       setLoading(false)
     }
   }
 
-  const formatNumber = (num) => {
-    if (num === null || num === undefined) return '-'
-    return num.toLocaleString('pl-PL')
+  const formatPercentage = (value) => {
+    if (typeof value !== 'number' || isNaN(value)) return '0%'
+    return `${value.toFixed(1)}%`
   }
 
-  const formatCurrency = (amount) => {
-    if (amount === null || amount === undefined) return '-'
-    return new Intl.NumberFormat('pl-PL', {
-      style: 'currency',
-      currency: 'PLN'
-    }).format(amount)
+  const getTrendIcon = (value) => {
+    if (typeof value !== 'number' || isNaN(value)) return <Minus className="text-gray-500" size={16} />
+    if (value > 0) return <ArrowUp className="text-green-500" size={16} />
+    if (value < 0) return <ArrowDown className="text-red-500" size={16} />
+    return <Minus className="text-gray-500" size={16} />
   }
 
-  const getStatColor = (value, trend) => {
-    if (trend === 'up') return 'text-green-600'
-    if (trend === 'down') return 'text-red-600'
-    return 'text-gray-600'
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'new': return 'text-yellow-600 bg-yellow-50 border-yellow-200'
+      case 'approved': return 'text-green-600 bg-green-50 border-green-200'
+      case 'sent': return 'text-blue-600 bg-blue-50 border-blue-200'
+      case 'delivered': return 'text-purple-600 bg-purple-50 border-purple-200'
+      default: return 'text-gray-600 bg-gray-50 border-gray-200'
+    }
   }
 
-  const getStatBgColor = (value, trend) => {
-    if (trend === 'up') return 'bg-green-50'
-    if (trend === 'down') return 'bg-red-50'
-    return 'bg-gray-50'
+  const calculateSuccessRate = () => {
+    if (!stats || !stats.statusCounts) return 0
+    const total = stats.totalCount || 0
+    const successful = (stats.statusCounts.delivered || 0) + (stats.statusCounts.sent || 0)
+    return total > 0 ? (successful / total) * 100 : 0
   }
 
   if (loading) {
     return (
-      <div className="bg-white p-6 rounded-lg shadow">
-        <div className="animate-pulse">
-          <div className="h-6 bg-gray-200 rounded w-1/4 mb-6"></div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="bg-gray-100 p-6 rounded-lg">
-                <div className="h-8 bg-gray-200 rounded w-8 mb-4"></div>
-                <div className="h-8 bg-gray-200 rounded w-16 mb-2"></div>
-                <div className="h-4 bg-gray-200 rounded w-20"></div>
+      <div className="mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="bg-white rounded-lg shadow-sm border p-4">
+              <div className="animate-pulse">
+                <div className="w-8 h-8 bg-gray-200 rounded mb-2"></div>
+                <div className="w-16 h-6 bg-gray-200 rounded mb-1"></div>
+                <div className="w-20 h-4 bg-gray-200 rounded"></div>
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       </div>
     )
@@ -105,259 +95,230 @@ export default function KurierStats({ isArchive = false, refreshTrigger = 0 }) {
 
   if (error) {
     return (
-      <div className="bg-white p-6 rounded-lg shadow">
-        <div className="text-center py-8">
-          <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Błąd ładowania statystyk</h3>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <button
-            onClick={fetchStats}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center mx-auto"
-          >
-            <RefreshCw className="mr-2" size={16} />
-            Spróbuj ponownie
-          </button>
+      <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200">
+        <div className="flex items-center">
+          <AlertTriangle className="mr-2" size={20} />
+          <div>
+            <div className="font-medium">Błąd ładowania statystyk</div>
+            <div className="text-sm">{error}</div>
+            <button 
+              onClick={fetchStats}
+              className="mt-2 text-xs bg-red-100 hover:bg-red-200 px-2 py-1 rounded"
+            >
+              Spróbuj ponownie
+            </button>
+          </div>
         </div>
       </div>
     )
   }
 
+  if (!stats) return null
+
+  const successRate = calculateSuccessRate()
+
   return (
-    <div className="bg-white rounded-lg shadow">
+    <div className="mb-6 space-y-6">
       {/* Header */}
-      <div className="p-6 border-b border-gray-200">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-              <BarChart3 className="mr-2" size={20} />
-              Statystyki {isArchive ? 'Archiwum' : 'Kuriera'}
-            </h3>
-            <p className="text-sm text-gray-600 mt-1">
-              {isArchive ? 'Historyczne dane zamówień' : 'Aktualne statystyki zamówień'}
-            </p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h3 className="text-lg font-bold text-gray-900 flex items-center">
+            <BarChart3 className="mr-2 text-blue-600" />
+            📊 Statystyki kurierskie {isArchive ? '(Archiwum)' : ''}
+          </h3>
+          <p className="text-sm text-gray-600 mt-1">
+            Przegląd zamówień i podstawowe metryki
+          </p>
+        </div>
+        
+        <button
+          onClick={fetchStats}
+          disabled={loading}
+          className="flex items-center px-3 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+        >
+          <RefreshCw className={`mr-1 ${loading ? 'animate-spin' : ''}`} size={16} />
+          Odśwież
+        </button>
+      </div>
+
+      {/* Basic Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        
+        {/* Total Orders */}
+        <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center text-blue-600 mb-1">
+                <Package className="mr-2" size={20} />
+                <span className="text-sm font-medium">Łączne zamówienia</span>
+              </div>
+              <div className="text-2xl font-bold text-blue-900">
+                {stats.totalCount || 0}
+              </div>
+              {stats.growthPercentage !== undefined && (
+                <div className="flex items-center text-sm mt-1">
+                  {getTrendIcon(stats.growthPercentage)}
+                  <span className={stats.growthPercentage >= 0 ? 'text-green-600 ml-1' : 'text-red-600 ml-1'}>
+                    {formatPercentage(Math.abs(stats.growthPercentage))}
+                  </span>
+                  <span className="text-gray-500 ml-1">vs poprzedni miesiąc</span>
+                </div>
+              )}
+            </div>
+            <div className="text-3xl">📦</div>
           </div>
-          
-          <div className="flex items-center space-x-3">
-            {/* Period selector */}
-            <select
-              value={selectedPeriod}
-              onChange={(e) => setSelectedPeriod(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {periods.map(period => (
-                <option key={period.value} value={period.value}>
-                  {period.icon} {period.label}
-                </option>
-              ))}
-            </select>
-            
-            {/* Advanced toggle */}
-            <button
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className={`px-3 py-2 text-sm rounded-md border transition-colors ${
-                showAdvanced
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              <Eye className="w-4 h-4 mr-1 inline" />
-              {showAdvanced ? 'Podstawowe' : 'Zaawansowane'}
-            </button>
-            
-            {/* Refresh button */}
-            <button
-              onClick={fetchStats}
-              className="px-3 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </button>
+        </div>
+
+        {/* Success Rate */}
+        <div className="bg-gradient-to-r from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center text-green-600 mb-1">
+                <CheckCircle className="mr-2" size={20} />
+                <span className="text-sm font-medium">Wskaźnik sukcesu</span>
+              </div>
+              <div className="text-2xl font-bold text-green-900">
+                {formatPercentage(successRate)}
+              </div>
+              <div className="text-xs text-green-600 mt-1">
+                {(stats.statusCounts?.delivered || 0) + (stats.statusCounts?.sent || 0)} z {stats.totalCount || 0} dostarczone
+              </div>
+            </div>
+            <div className="text-3xl">✅</div>
+          </div>
+        </div>
+
+        {/* Active Orders */}
+        <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 p-4 rounded-lg border border-yellow-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center text-yellow-600 mb-1">
+                <Activity className="mr-2" size={20} />
+                <span className="text-sm font-medium">Aktywne zamówienia</span>
+              </div>
+              <div className="text-2xl font-bold text-yellow-900">
+                {stats.activeCount || 0}
+              </div>
+              <div className="text-xs text-yellow-600 mt-1">
+                Oczekujące na realizację
+              </div>
+            </div>
+            <div className="text-3xl">⚡</div>
+          </div>
+        </div>
+
+        {/* Delivery Performance */}
+        <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center text-purple-600 mb-1">
+                <Clock className="mr-2" size={20} />
+                <span className="text-sm font-medium">Wydajność dostaw</span>
+              </div>
+              <div className="text-2xl font-bold text-purple-900">
+                {stats.deliveryRate || 0}%
+              </div>
+              <div className="text-xs text-purple-600 mt-1">
+                {stats.avgDeliveryHours ? `${stats.avgDeliveryHours}h średnio` : 'Wskaźnik dostaw'}
+              </div>
+            </div>
+            <div className="text-3xl">⏱️</div>
           </div>
         </div>
       </div>
 
-      {/* Basic Stats */}
-      <div className="p-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Aktywne zamówienia */}
-          <div className={`p-6 rounded-lg ${getStatBgColor(stats?.activeCount, stats?.activeTrend)}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center">
-                  <Clock className="w-8 h-8 text-blue-600 mr-3" />
-                  <div>
-                    <div className={`text-2xl font-bold ${getStatColor(stats?.activeCount, stats?.activeTrend)}`}>
-                      {formatNumber(stats?.activeCount || 0)}
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      {isArchive ? 'Zostały zarchiwizowane' : 'Aktywne zamówienia'}
+      {/* Detailed Stats */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        {/* Status Distribution */}
+        {stats.statusCounts && (
+          <div className="bg-white p-4 rounded-lg shadow-sm border">
+            <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
+              <BarChart3 className="mr-2 text-blue-600" />
+              Rozkład statusów
+            </h4>
+            <div className="space-y-3">
+              {Object.entries(stats.statusCounts).map(([status, count]) => (
+                <div key={status} className={`p-3 rounded-lg border ${getStatusColor(status)}`}>
+                  <div className="flex justify-between items-center">
+                    <div className="text-sm font-medium capitalize">{status}</div>
+                    <div className="text-right">
+                      <div className="text-xl font-bold">{count}</div>
+                      <div className="text-xs">
+                        {formatPercentage((count / stats.totalCount) * 100)}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-              {stats?.activeTrend && (
-                <div className={`text-sm ${getStatColor(stats?.activeCount, stats?.activeTrend)}`}>
-                  {stats?.activeTrend === 'up' ? <ArrowUp size={16} /> : 
-                   stats?.activeTrend === 'down' ? <ArrowDown size={16} /> : 
-                   <Minus size={16} />}
-                </div>
-              )}
+              ))}
             </div>
           </div>
+        )}
 
-          {/* Ukończone zamówienia */}
-          <div className={`p-6 rounded-lg ${getStatBgColor(stats?.deliveredCount, stats?.deliveredTrend)}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center">
-                  <CheckCircle className="w-8 h-8 text-green-600 mr-3" />
-                  <div>
-                    <div className={`text-2xl font-bold ${getStatColor(stats?.deliveredCount, stats?.deliveredTrend)}`}>
-                      {formatNumber(stats?.deliveredCount || 0)}
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      {isArchive ? 'Dostarczone w archiwum' : 'Dostarczone'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-              {stats?.deliveredTrend && (
-                <div className={`text-sm ${getStatColor(stats?.deliveredCount, stats?.deliveredTrend)}`}>
-                  {stats?.deliveredTrend === 'up' ? <ArrowUp size={16} /> : 
-                   stats?.deliveredTrend === 'down' ? <ArrowDown size={16} /> : 
-                   <Minus size={16} />}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Wszystkie zamówienia */}
-          <div className={`p-6 rounded-lg ${getStatBgColor(stats?.totalCount, stats?.totalTrend)}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center">
-                  <Package className="w-8 h-8 text-purple-600 mr-3" />
-                  <div>
-                    <div className={`text-2xl font-bold ${getStatColor(stats?.totalCount, stats?.totalTrend)}`}>
-                      {formatNumber(stats?.totalCount || 0)}
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      Wszystkie zamówienia
+        {/* Magazine Distribution */}
+        {stats.magazineCounts && Object.keys(stats.magazineCounts).length > 0 && (
+          <div className="bg-white p-4 rounded-lg shadow-sm border">
+            <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
+              <Building className="mr-2 text-green-600" />
+              Rozkład według magazynów
+            </h4>
+            <div className="space-y-3">
+              {Object.entries(stats.magazineCounts).map(([magazine, count]) => (
+                <div key={magazine} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                  <span className="text-sm font-medium">{magazine}</span>
+                  <div className="text-right">
+                    <div className="text-lg font-bold">{count}</div>
+                    <div className="text-xs text-gray-500">
+                      {formatPercentage((count / stats.totalCount) * 100)}
                     </div>
                   </div>
                 </div>
-              </div>
-              {stats?.totalTrend && (
-                <div className={`text-sm ${getStatColor(stats?.totalCount, stats?.totalTrend)}`}>
-                  {stats?.totalTrend === 'up' ? <ArrowUp size={16} /> : 
-                   stats?.totalTrend === 'down' ? <ArrowDown size={16} /> : 
-                   <Minus size={16} />}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Advanced Stats */}
-        {showAdvanced && (
-          <div className="mt-8">
-            {/* Tabs */}
-            <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg mb-6">
-              {tabs.map(tab => {
-                const Icon = tab.icon
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center ${
-                      activeTab === tab.id
-                        ? 'bg-white text-blue-600 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    <Icon className="mr-2" size={16} />
-                    {tab.label}
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Tab content */}
-            <div className="bg-gray-50 p-6 rounded-lg">
-              {activeTab === 'overview' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-600">{formatNumber(stats?.newCount || 0)}</div>
-                    <div className="text-sm text-gray-600">Nowe</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-yellow-600">{formatNumber(stats?.approvedCount || 0)}</div>
-                    <div className="text-sm text-gray-600">Zatwierdzone</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-orange-600">{formatNumber(stats?.sentCount || 0)}</div>
-                    <div className="text-sm text-gray-600">Wysłane</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-green-600">{formatNumber(stats?.deliveredCount || 0)}</div>
-                    <div className="text-sm text-gray-600">Dostarczone</div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'performance' && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-green-600">{stats?.deliveryRate || 0}%</div>
-                    <div className="text-sm text-gray-600">Wskaźnik dostaw</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-600">{stats?.avgDeliveryTime || 0}h</div>
-                    <div className="text-sm text-gray-600">Średni czas dostawy</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-purple-600">{stats?.customerSatisfaction || 0}%</div>
-                    <div className="text-sm text-gray-600">Zadowolenie klientów</div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'costs' && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-green-600">{formatCurrency(stats?.totalRevenue || 0)}</div>
-                    <div className="text-sm text-gray-600">Przychody</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-red-600">{formatCurrency(stats?.totalCosts || 0)}</div>
-                    <div className="text-sm text-gray-600">Koszty</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-600">{formatCurrency(stats?.avgOrderValue || 0)}</div>
-                    <div className="text-sm text-gray-600">Średnia wartość</div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'timeline' && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-600">{stats?.avgProcessingTime || 0}h</div>
-                    <div className="text-sm text-gray-600">Czas przetwarzania</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-yellow-600">{stats?.avgShippingTime || 0}h</div>
-                    <div className="text-sm text-gray-600">Czas wysyłki</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-green-600">{stats?.onTimeDeliveries || 0}%</div>
-                    <div className="text-sm text-gray-600">Na czas</div>
-                  </div>
-                </div>
-              )}
+              ))}
             </div>
           </div>
         )}
       </div>
+
+      {/* Period Stats */}
+      <div className="bg-white p-4 rounded-lg shadow-sm border">
+        <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
+          <Calendar className="mr-2 text-purple-600" />
+          Statystyki czasowe
+        </h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          
+          <div className="text-center p-3 bg-blue-50 rounded-lg">
+            <div className="text-lg font-bold text-blue-900">
+              {stats.last7DaysCount || 0}
+            </div>
+            <div className="text-sm text-blue-600">Ostatnie 7 dni</div>
+          </div>
+          
+          <div className="text-center p-3 bg-green-50 rounded-lg">
+            <div className="text-lg font-bold text-green-900">
+              {stats.last30DaysCount || 0}
+            </div>
+            <div className="text-sm text-green-600">Ostatnie 30 dni</div>
+          </div>
+          
+          <div className="text-center p-3 bg-purple-50 rounded-lg">
+            <div className="text-lg font-bold text-purple-900">
+              {stats.thisMonthCount || 0}
+            </div>
+            <div className="text-sm text-purple-600">Ten miesiąc</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Meta Info */}
+      {stats.meta && (
+        <div className="text-center text-xs text-gray-500">
+          Ostatnia aktualizacja: {new Date(stats.meta.generatedAt).toLocaleString('pl-PL')}
+          {stats.meta.note && (
+            <div className="mt-1 text-yellow-600">ℹ️ {stats.meta.note}</div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
