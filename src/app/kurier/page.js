@@ -7,165 +7,28 @@ import {
   Calendar, BarChart3, Settings, Bell, Mail, User
 } from 'lucide-react'
 
-// Fallback components
-const KurierFormFallback = ({ onSubmit, onCancel }) => (
-  <div className="bg-white p-6 rounded-lg shadow">
-    <h3 className="text-lg font-semibold mb-4">Formularz zamówienia kuriera</h3>
-    <p className="text-gray-600 mb-4">Komponent formularza w przygotowaniu...</p>
-    <div className="flex space-x-2">
-      <button 
-        onClick={onCancel}
-        className="px-4 py-2 text-gray-600 border rounded hover:bg-gray-50"
-      >
-        Anuluj
-      </button>
-      <button 
-        onClick={() => onSubmit({ test: true })}
-        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-      >
-        Test Submit
-      </button>
-    </div>
-  </div>
-)
-
-const ZamowieniaListFallback = ({ zamowienia, loading }) => (
-  <div className="bg-white p-6 rounded-lg shadow">
-    <h3 className="text-lg font-semibold mb-4">Lista zamówień</h3>
-    {loading ? (
-      <div className="text-center py-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-        <p className="mt-2 text-gray-600">Ładowanie zamówień...</p>
-      </div>
-    ) : (
-      <div className="space-y-2">
-        {zamowienia?.length > 0 ? (
-          zamowienia.map((zamowienie, index) => (
-            <div key={zamowienie.id || index} className="p-3 border rounded">
-              <div className="flex justify-between items-center">
-                <span className="font-medium">
-                  Zamówienie #{zamowienie.id}
-                </span>
-                <span className={`px-2 py-1 rounded text-xs ${
-                  zamowienie.status === 'new' ? 'bg-blue-100 text-blue-800' :
-                  zamowienie.status === 'approved' ? 'bg-green-100 text-green-800' :
-                  zamowienie.status === 'sent' ? 'bg-yellow-100 text-yellow-800' :
-                  'bg-gray-100 text-gray-800'
-                }`}>
-                  {zamowienie.status}
-                </span>
-              </div>
-              <p className="text-sm text-gray-600 mt-1">
-                Do: {zamowienie.recipient_city || 'Brak danych'}
-              </p>
-            </div>
-          ))
-        ) : (
-          <p className="text-gray-500 text-center py-8">Brak zamówień</p>
-        )}
-      </div>
-    )}
-  </div>
-)
-
-const KurierStatsFallback = ({ isArchive, refreshTrigger }) => (
-  <div className="bg-white p-6 rounded-lg shadow">
-    <h3 className="text-lg font-semibold mb-4">Statystyki</h3>
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div className="bg-blue-50 p-4 rounded text-center">
-        <Package className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-        <div className="text-2xl font-bold text-blue-700">-</div>
-        <div className="text-sm text-blue-600">Aktywne</div>
-      </div>
-      <div className="bg-green-50 p-4 rounded text-center">
-        <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
-        <div className="text-2xl font-bold text-green-700">-</div>
-        <div className="text-sm text-green-600">Ukończone</div>
-      </div>
-      <div className="bg-yellow-50 p-4 rounded text-center">
-        <Clock className="w-8 h-8 text-yellow-600 mx-auto mb-2" />
-        <div className="text-2xl font-bold text-yellow-700">-</div>
-        <div className="text-sm text-yellow-600">W trakcie</div>
-      </div>
-    </div>
-  </div>
-)
-
-// Dynamic imports - funkcje do ładowania komponentów
-const loadKurierForm = async () => {
-  try {
-    const module = await import('./components/KurierForm')
-    return module.default
-  } catch (error) {
-    console.warn('KurierForm component not found, using fallback')
-    return KurierFormFallback
-  }
-}
-
-const loadZamowieniaList = async () => {
-  try {
-    const module = await import('./components/ZamowieniaList')
-    return module.default
-  } catch (error) {
-    console.warn('ZamowieniaList component not found, using fallback')
-    return ZamowieniaListFallback
-  }
-}
-
-const loadKurierStats = async () => {
-  try {
-    const module = await import('./components/KurierStats')
-    return module.default
-  } catch (error) {
-    console.warn('KurierStats component not found, using fallback')
-    return KurierStatsFallback
-  }
-}
-
 export default function KurierPage() {
-  // Stan komponentów
-  const [KurierForm, setKurierForm] = useState(() => KurierFormFallback)
-  const [ZamowieniaList, setZamowieniaList] = useState(() => ZamowieniaListFallback)
-  const [KurierStats, setKurierStats] = useState(() => KurierStatsFallback)
-  
   // Stan główny
   const [activeView, setActiveView] = useState('active')
   const [zamowienia, setZamowienia] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [userRole, setUserRole] = useState(null)
-  const [canApprove, setCanApprove] = useState(false)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
-  const [processingOrders, setProcessingOrders] = useState(new Set())
 
   // Stan filtrów i wyszukiwania
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [showFilters, setShowFilters] = useState(false)
 
   // Stan formularza
   const [showForm, setShowForm] = useState(false)
 
   // Stan statystyk
-  const [stats, setStats] = useState(null)
-  const [statsLoading, setStatsLoading] = useState(false)
-
-  // Ładowanie komponentów
-  useEffect(() => {
-    const loadComponents = async () => {
-      const [kurierForm, zamowieniaList, kurierStats] = await Promise.all([
-        loadKurierForm(),
-        loadZamowieniaList(),
-        loadKurierStats()
-      ])
-      
-      setKurierForm(() => kurierForm)
-      setZamowieniaList(() => zamowieniaList)
-      setKurierStats(() => kurierStats)
-    }
-    
-    loadComponents()
-  }, [])
+  const [stats, setStats] = useState({
+    activeCount: 0,
+    archivedCount: 0,
+    totalCount: 0
+  })
 
   // Pobierz rolę użytkownika
   useEffect(() => {
@@ -191,7 +54,6 @@ export default function KurierPage() {
       if (response.ok) {
         const data = await response.json()
         setUserRole(data.user?.role)
-        setCanApprove(data.user?.role === 'admin' || data.user?.role?.includes('magazyn'))
       }
     } catch (error) {
       console.error('Error fetching user role:', error)
@@ -203,7 +65,6 @@ export default function KurierPage() {
     setError(null)
     
     try {
-      // Ustaw parametr statusu na podstawie aktywnego widoku
       let statusParam = 'active'
       if (activeView === 'archive') {
         statusParam = 'completed'
@@ -212,8 +73,12 @@ export default function KurierPage() {
       }
       
       const url = `/api/kurier?status=${statusParam}`
+      console.log('Fetching from:', url)
+      
       const response = await fetch(url)
       const data = await response.json()
+      
+      console.log('API Response:', data)
       
       if (data.success) {
         setZamowienia(data.zamowienia || [])
@@ -222,14 +87,13 @@ export default function KurierPage() {
       }
     } catch (error) {
       console.error('Error fetching zamowienia:', error)
-      setError('Błąd połączenia z serwerem')
+      setError('Błąd połączenia z serwerem: ' + error.message)
     } finally {
       setLoading(false)
     }
   }
 
   const fetchStats = async () => {
-    setStatsLoading(true)
     try {
       const response = await fetch('/api/kurier/stats')
       const data = await response.json()
@@ -239,98 +103,15 @@ export default function KurierPage() {
       }
     } catch (error) {
       console.error('Error fetching stats:', error)
-    } finally {
-      setStatsLoading(false)
     }
   }
 
-  const handleCreateOrder = async (orderData) => {
-    try {
-      const response = await fetch('/api/kurier', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(orderData)
-      })
-      
-      const data = await response.json()
-      
-      if (data.success) {
-        setShowForm(false)
-        setRefreshTrigger(prev => prev + 1)
-        alert('Zamówienie utworzone pomyślnie!')
-      } else {
-        alert('Błąd: ' + (data.error || 'Nie udało się utworzyć zamówienia'))
-      }
-    } catch (error) {
-      console.error('Error creating order:', error)
-      alert('Błąd połączenia z serwerem')
-    }
+  const handleCreateOrder = () => {
+    alert('Formularz zamówienia - w przygotowaniu')
+    setShowForm(false)
   }
 
-  const handleApproveOrder = async (orderId) => {
-    if (processingOrders.has(orderId)) return
-
-    setProcessingOrders(prev => new Set([...prev, orderId]))
-    
-    try {
-      const response = await fetch(`/api/kurier/${orderId}/approve`, {
-        method: 'PATCH'
-      })
-      
-      const data = await response.json()
-      
-      if (data.success) {
-        setRefreshTrigger(prev => prev + 1)
-        alert('Zamówienie zatwierdzone!')
-      } else {
-        alert('Błąd: ' + (data.error || 'Nie udało się zatwierdzić'))
-      }
-    } catch (error) {
-      console.error('Error approving order:', error)
-      alert('Błąd połączenia z serwerem')
-    } finally {
-      setProcessingOrders(prev => {
-        const newSet = new Set(prev)
-        newSet.delete(orderId)
-        return newSet
-      })
-    }
-  }
-
-  const handleDeleteOrder = async (orderId) => {
-    if (!confirm('Czy na pewno chcesz usunąć to zamówienie?')) return
-    if (processingOrders.has(orderId)) return
-
-    setProcessingOrders(prev => new Set([...prev, orderId]))
-    
-    try {
-      const response = await fetch(`/api/kurier/${orderId}`, {
-        method: 'DELETE'
-      })
-      
-      const data = await response.json()
-      
-      if (data.success) {
-        setRefreshTrigger(prev => prev + 1)
-        alert('Zamówienie usunięte!')
-      } else {
-        alert('Błąd: ' + (data.error || 'Nie udało się usunąć'))
-      }
-    } catch (error) {
-      console.error('Error deleting order:', error)
-      alert('Błąd połączenia z serwerem')
-    } finally {
-      setProcessingOrders(prev => {
-        const newSet = new Set(prev)
-        newSet.delete(orderId)
-        return newSet
-      })
-    }
-  }
-
-  // Filtrowanie zamówień na podstawie wyszukiwania
+  // Filtrowanie zamówień
   const filteredZamowienia = zamowienia.filter(zamowienie => {
     if (!searchQuery) return true
     
@@ -363,7 +144,7 @@ export default function KurierPage() {
               <button
                 onClick={() => setRefreshTrigger(prev => prev + 1)}
                 disabled={loading}
-                className="flex items-center px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                className="flex items-center px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
               >
                 <RefreshCw className={`mr-2 ${loading ? 'animate-spin' : ''}`} size={16} />
                 Odśwież
@@ -380,12 +161,28 @@ export default function KurierPage() {
           </div>
         </div>
 
-        {/* Statystyki */}
+        {/* Statystyki - Basic */}
         <div className="mb-8">
-          <KurierStats 
-            isArchive={activeView === 'archive'} 
-            refreshTrigger={refreshTrigger}
-          />
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h3 className="text-lg font-semibold mb-4">Statystyki</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-blue-50 p-4 rounded text-center">
+                <Package className="w-8 h-8 text-blue-600 mx-auto mb-2" />
+                <div className="text-2xl font-bold text-blue-700">{stats.activeCount}</div>
+                <div className="text-sm text-blue-600">Aktywne</div>
+              </div>
+              <div className="bg-green-50 p-4 rounded text-center">
+                <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                <div className="text-2xl font-bold text-green-700">{stats.archivedCount}</div>
+                <div className="text-sm text-green-600">Archiwum</div>
+              </div>
+              <div className="bg-yellow-50 p-4 rounded text-center">
+                <Clock className="w-8 h-8 text-yellow-600 mx-auto mb-2" />
+                <div className="text-2xl font-bold text-yellow-700">{stats.totalCount}</div>
+                <div className="text-sm text-yellow-600">Wszystkie</div>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Nawigacja widoków */}
@@ -432,7 +229,6 @@ export default function KurierPage() {
         {/* Filtry i wyszukiwanie */}
         <div className="mb-6 bg-white p-4 rounded-lg shadow">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0 sm:space-x-4">
-            {/* Wyszukiwanie */}
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
               <input
@@ -444,7 +240,6 @@ export default function KurierPage() {
               />
             </div>
             
-            {/* Filtry */}
             <div className="flex items-center space-x-3">
               <select
                 value={statusFilter}
@@ -457,15 +252,21 @@ export default function KurierPage() {
                 <option value="sent">Wysłane</option>
                 <option value="delivered">Dostarczone</option>
               </select>
-              
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className="flex items-center px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
-              >
-                <Filter className="mr-2" size={16} />
-                Filtry
-              </button>
             </div>
+          </div>
+        </div>
+
+        {/* Debug Info */}
+        <div className="mb-6 bg-blue-50 p-4 rounded-lg">
+          <h4 className="font-semibold text-blue-900">Debug Info:</h4>
+          <div className="text-sm text-blue-800 mt-2">
+            <div>Active View: {activeView}</div>
+            <div>Status Filter: {statusFilter}</div>
+            <div>User Role: {userRole || 'Loading...'}</div>
+            <div>Zamówienia Count: {zamowienia.length}</div>
+            <div>Filtered Count: {filteredZamowienia.length}</div>
+            <div>Loading: {loading ? 'Yes' : 'No'}</div>
+            <div>Error: {error || 'None'}</div>
           </div>
         </div>
 
@@ -481,27 +282,69 @@ export default function KurierPage() {
           </div>
         )}
 
-        {/* Lista zamówień */}
-        <ZamowieniaList
-          zamowienia={filteredZamowienia}
-          onZatwierdz={handleApproveOrder}
-          onUsun={handleDeleteOrder}
-          userRole={userRole}
-          canApprove={canApprove}
-          loading={loading}
-          onRefresh={() => setRefreshTrigger(prev => prev + 1)}
-          processingOrders={processingOrders}
-          isArchive={activeView === 'archive'}
-        />
+        {/* Lista zamówień - Basic */}
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-lg font-semibold mb-4">Lista zamówień</h3>
+          {loading ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="mt-2 text-gray-600">Ładowanie zamówień...</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredZamowienia?.length > 0 ? (
+                filteredZamowienia.map((zamowienie, index) => (
+                  <div key={zamowienie.id || index} className="p-3 border rounded">
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium">
+                        Zamówienie #{zamowienie.id}
+                      </span>
+                      <span className={`px-2 py-1 rounded text-xs ${
+                        zamowienie.status === 'new' ? 'bg-blue-100 text-blue-800' :
+                        zamowienie.status === 'approved' ? 'bg-green-100 text-green-800' :
+                        zamowienie.status === 'sent' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {zamowienie.status}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Do: {zamowienie.recipient_city || 'Brak danych'}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Utworzył: {zamowienie.created_by_email || 'Nieznany'}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <p className="text-gray-500 text-center py-8">
+                  {loading ? 'Ładowanie...' : 'Brak zamówień'}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
 
-        {/* Modal formularza */}
+        {/* Modal formularza - Basic */}
         {showForm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-              <KurierForm
-                onSubmit={handleCreateOrder}
-                onCancel={() => setShowForm(false)}
-              />
+            <div className="bg-white rounded-lg max-w-md w-full p-6">
+              <h3 className="text-lg font-semibold mb-4">Nowe zamówienie kuriera</h3>
+              <p className="text-gray-600 mb-4">Formularz w przygotowaniu...</p>
+              <div className="flex space-x-2">
+                <button 
+                  onClick={() => setShowForm(false)}
+                  className="px-4 py-2 text-gray-600 border rounded hover:bg-gray-50"
+                >
+                  Anuluj
+                </button>
+                <button 
+                  onClick={handleCreateOrder}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                >
+                  Utwórz
+                </button>
+              </div>
             </div>
           </div>
         )}
