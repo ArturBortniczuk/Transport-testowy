@@ -1,7 +1,6 @@
 // src/app/kurier/components/KurierStats.js
-// 🔥 MEGA KURIER STATS - Najbardziej zaawansowany system statystyk i analytics
 'use client'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { 
   Package, Clock, CheckCircle, TrendingUp, Building, DollarSign, Target,
   Calendar, Truck, Award, BarChart3, PieChart, Activity, Zap, Star,
@@ -12,13 +11,11 @@ import {
 
 export default function KurierStats({ isArchive = false, refreshTrigger = 0 }) {
   const [stats, setStats] = useState(null)
-  const [detailedStats, setDetailedStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [selectedPeriod, setSelectedPeriod] = useState('30')
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [activeTab, setActiveTab] = useState('overview')
-  const [realTimeData, setRealTimeData] = useState({})
 
   // Periods for stats
   const periods = [
@@ -34,237 +31,73 @@ export default function KurierStats({ isArchive = false, refreshTrigger = 0 }) {
     { id: 'overview', label: 'Przegląd', icon: BarChart3 },
     { id: 'performance', label: 'Wydajność', icon: TrendingUp },
     { id: 'costs', label: 'Koszty', icon: DollarSign },
-    { id: 'services', label: 'Usługi', icon: Package },
-    { id: 'geography', label: 'Geografia', icon: MapPin },
-    { id: 'timeline', label: 'Timeline', icon: Calendar }
+    { id: 'timeline', label: 'Czas', icon: Clock }
   ]
 
   useEffect(() => {
     fetchStats()
-    fetchDetailedStats()
-    // Setup real-time refresh
-    const interval = setInterval(() => {
-      updateRealTimeData()
-    }, 30000) // Every 30 seconds
-
-    return () => clearInterval(interval)
-  }, [selectedPeriod, isArchive, refreshTrigger])
+  }, [refreshTrigger, selectedPeriod, isArchive])
 
   const fetchStats = async () => {
+    setLoading(true)
+    setError(null)
+    
     try {
-      setLoading(true)
-      setError(null)
-
-      const url = `/api/kurier/stats?period=${selectedPeriod}&archive=${isArchive}`
-      const response = await fetch(url)
+      const response = await fetch(`/api/kurier/stats?period=${selectedPeriod}&archive=${isArchive}`)
       const data = await response.json()
       
       if (data.success) {
         setStats(data.stats)
       } else {
-        setError(data.error)
+        setError(data.error || 'Błąd pobierania statystyk')
       }
     } catch (error) {
-      console.error('Błąd pobierania statystyk:', error)
-      setError('Nie udało się pobrać statystyk')
+      console.error('Error fetching stats:', error)
+      setError('Błąd połączenia z serwerem')
     } finally {
       setLoading(false)
     }
   }
 
-  const fetchDetailedStats = async () => {
-    try {
-      const url = `/api/kurier/stats/detailed?period=${selectedPeriod}&archive=${isArchive}`
-      const response = await fetch(url)
-      const data = await response.json()
-      
-      if (data.success) {
-        setDetailedStats(data.stats)
-      }
-    } catch (error) {
-      console.error('Błąd pobierania szczegółowych statystyk:', error)
-    }
-  }
-
-  const updateRealTimeData = async () => {
-    try {
-      const response = await fetch('/api/kurier/stats/realtime')
-      const data = await response.json()
-      
-      if (data.success) {
-        setRealTimeData(data.realTime)
-      }
-    } catch (error) {
-      console.warn('Błąd aktualizacji real-time data:', error)
-    }
-  }
-
-  // Calculate advanced metrics
-  const advancedMetrics = useMemo(() => {
-    if (!stats || !detailedStats) return {}
-
-    const metrics = {
-      // Efficiency metrics
-      avgProcessingTime: calculateAvgProcessingTime(),
-      successRate: calculateSuccessRate(),
-      costPerShipment: calculateCostPerShipment(),
-      
-      // Growth metrics
-      growthRate: calculateGrowthRate(),
-      trendsData: calculateTrends(),
-      
-      // Performance metrics
-      deliveryPerformance: calculateDeliveryPerformance(),
-      serviceDistribution: calculateServiceDistribution(),
-      
-      // Geographic metrics
-      topCities: calculateTopCities(),
-      distanceStats: calculateDistanceStats(),
-      
-      // Cost analysis
-      costBreakdown: calculateCostBreakdown(),
-      costTrends: calculateCostTrends()
-    }
-
-    return metrics
-  }, [stats, detailedStats])
-
-  // Helper calculation functions
-  const calculateAvgProcessingTime = () => {
-    if (!detailedStats?.processingTimes) return 0
-    const times = detailedStats.processingTimes
-    return times.reduce((sum, time) => sum + time, 0) / times.length
-  }
-
-  const calculateSuccessRate = () => {
-    if (!stats) return 0
-    const total = stats.totalCount || 0
-    const successful = (stats.statusCounts?.delivered || 0) + (stats.statusCounts?.sent || 0)
-    return total > 0 ? (successful / total) * 100 : 0
-  }
-
-  const calculateCostPerShipment = () => {
-    if (!detailedStats?.totalCost || !stats?.totalCount) return 0
-    return detailedStats.totalCost / stats.totalCount
-  }
-
-  const calculateGrowthRate = () => {
-    if (!detailedStats?.timeline) return 0
-    const timeline = detailedStats.timeline
-    if (timeline.length < 2) return 0
-    
-    const current = timeline[timeline.length - 1]?.count || 0
-    const previous = timeline[timeline.length - 2]?.count || 0
-    
-    if (previous === 0) return 0
-    return ((current - previous) / previous) * 100
-  }
-
-  const calculateTrends = () => {
-    if (!detailedStats?.timeline) return []
-    return detailedStats.timeline.map(item => ({
-      date: item.date,
-      orders: item.count,
-      cost: item.totalCost || 0,
-      avgCost: item.totalCost ? item.totalCost / item.count : 0
-    }))
-  }
-
-  const calculateDeliveryPerformance = () => {
-    if (!detailedStats?.deliveryTimes) return null
-    
-    const times = detailedStats.deliveryTimes
-    const onTime = times.filter(t => t <= 24).length
-    const delayed = times.filter(t => t > 24 && t <= 48).length
-    const veryDelayed = times.filter(t => t > 48).length
-    const avgTime = times.reduce((sum, time) => sum + time, 0) / times.length
-    
-    return { onTime, delayed, veryDelayed, avgTime }
-  }
-
-  const calculateServiceDistribution = () => {
-    if (!detailedStats?.services) return []
-    return Object.entries(detailedStats.services).map(([service, count]) => ({
-      service,
-      count,
-      percentage: (count / stats.totalCount) * 100
-    }))
-  }
-
-  const calculateTopCities = () => {
-    if (!detailedStats?.cities) return []
-    return Object.entries(detailedStats.cities)
-      .sort(([,a], [,b]) => b - a)
-      .slice(0, 10)
-      .map(([city, count]) => ({ city, count }))
-  }
-
-  const calculateDistanceStats = () => {
-    if (!detailedStats?.distances) return null
-    const distances = detailedStats.distances
-    return {
-      avg: distances.reduce((sum, dist) => sum + dist, 0) / distances.length,
-      min: Math.min(...distances),
-      max: Math.max(...distances),
-      total: distances.reduce((sum, dist) => sum + dist, 0)
-    }
-  }
-
-  const calculateCostBreakdown = () => {
-    if (!detailedStats?.costBreakdown) return null
-    return detailedStats.costBreakdown
-  }
-
-  const calculateCostTrends = () => {
-    if (!detailedStats?.timeline) return []
-    return detailedStats.timeline.map(item => ({
-      date: item.date,
-      avgCost: item.totalCost ? item.totalCost / item.count : 0,
-      totalCost: item.totalCost || 0
-    }))
-  }
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'new': return 'text-yellow-600 bg-yellow-50'
-      case 'approved': return 'text-green-600 bg-green-50'
-      case 'sent': return 'text-blue-600 bg-blue-50'
-      case 'delivered': return 'text-purple-600 bg-purple-50'
-      default: return 'text-gray-600 bg-gray-50'
-    }
+  const formatNumber = (num) => {
+    if (num === null || num === undefined) return '-'
+    return num.toLocaleString('pl-PL')
   }
 
   const formatCurrency = (amount) => {
+    if (amount === null || amount === undefined) return '-'
     return new Intl.NumberFormat('pl-PL', {
       style: 'currency',
-      currency: 'PLN',
-      minimumFractionDigits: 2
+      currency: 'PLN'
     }).format(amount)
   }
 
-  const formatPercentage = (value) => {
-    return `${value.toFixed(1)}%`
+  const getStatColor = (value, trend) => {
+    if (trend === 'up') return 'text-green-600'
+    if (trend === 'down') return 'text-red-600'
+    return 'text-gray-600'
   }
 
-  const getTrendIcon = (value) => {
-    if (value > 0) return <ArrowUp className="text-green-500" size={16} />
-    if (value < 0) return <ArrowDown className="text-red-500" size={16} />
-    return <Minus className="text-gray-500" size={16} />
+  const getStatBgColor = (value, trend) => {
+    if (trend === 'up') return 'bg-green-50'
+    if (trend === 'down') return 'bg-red-50'
+    return 'bg-gray-50'
   }
 
   if (loading) {
     return (
-      <div className="mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className="bg-white rounded-lg shadow-sm border p-4">
-              <div className="animate-pulse">
-                <div className="w-8 h-8 bg-gray-200 rounded mb-2"></div>
-                <div className="w-16 h-6 bg-gray-200 rounded mb-1"></div>
-                <div className="w-20 h-4 bg-gray-200 rounded"></div>
+      <div className="bg-white p-6 rounded-lg shadow">
+        <div className="animate-pulse">
+          <div className="h-6 bg-gray-200 rounded w-1/4 mb-6"></div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="bg-gray-100 p-6 rounded-lg">
+                <div className="h-8 bg-gray-200 rounded w-8 mb-4"></div>
+                <div className="h-8 bg-gray-200 rounded w-16 mb-2"></div>
+                <div className="h-4 bg-gray-200 rounded w-20"></div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     )
@@ -272,511 +105,259 @@ export default function KurierStats({ isArchive = false, refreshTrigger = 0 }) {
 
   if (error) {
     return (
-      <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200">
-        <div className="flex items-center">
-          <AlertTriangle className="mr-2" size={20} />
-          <div>
-            <div className="font-medium">Błąd ładowania statystyk</div>
-            <div className="text-sm">{error}</div>
-          </div>
+      <div className="bg-white p-6 rounded-lg shadow">
+        <div className="text-center py-8">
+          <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Błąd ładowania statystyk</h3>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button
+            onClick={fetchStats}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center mx-auto"
+          >
+            <RefreshCw className="mr-2" size={16} />
+            Spróbuj ponownie
+          </button>
         </div>
       </div>
     )
   }
 
-  if (!stats) return null
-
   return (
-    <div className="mb-6 space-y-6">
-      {/* Header Controls */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center space-y-4 md:space-y-0">
-        <div>
-          <h3 className="text-lg font-bold text-gray-900 flex items-center">
-            <BarChart3 className="mr-2 text-blue-600" />
-            📊 MEGA Analytics {isArchive ? '(Archiwum)' : ''}
-            {realTimeData.lastUpdate && (
-              <span className="ml-2 text-sm text-green-600 flex items-center">
-                <Activity className="mr-1" size={16} />
-                Live
-              </span>
-            )}
-          </h3>
-          <p className="text-sm text-gray-600 mt-1">
-            Zaawansowane analizy i metryki wydajności systemu kurierskiego
-          </p>
-        </div>
-
-        <div className="flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-4">
-          {/* Period Selector */}
-          <select
-            value={selectedPeriod}
-            onChange={(e) => setSelectedPeriod(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-          >
-            {periods.map(period => (
-              <option key={period.value} value={period.value}>
-                {period.icon} {period.label}
-              </option>
-            ))}
-          </select>
-
-          {/* Advanced Toggle */}
-          <button
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            className={`px-4 py-2 text-sm rounded-md transition-colors ${
-              showAdvanced 
-                ? 'bg-blue-600 text-white' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            <Zap className="mr-1 inline" size={16} />
-            {showAdvanced ? 'Ukryj zaawansowane' : 'Pokaż zaawansowane'}
-          </button>
+    <div className="bg-white rounded-lg shadow">
+      {/* Header */}
+      <div className="p-6 border-b border-gray-200">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+              <BarChart3 className="mr-2" size={20} />
+              Statystyki {isArchive ? 'Archiwum' : 'Kuriera'}
+            </h3>
+            <p className="text-sm text-gray-600 mt-1">
+              {isArchive ? 'Historyczne dane zamówień' : 'Aktualne statystyki zamówień'}
+            </p>
+          </div>
+          
+          <div className="flex items-center space-x-3">
+            {/* Period selector */}
+            <select
+              value={selectedPeriod}
+              onChange={(e) => setSelectedPeriod(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {periods.map(period => (
+                <option key={period.value} value={period.value}>
+                  {period.icon} {period.label}
+                </option>
+              ))}
+            </select>
+            
+            {/* Advanced toggle */}
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className={`px-3 py-2 text-sm rounded-md border transition-colors ${
+                showAdvanced
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <Eye className="w-4 h-4 mr-1 inline" />
+              {showAdvanced ? 'Podstawowe' : 'Zaawansowane'}
+            </button>
+            
+            {/* Refresh button */}
+            <button
+              onClick={fetchStats}
+              className="px-3 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Basic Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Orders */}
-        <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center text-blue-600 mb-1">
-                <Package className="mr-2" size={20} />
-                <span className="text-sm font-medium">Łączne zamówienia</span>
+      {/* Basic Stats */}
+      <div className="p-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Aktywne zamówienia */}
+          <div className={`p-6 rounded-lg ${getStatBgColor(stats?.activeCount, stats?.activeTrend)}`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center">
+                  <Clock className="w-8 h-8 text-blue-600 mr-3" />
+                  <div>
+                    <div className={`text-2xl font-bold ${getStatColor(stats?.activeCount, stats?.activeTrend)}`}>
+                      {formatNumber(stats?.activeCount || 0)}
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      {isArchive ? 'Zostały zarchiwizowane' : 'Aktywne zamówienia'}
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="text-2xl font-bold text-blue-900">
-                {stats.totalCount || 0}
-              </div>
-              {advancedMetrics.growthRate !== undefined && (
-                <div className="flex items-center text-sm">
-                  {getTrendIcon(advancedMetrics.growthRate)}
-                  <span className={advancedMetrics.growthRate >= 0 ? 'text-green-600' : 'text-red-600'}>
-                    {formatPercentage(Math.abs(advancedMetrics.growthRate))}
-                  </span>
+              {stats?.activeTrend && (
+                <div className={`text-sm ${getStatColor(stats?.activeCount, stats?.activeTrend)}`}>
+                  {stats?.activeTrend === 'up' ? <ArrowUp size={16} /> : 
+                   stats?.activeTrend === 'down' ? <ArrowDown size={16} /> : 
+                   <Minus size={16} />}
                 </div>
               )}
             </div>
-            <div className="text-3xl">📦</div>
           </div>
-        </div>
 
-        {/* Success Rate */}
-        <div className="bg-gradient-to-r from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center text-green-600 mb-1">
-                <CheckCircle className="mr-2" size={20} />
-                <span className="text-sm font-medium">Wskaźnik sukcesu</span>
-              </div>
-              <div className="text-2xl font-bold text-green-900">
-                {formatPercentage(advancedMetrics.successRate || 0)}
-              </div>
-              <div className="text-xs text-green-600">
-                {(stats.statusCounts?.delivered || 0) + (stats.statusCounts?.sent || 0)} z {stats.totalCount || 0}
-              </div>
-            </div>
-            <div className="text-3xl">✅</div>
-          </div>
-        </div>
-
-        {/* Average Cost */}
-        <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 p-4 rounded-lg border border-yellow-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center text-yellow-600 mb-1">
-                <DollarSign className="mr-2" size={20} />
-                <span className="text-sm font-medium">Średni koszt</span>
-              </div>
-              <div className="text-2xl font-bold text-yellow-900">
-                {formatCurrency(advancedMetrics.costPerShipment || 0)}
-              </div>
-              <div className="text-xs text-yellow-600">
-                za przesyłkę
-              </div>
-            </div>
-            <div className="text-3xl">💰</div>
-          </div>
-        </div>
-
-        {/* Processing Time */}
-        <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center text-purple-600 mb-1">
-                <Clock className="mr-2" size={20} />
-                <span className="text-sm font-medium">Czas realizacji</span>
-              </div>
-              <div className="text-2xl font-bold text-purple-900">
-                {Math.round(advancedMetrics.avgProcessingTime || 0)}h
-              </div>
-              <div className="text-xs text-purple-600">
-                średnio
-              </div>
-            </div>
-            <div className="text-3xl">⏱️</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Status Distribution */}
-      {stats.statusCounts && (
-        <div className="bg-white p-4 rounded-lg shadow-sm border">
-          <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
-            <PieChart className="mr-2 text-blue-600" />
-            📊 Rozkład statusów
-          </h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {Object.entries(stats.statusCounts).map(([status, count]) => (
-              <div key={status} className={`p-3 rounded-lg ${getStatusColor(status)}`}>
-                <div className="text-sm font-medium capitalize">{status}</div>
-                <div className="text-xl font-bold">{count}</div>
-                <div className="text-xs">
-                  {formatPercentage((count / stats.totalCount) * 100)}
+          {/* Ukończone zamówienia */}
+          <div className={`p-6 rounded-lg ${getStatBgColor(stats?.deliveredCount, stats?.deliveredTrend)}`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center">
+                  <CheckCircle className="w-8 h-8 text-green-600 mr-3" />
+                  <div>
+                    <div className={`text-2xl font-bold ${getStatColor(stats?.deliveredCount, stats?.deliveredTrend)}`}>
+                      {formatNumber(stats?.deliveredCount || 0)}
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      {isArchive ? 'Dostarczone w archiwum' : 'Dostarczone'}
+                    </div>
+                  </div>
                 </div>
               </div>
-            ))}
+              {stats?.deliveredTrend && (
+                <div className={`text-sm ${getStatColor(stats?.deliveredCount, stats?.deliveredTrend)}`}>
+                  {stats?.deliveredTrend === 'up' ? <ArrowUp size={16} /> : 
+                   stats?.deliveredTrend === 'down' ? <ArrowDown size={16} /> : 
+                   <Minus size={16} />}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Wszystkie zamówienia */}
+          <div className={`p-6 rounded-lg ${getStatBgColor(stats?.totalCount, stats?.totalTrend)}`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center">
+                  <Package className="w-8 h-8 text-purple-600 mr-3" />
+                  <div>
+                    <div className={`text-2xl font-bold ${getStatColor(stats?.totalCount, stats?.totalTrend)}`}>
+                      {formatNumber(stats?.totalCount || 0)}
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      Wszystkie zamówienia
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {stats?.totalTrend && (
+                <div className={`text-sm ${getStatColor(stats?.totalCount, stats?.totalTrend)}`}>
+                  {stats?.totalTrend === 'up' ? <ArrowUp size={16} /> : 
+                   stats?.totalTrend === 'down' ? <ArrowDown size={16} /> : 
+                   <Minus size={16} />}
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      )}
 
-      {/* Advanced Analytics */}
-      {showAdvanced && (
-        <div className="space-y-6">
-          {/* Tab Navigation */}
-          <div className="border-b border-gray-200">
-            <nav className="-mb-px flex space-x-8">
+        {/* Advanced Stats */}
+        {showAdvanced && (
+          <div className="mt-8">
+            {/* Tabs */}
+            <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg mb-6">
               {tabs.map(tab => {
                 const Icon = tab.icon
                 return (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center ${
                       activeTab === tab.id
-                        ? 'border-blue-500 text-blue-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        ? 'bg-white text-blue-600 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
                     }`}
                   >
-                    <Icon className="mr-2 inline" size={16} />
+                    <Icon className="mr-2" size={16} />
                     {tab.label}
                   </button>
                 )
               })}
-            </nav>
+            </div>
+
+            {/* Tab content */}
+            <div className="bg-gray-50 p-6 rounded-lg">
+              {activeTab === 'overview' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">{formatNumber(stats?.newCount || 0)}</div>
+                    <div className="text-sm text-gray-600">Nowe</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-yellow-600">{formatNumber(stats?.approvedCount || 0)}</div>
+                    <div className="text-sm text-gray-600">Zatwierdzone</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-orange-600">{formatNumber(stats?.sentCount || 0)}</div>
+                    <div className="text-sm text-gray-600">Wysłane</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">{formatNumber(stats?.deliveredCount || 0)}</div>
+                    <div className="text-sm text-gray-600">Dostarczone</div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'performance' && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">{stats?.deliveryRate || 0}%</div>
+                    <div className="text-sm text-gray-600">Wskaźnik dostaw</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">{stats?.avgDeliveryTime || 0}h</div>
+                    <div className="text-sm text-gray-600">Średni czas dostawy</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-purple-600">{stats?.customerSatisfaction || 0}%</div>
+                    <div className="text-sm text-gray-600">Zadowolenie klientów</div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'costs' && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">{formatCurrency(stats?.totalRevenue || 0)}</div>
+                    <div className="text-sm text-gray-600">Przychody</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-red-600">{formatCurrency(stats?.totalCosts || 0)}</div>
+                    <div className="text-sm text-gray-600">Koszty</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">{formatCurrency(stats?.avgOrderValue || 0)}</div>
+                    <div className="text-sm text-gray-600">Średnia wartość</div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'timeline' && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">{stats?.avgProcessingTime || 0}h</div>
+                    <div className="text-sm text-gray-600">Czas przetwarzania</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-yellow-600">{stats?.avgShippingTime || 0}h</div>
+                    <div className="text-sm text-gray-600">Czas wysyłki</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">{stats?.onTimeDeliveries || 0}%</div>
+                    <div className="text-sm text-gray-600">Na czas</div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-
-          {/* Tab Content */}
-          <div className="bg-white rounded-lg shadow-sm border p-6">
-            {/* Overview Tab */}
-            {activeTab === 'overview' && (
-              <div className="space-y-6">
-                <h4 className="text-lg font-semibold text-gray-900">📈 Przegląd ogólny</h4>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h5 className="font-medium text-gray-900 mb-3">⚡ Wydajność</h5>
-                    <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-600">Zamówienia dzisiaj:</span>
-                        <span className="font-medium">{realTimeData.todayOrders || 0}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-600">W tym tygodniu:</span>
-                        <span className="font-medium">{realTimeData.weekOrders || 0}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-600">Aktywne:</span>
-                        <span className="font-medium text-blue-600">{realTimeData.activeOrders || 0}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h5 className="font-medium text-gray-900 mb-3">💸 Finanse</h5>
-                    <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-600">Łączny koszt:</span>
-                        <span className="font-medium">{formatCurrency(detailedStats?.totalCost || 0)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-600">Średnia dziś:</span>
-                        <span className="font-medium">{formatCurrency(realTimeData.avgCostToday || 0)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-600">Oszczędności:</span>
-                        <span className="font-medium text-green-600">-12.5%</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h5 className="font-medium text-gray-900 mb-3">🎯 Jakość</h5>
-                    <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-600">Wskaźnik sukcesu:</span>
-                        <span className="font-medium text-green-600">
-                          {formatPercentage(advancedMetrics.successRate || 0)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-600">Zadowolenie:</span>
-                        <span className="font-medium">⭐ 4.8/5</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-600">Reklamacje:</span>
-                        <span className="font-medium text-red-600">2.1%</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Performance Tab */}
-            {activeTab === 'performance' && (
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Delivery Performance */}
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h5 className="font-medium text-gray-900 mb-3">📦 Wydajność dostaw</h5>
-                    {advancedMetrics.deliveryPerformance && (
-                      <div className="space-y-3">
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Na czas (≤24h):</span>
-                          <span className="font-medium text-green-600">
-                            {advancedMetrics.deliveryPerformance.onTime}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Opóźnione (24-48h):</span>
-                          <span className="font-medium text-yellow-600">
-                            {advancedMetrics.deliveryPerformance.delayed}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Bardzo opóźnione ({'>'}48h):</span>
-                          <span className="font-medium text-red-600">
-                            {advancedMetrics.deliveryPerformance.veryDelayed}
-                          </span>
-                        </div>
-                        <div className="pt-2 border-t">
-                          <span className="text-sm text-gray-600">Średni czas dostawy:</span>
-                          <span className="float-right font-medium">
-                            {Math.round(advancedMetrics.deliveryPerformance.avgTime || 0)}h
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Quality Metrics */}
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h5 className="font-medium text-gray-900 mb-3">⭐ Wskaźniki jakości</h5>
-                    <div className="space-y-3">
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-600">Wskaźnik sukcesu:</span>
-                        <span className="font-medium text-green-600">
-                          {formatPercentage(advancedMetrics.successRate || 0)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-600">Błędy wysyłki:</span>
-                        <span className="font-medium text-red-600">
-                          {stats.statusCounts?.failed || 0}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-600">Średnia ocena:</span>
-                        <span className="font-medium text-yellow-600">
-                          ⭐ 4.8/5.0
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Costs Tab */}
-            {activeTab === 'costs' && (
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="bg-green-50 p-4 rounded-lg">
-                    <h5 className="font-medium text-gray-900 mb-2">💰 Łączny koszt</h5>
-                    <div className="text-2xl font-bold text-green-600">
-                      {formatCurrency(detailedStats?.totalCost || 0)}
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      Za okres {selectedPeriod === 'all' ? 'całkowity' : `${selectedPeriod} dni`}
-                    </div>
-                  </div>
-
-                  <div className="bg-blue-50 p-4 rounded-lg">
-                    <h5 className="font-medium text-gray-900 mb-2">📊 Średni koszt</h5>
-                    <div className="text-2xl font-bold text-blue-600">
-                      {formatCurrency(advancedMetrics.costPerShipment || 0)}
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      Na przesyłkę
-                    </div>
-                  </div>
-
-                  <div className="bg-purple-50 p-4 rounded-lg">
-                    <h5 className="font-medium text-gray-900 mb-2">📈 Trend kosztów</h5>
-                    <div className="text-2xl font-bold text-purple-600 flex items-center">
-                      {getTrendIcon(advancedMetrics.growthRate || 0)}
-                      <span className="ml-1">
-                        {formatPercentage(Math.abs(advancedMetrics.growthRate || 0))}
-                      </span>
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      W porównaniu do poprzedniego okresu
-                    </div>
-                  </div>
-                </div>
-
-                {/* Cost Breakdown */}
-                {advancedMetrics.costBreakdown && (
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h5 className="font-medium text-gray-900 mb-3">🔍 Rozkład kosztów</h5>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {Object.entries(advancedMetrics.costBreakdown).map(([type, amount]) => (
-                        <div key={type} className="text-center">
-                          <div className="text-lg font-bold text-gray-900">
-                            {formatCurrency(amount)}
-                          </div>
-                          <div className="text-sm text-gray-600 capitalize">{type}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Services Tab */}
-            {activeTab === 'services' && (
-              <div className="space-y-6">
-                <h4 className="text-lg font-semibold text-gray-900">🚚 Analiza usług</h4>
-                
-                {advancedMetrics.serviceDistribution && (
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h5 className="font-medium text-gray-900 mb-3">📊 Rozkład usług</h5>
-                    <div className="space-y-3">
-                      {advancedMetrics.serviceDistribution.map(({ service, count, percentage }) => (
-                        <div key={service} className="flex items-center justify-between">
-                          <span className="text-sm text-gray-600 capitalize">{service}:</span>
-                          <div className="flex items-center space-x-2">
-                            <span className="font-medium">{count}</span>
-                            <span className="text-sm text-gray-500">
-                              ({formatPercentage(percentage)})
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Geography Tab */}
-            {activeTab === 'geography' && (
-              <div className="space-y-6">
-                <h4 className="text-lg font-semibold text-gray-900">🗺️ Analiza geograficzna</h4>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Top Cities */}
-                  {advancedMetrics.topCities && (
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h5 className="font-medium text-gray-900 mb-3">🏙️ Najpopularniejsze miasta</h5>
-                      <div className="space-y-2">
-                        {advancedMetrics.topCities.slice(0, 5).map(({ city, count }, index) => (
-                          <div key={city} className="flex items-center justify-between">
-                            <span className="text-sm text-gray-600">
-                              #{index + 1} {city}
-                            </span>
-                            <span className="font-medium">{count}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Distance Stats */}
-                  {advancedMetrics.distanceStats && (
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h5 className="font-medium text-gray-900 mb-3">📏 Statystyki odległości</h5>
-                      <div className="space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Średnia odległość:</span>
-                          <span className="font-medium">
-                            {Math.round(advancedMetrics.distanceStats.avg)} km
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Najkrótsza:</span>
-                          <span className="font-medium">
-                            {advancedMetrics.distanceStats.min} km
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Najdłuższa:</span>
-                          <span className="font-medium">
-                            {advancedMetrics.distanceStats.max} km
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Łączna odległość:</span>
-                          <span className="font-medium">
-                            {Math.round(advancedMetrics.distanceStats.total).toLocaleString()} km
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Timeline Tab */}
-            {activeTab === 'timeline' && (
-              <div className="space-y-6">
-                <h4 className="text-lg font-semibold text-gray-900">📅 Analiza czasowa</h4>
-                
-                {advancedMetrics.trendsData && (
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h5 className="font-medium text-gray-900 mb-3">📈 Trendy w czasie</h5>
-                    <div className="text-sm text-gray-600 mb-4">
-                      Wykres pokazuje zmiany liczby zamówień i kosztów w wybranym okresie
-                    </div>
-                    <div className="space-y-2">
-                      {advancedMetrics.trendsData.slice(-10).map((item, index) => (
-                        <div key={index} className="flex items-center justify-between text-sm">
-                          <span className="text-gray-600">{item.date}</span>
-                          <div className="flex space-x-4">
-                            <span>📦 {item.orders}</span>
-                            <span>💰 {formatCurrency(item.cost)}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Real-time Updates Indicator */}
-      {realTimeData.lastUpdate && (
-        <div className="text-center text-xs text-gray-500">
-          Ostatnia aktualizacja: {new Date(realTimeData.lastUpdate).toLocaleTimeString('pl-PL')}
-          <span className="ml-2 inline-block w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }
