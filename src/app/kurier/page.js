@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 
 // Import komponentów (z fallback jeśli nie istnieją)
-let KurierForm, ZamowieniaList, KurierStats, AdvancedComponents
+let KurierForm
 
 try {
   KurierForm = require('./components/KurierForm').default
@@ -35,7 +35,7 @@ try {
     </div>
   )
 }
-
+let ZamowieniaList
 try {
   ZamowieniaList = require('./components/ZamowieniaList').default
 } catch (error) {
@@ -79,7 +79,7 @@ try {
     </div>
   )
 }
-
+let KurierStats
 try {
   KurierStats = require('./components/KurierStats').default
 } catch (error) {
