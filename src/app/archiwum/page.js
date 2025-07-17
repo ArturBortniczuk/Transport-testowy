@@ -344,7 +344,7 @@ export default function ArchiwumPage() {
         'Nr WZ': transport.wz_number || '',
         'Kierowca': driver ? driver.imie : '',
         'Nr rejestracyjny': driver ? POJAZDY.find(p => p.id === parseInt(transport.vehicle_id || transport.driver_id))?.tabliceRej || '' : '',
-        'Zamówił': transport.requester_email || '',
+        'Osoba odpowiedzialna': transport.requester_email || '',
         'Ocena (%)': rating?.stats.overallRatingPercentage !== null ? `${rating.stats.overallRatingPercentage}%` : 'Brak oceny',
         'Liczba ocen': rating?.stats.totalRatings || 0,
         'Uwagi': transport.notes || ''
@@ -1066,7 +1066,7 @@ export default function ArchiwumPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Zamówił
+                Osoba Odpowiedzialna
               </label>
               <select
                 value={selectedRequester}
@@ -1292,7 +1292,7 @@ export default function ArchiwumPage() {
                                 </div>
                                 {transport.requester_email && (
                                   <div className="flex items-center">
-                                    <span className="text-gray-600">Zamówił:</span>
+                                    <span className="text-gray-600">Osoba Odpowiedzialna:</span>
                                     <span className="ml-1">{transport.requester_email}</span>
                                   </div>
                                 )}
