@@ -349,7 +349,7 @@ export default function ArchiwumPage() {
         'Ulica': transport.street || '',
         'Magazyn': getMagazynName(transport.source_warehouse),
         'Odległość (km)': distanceKm,
-        'Koszt transportu (PLN)': calculatedCost.toFixed(2),
+        'Koszt transportu (PLN)': calculatedCost.toFixed(2).replace('.', ','),
         'Firma': transport.client_name || '',
         'MPK': transport.mpk || '',
         'Handlowiec': handlowiec ? handlowiec.name : (transport.requester_name || ''),
@@ -368,7 +368,27 @@ export default function ArchiwumPage() {
     if (exportFormat === 'csv') {
       exportToCSV(dataToExport, fileName)
     } else {
-      exportToXLSX(dataToExport, fileName)
+      // Przygotowanie danych do podsumowania
+      const summaryByMpk = filteredArchiwum.reduce((acc, transport) => {
+        const mpk = transport.mpk || 'Brak MPK';
+        const distance = transport.distance || 0;
+        const cost = calculateTransportCost(distance);
+        
+        if (!acc[mpk]) {
+          acc[mpk] = { totalCost: 0 };
+        }
+        
+        acc[mpk].totalCost += cost;
+        
+        return acc;
+      }, {});
+
+      const summaryData = Object.keys(summaryByMpk).map(mpk => ({
+        'MPK': mpk,
+        'Łączny koszt (PLN)': summaryByMpk[mpk].totalCost.toFixed(2).replace('.', ',')
+      }));
+
+      exportToXLSXWithSummary(dataToExport, summaryData, fileName)
     }
   }
 
@@ -397,11 +417,18 @@ export default function ArchiwumPage() {
     document.body.removeChild(link)
   }
 
-  const exportToXLSX = (data, fileName) => {
-    const ws = XLSX.utils.json_to_sheet(data)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Transporty')
-    XLSX.writeFile(wb, `${fileName}.xlsx`)
+  const exportToXLSXWithSummary = (mainData, summaryData, fileName) => {
+    const wb = XLSX.utils.book_new();
+    
+    // Arkusz z transportami
+    const ws_main = XLSX.utils.json_to_sheet(mainData);
+    XLSX.utils.book_append_sheet(wb, ws_main, "Transporty");
+    
+    // Arkusz z podsumowaniem
+    const ws_summary = XLSX.utils.json_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(wb, ws_summary, "Podsumowanie po MPK");
+    
+    XLSX.writeFile(wb, `${fileName}.xlsx`);
   }
 
   // Paginacja
