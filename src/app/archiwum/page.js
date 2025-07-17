@@ -325,11 +325,22 @@ export default function ArchiwumPage() {
       return
     }
     
+    const calculateTransportCost = (distance) => {
+        if (distance <= 75) {
+          return distance * 13;
+        } else if (distance > 75 && distance <= 150) {
+          return distance * 8;
+        } else { // distance > 150
+          return distance * 3;
+        }
+    };
+
     const dataToExport = filteredArchiwum.map(transport => {
       const driver = KIEROWCY.find(k => k.id === parseInt(transport.driver_id))
       const rating = transportRatings[transport.id]
-      // Znajdź handlowca na podstawie adresu e-mail osoby zlecającej
       const handlowiec = users.find(u => u.email === transport.requester_email);
+      const distanceKm = transport.distance || 0;
+      const calculatedCost = calculateTransportCost(distanceKm);
       
       return {
         'Data transportu': format(new Date(transport.delivery_date), 'dd.MM.yyyy', { locale: pl }),
@@ -337,14 +348,15 @@ export default function ArchiwumPage() {
         'Kod pocztowy': transport.postal_code || '',
         'Ulica': transport.street || '',
         'Magazyn': getMagazynName(transport.source_warehouse),
-        'Odległość (km)': transport.distance || '',
+        'Odległość (km)': distanceKm,
+        'Koszt transportu (PLN)': calculatedCost.toFixed(2),
         'Firma': transport.client_name || '',
         'MPK': transport.mpk || '',
-        'Handlowiec': handlowiec ? handlowiec.name : (transport.requester_name || ''), // Dodaj imię i nazwisko handlowca
+        'Handlowiec': handlowiec ? handlowiec.name : (transport.requester_name || ''),
         'Nr WZ': transport.wz_number || '',
         'Kierowca': driver ? driver.imie : '',
         'Nr rejestracyjny': driver ? POJAZDY.find(p => p.id === parseInt(transport.vehicle_id || transport.driver_id))?.tabliceRej || '' : '',
-        'Osoba odpowiedzialna': transport.requester_email || '',
+        'Zamówił': transport.requester_email || '',
         'Ocena (%)': rating?.stats.overallRatingPercentage !== null ? `${rating.stats.overallRatingPercentage}%` : 'Brak oceny',
         'Liczba ocen': rating?.stats.totalRatings || 0,
         'Uwagi': transport.notes || ''
@@ -1066,7 +1078,7 @@ export default function ArchiwumPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Osoba Odpowiedzialna
+                Zamówił
               </label>
               <select
                 value={selectedRequester}
@@ -1292,7 +1304,7 @@ export default function ArchiwumPage() {
                                 </div>
                                 {transport.requester_email && (
                                   <div className="flex items-center">
-                                    <span className="text-gray-600">Osoba Odpowiedzialna:</span>
+                                    <span className="text-gray-600">Zamówił:</span>
                                     <span className="ml-1">{transport.requester_email}</span>
                                   </div>
                                 )}
