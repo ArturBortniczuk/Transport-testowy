@@ -1,4 +1,4 @@
-// src/app/api/transport-requests/route.js - NAPRAWIONA WERSJA
+// src/app/api/transport-requests/route.js - KOMPLETNY NAPRAWIONY KOD
 import { NextResponse } from 'next/server';
 
 // Dynamiczny import bazy danych
@@ -421,56 +421,125 @@ export async function PUT(request) {
           }, { status: 403 });
         }
 
-        // Sprawdź czy tabela transports istnieje
-        const transportsTableExists = await db.schema.hasTable('transports');
-        if (!transportsTableExists) {
+        console.log('Rozpoczynam akceptację wniosku:', requestId);
+
+        try {
+          // Sprawdź czy tabela transports istnieje i jakie ma kolumny
+          const transportsTableExists = await db.schema.hasTable('transports');
+          if (!transportsTableExists) {
+            return NextResponse.json({ 
+              success: false, 
+              error: 'Tabela transportów nie istnieje' 
+            }, { status: 500 });
+          }
+
+          // Pobierz informacje o kolumnach tabeli transports
+          let availableColumns = [];
+          try {
+            const columnsResult = await db.raw(`
+              SELECT column_name 
+              FROM information_schema.columns 
+              WHERE table_name = 'transports' 
+              AND table_schema = 'public'
+            `);
+            availableColumns = columnsResult.rows.map(row => row.column_name);
+            console.log('Dostępne kolumny w tabeli transports:', availableColumns);
+          } catch (columnError) {
+            console.warn('Nie udało się pobrać informacji o kolumnach:', columnError.message);
+            // Użyj podstawowe kolumny, które powinny istnieć
+            availableColumns = ['id', 'destination_city', 'delivery_date', 'status'];
+          }
+
+          // Przygotuj podstawowe dane transportu
+          const baseTransportData = {
+            destination_city: existingRequest.destination_city,
+            delivery_date: existingRequest.delivery_date,
+            status: 'active'
+          };
+
+          // Dodaj opcjonalne pola tylko jeśli kolumny istnieją
+          const optionalFields = {
+            source_warehouse: 'bialystok',
+            postal_code: existingRequest.postal_code,
+            street: existingRequest.street,
+            mpk: existingRequest.mpk,
+            client_name: existingRequest.client_name,
+            requester_name: existingRequest.requester_name,
+            requester_email: existingRequest.requester_email,
+            notes: `Utworzony z wniosku #${requestId}. ${existingRequest.notes || ''}`.trim()
+          };
+
+          // Dodaj tylko te pola, dla których istnieją kolumny
+          const newTransport = { ...baseTransportData };
+          for (const [fieldName, fieldValue] of Object.entries(optionalFields)) {
+            if (availableColumns.includes(fieldName) && fieldValue) {
+              newTransport[fieldName] = fieldValue;
+            }
+          }
+
+          console.log('Dane transportu do utworzenia:', newTransport);
+
+          // Rozpocznij transakcję
+          const result = await db.transaction(async (trx) => {
+            // 1. Akceptuj wniosek
+            const approvedData = {
+              status: 'approved',
+              approved_by: user.name || userId,
+              approved_at: new Date(),
+              updated_at: new Date()
+            };
+
+            await trx('transport_requests')
+              .where('id', requestId)
+              .update(approvedData);
+
+            console.log('Wniosek zaktualizowany na approved');
+
+            // 2. Utwórz transport
+            const [transportId] = await trx('transports').insert(newTransport);
+            console.log('Transport utworzony z ID:', transportId);
+
+            // 3. Zaktualizuj wniosek o ID utworzonego transportu
+            await trx('transport_requests')
+              .where('id', requestId)
+              .update({ transport_id: transportId });
+
+            console.log('Wniosek zaktualizowany z transport_id:', transportId);
+
+            return transportId;
+          });
+
+          console.log(`✅ Zaakceptowano wniosek ${requestId}, utworzono transport ${result}`);
+
+          return NextResponse.json({ 
+            success: true, 
+            message: 'Wniosek został zaakceptowany i dodany do kalendarza',
+            transportId: result
+          });
+
+        } catch (approveError) {
+          console.error('Błąd podczas akceptacji wniosku:', approveError);
+          
+          // Spróbuj cofnąć zmiany jeśli możliwe
+          try {
+            await db('transport_requests')
+              .where('id', requestId)
+              .update({ 
+                status: 'pending',
+                approved_by: null,
+                approved_at: null,
+                transport_id: null
+              });
+            console.log('Cofnięto zmiany w wniosku po błędzie');
+          } catch (rollbackError) {
+            console.error('Nie udało się cofnąć zmian:', rollbackError);
+          }
+
           return NextResponse.json({ 
             success: false, 
-            error: 'Tabela transportów nie istnieje' 
+            error: 'Błąd podczas akceptacji wniosku: ' + approveError.message 
           }, { status: 500 });
         }
-
-        // Akceptuj wniosek i utwórz transport
-        const approvedData = {
-          status: 'approved',
-          approved_by: user.name || userId,
-          approved_at: new Date(),
-          updated_at: new Date()
-        };
-
-        await db('transport_requests')
-          .where('id', requestId)
-          .update(approvedData);
-
-        // Utwórz transport na podstawie wniosku
-        const newTransport = {
-          source_warehouse: 'bialystok', // Domyślne źródło
-          destination_city: existingRequest.destination_city,
-          postal_code: existingRequest.postal_code,
-          street: existingRequest.street,
-          delivery_date: existingRequest.delivery_date,
-          mpk: existingRequest.mpk,
-          client_name: existingRequest.client_name,
-          requester_name: existingRequest.requester_name,
-          requester_email: existingRequest.requester_email,
-          status: 'active',
-          notes: `Utworzony z wniosku #${requestId}. ${existingRequest.notes || ''}`.trim()
-        };
-
-        const [transportId] = await db('transports').insert(newTransport);
-
-        // Zaktualizuj wniosek o ID utworzonego transportu
-        await db('transport_requests')
-          .where('id', requestId)
-          .update({ transport_id: transportId });
-
-        console.log(`Zaakceptowano wniosek ${requestId}, utworzono transport ${transportId}`);
-
-        return NextResponse.json({ 
-          success: true, 
-          message: 'Wniosek został zaakceptowany i dodany do kalendarza',
-          transportId
-        });
 
       case 'reject':
         if (!canApprove) {
