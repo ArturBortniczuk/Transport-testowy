@@ -379,18 +379,21 @@ export default function MojeWnioskiPage() {
                   />
                 </div>
 
+                {/* MPK/Budowa - TYLKO WYŚWIETLENIE, nie edycja */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
-                    MPK/Budowa
+                    MPK/Budowa (automatycznie przypisane)
                   </label>
                   <input
                     type="text"
-                    name="mpk"
-                    value={formData.mpk}
-                    onChange={handleInputChange}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    placeholder="np. MPK123 lub nazwa budowy"
+                    value={userInfo?.mpk || 'Brak przypisanego MPK'}
+                    readOnly
+                    className="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 shadow-sm text-gray-600 cursor-not-allowed"
+                    placeholder="MPK zostanie automatycznie przypisane z Twoich danych"
                   />
+                  <p className="mt-1 text-xs text-gray-500">
+                    MPK zostanie automatycznie przypisane z Twoich danych użytkownika
+                  </p>
                 </div>
               </div>
 
