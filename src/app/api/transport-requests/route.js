@@ -462,11 +462,11 @@ export async function PUT(request) {
             source_warehouse: 'bialystok',
             postal_code: existingRequest.postal_code,
             street: existingRequest.street,
-            mpk: existingRequest.mpk,
+            mpk: existingRequest.mpk, // MPK z wniosku
             client_name: existingRequest.client_name,
             requester_name: existingRequest.requester_name,
             requester_email: existingRequest.requester_email,
-            notes: `Utworzony z wniosku #${requestId}. ${existingRequest.notes || ''}`.trim()
+            notes: `Utworzony z wniosku #${requestId} dla budowy: ${existingRequest.construction_name || 'brak'}. ${existingRequest.notes || ''}`.trim()
           };
 
           // Dodaj tylko te pola, dla których istnieją kolumny
@@ -477,7 +477,11 @@ export async function PUT(request) {
             }
           }
 
-          console.log('Dane transportu do utworzenia:', newTransport);
+          console.log('Dane transportu do utworzenia z budową:', {
+            ...newTransport,
+            construction_from_request: existingRequest.construction_name,
+            mpk_from_request: existingRequest.mpk
+          });
 
           // Rozpocznij transakcję
           const result = await db.transaction(async (trx) => {
@@ -509,12 +513,14 @@ export async function PUT(request) {
             return transportId;
           });
 
-          console.log(`✅ Zaakceptowano wniosek ${requestId}, utworzono transport ${result}`);
+          console.log(`✅ Zaakceptowano wniosek ${requestId} dla budowy ${existingRequest.construction_name}, utworzono transport ${result}`);
 
           return NextResponse.json({ 
             success: true, 
-            message: 'Wniosek został zaakceptowany i dodany do kalendarza',
-            transportId: result
+            message: `Wniosek został zaakceptowany i dodany do kalendarza dla budowy: ${existingRequest.construction_name || 'brak nazwy'}`,
+            transportId: result,
+            constructionName: existingRequest.construction_name,
+            mpk: existingRequest.mpk
           });
 
         } catch (approveError) {
@@ -539,7 +545,8 @@ export async function PUT(request) {
             success: false, 
             error: 'Błąd podczas akceptacji wniosku: ' + approveError.message 
           }, { status: 500 });
-        }
+        };
+      }
 
       case 'reject':
         if (!canApprove) {
