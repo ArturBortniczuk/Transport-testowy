@@ -1,41 +1,41 @@
-// src/app/moje-wnioski/page.js - KOMPLETNY NAPRAWIONY KOD
+// src/app/moje-wnioski/page.js
 'use client'
 import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
 import { pl } from 'date-fns/locale'
-import { 
-  Plus, 
-  Calendar, 
-  MapPin, 
-  User, 
-  Phone, 
-  FileText, 
-  Clock, 
-  CheckCircle, 
-  XCircle, 
+import {
+  Plus,
+  Calendar,
+  MapPin,
+  User,
+  Phone,
+  FileText,
+  Clock,
+  CheckCircle,
+  XCircle,
   Edit,
-  Building,
-  ChevronDown
+  Building
 } from 'lucide-react'
 
-// Komponent selektora budów
+// ------- Komponent do wyboru Budowy -------
 function ConstructionSelector({ value, onChange, className = '' }) {
   const [constructions, setConstructions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
-  
+
   useEffect(() => {
     const fetchConstructions = async () => {
       try {
         setIsLoading(true);
-        const response = await fetch('/api/constructions');
-        
+        // KLUCZOWA POPRAWKA: Dodajemy 'credentials: include'
+        const response = await fetch('/api/constructions', { credentials: 'include' });
+
         if (!response.ok) {
-          throw new Error('Problem z pobraniem danych');
+          throw new Error('Problem z pobraniem danych budów');
         }
-        
+
         const data = await response.json();
         setConstructions(data.constructions || []);
       } catch (err) {
@@ -49,10 +49,10 @@ function ConstructionSelector({ value, onChange, className = '' }) {
     fetchConstructions();
   }, []);
 
-  const filteredConstructions = search.trim() === '' 
-    ? constructions 
-    : constructions.filter(c => 
-        c.name.toLowerCase().includes(search.toLowerCase()) || 
+  const filteredConstructions = search.trim() === ''
+    ? constructions
+    : constructions.filter(c =>
+        c.name.toLowerCase().includes(search.toLowerCase()) ||
         c.mpk.toLowerCase().includes(search.toLowerCase())
       );
 
@@ -62,82 +62,102 @@ function ConstructionSelector({ value, onChange, className = '' }) {
     setSearch('');
   };
 
-  const handleClear = () => {
-    onChange(null);
-    setSearch('');
-  };
-
   return (
     <div className={`relative ${className}`}>
-      <div className="flex items-center">
-        <div className="flex-1">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onFocus={() => setShowDropdown(true)}
-            onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
-            placeholder="Wyszukaj budowę lub MPK..."
-            className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-          />
-        </div>
-        {value && (
-          <button
-            type="button"
-            onClick={handleClear}
-            className="ml-2 p-2 text-gray-400 hover:text-gray-600"
-            title="Wyczyść wybór"
-          >
-            <XCircle className="w-4 h-4" />
-          </button>
-        )}
-      </div>
-      
-      {value && (
-        <div className="mt-2 p-3 bg-blue-50 rounded-md border border-blue-200">
-          <div className="flex items-center">
-            <Building className="w-4 h-4 text-blue-600 mr-2" />
-            <div>
-              <div className="font-medium text-blue-900">{value.name}</div>
-              <div className="text-sm text-blue-600">MPK: {value.mpk}</div>
-            </div>
-          </div>
-        </div>
-      )}
-      
+      <input
+        type="text"
+        value={value ? `${value.name} (${value.mpk})` : search}
+        onChange={(e) => setSearch(e.target.value)}
+        onFocus={() => setShowDropdown(true)}
+        onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+        placeholder="Wyszukaj budowę lub MPK..."
+        className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+      />
       {showDropdown && (
         <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto">
-          {isLoading ? (
-            <div className="p-3 text-center text-gray-500">Ładowanie...</div>
-          ) : error ? (
-            <div className="p-3 text-center text-red-500">{error}</div>
-          ) : filteredConstructions.length === 0 ? (
-            <div className="p-3 text-center text-gray-500">
-              {search.trim() === '' ? 'Brak dostępnych budów' : 'Nie znaleziono budów'}
+          {isLoading && <div className="p-2 text-gray-500">Ładowanie...</div>}
+          {error && <div className="p-2 text-red-500">{error}</div>}
+          {!isLoading && filteredConstructions.length === 0 && <div className="p-2 text-gray-500">Brak wyników</div>}
+          {filteredConstructions.map(construction => (
+            <div
+              key={construction.id}
+              onClick={() => handleSelect(construction)}
+              className="p-2 hover:bg-gray-100 cursor-pointer"
+            >
+              <div className="font-medium">{construction.name}</div>
+              <div className="text-sm text-gray-500">MPK: {construction.mpk}</div>
             </div>
-          ) : (
-            filteredConstructions.map((construction) => (
-              <div
-                key={construction.id}
-                className="p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                onClick={() => handleSelect(construction)}
-              >
-                <div className="flex items-center">
-                  <Building className="w-4 h-4 text-gray-400 mr-2" />
-                  <div>
-                    <div className="font-medium">{construction.name}</div>
-                    <div className="text-sm text-gray-500">MPK: {construction.mpk}</div>
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
+          ))}
         </div>
       )}
     </div>
   );
 }
 
+// ------- Komponent do wyboru Handlowca -------
+function UserSelector({ value, onChange, className = '' }) {
+    const [users, setUsers] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [search, setSearch] = useState('');
+    const [showDropdown, setShowDropdown] = useState(false);
+
+    useEffect(() => {
+        const fetchUsers = async () => {
+            try {
+                setIsLoading(true);
+                // KLUCZOWA POPRAWKA: Dodajemy 'credentials: include'
+                const response = await fetch('/api/users/list', { credentials: 'include' });
+                if (!response.ok) throw new Error('Nie udało się pobrać użytkowników');
+                const data = await response.json();
+                setUsers(data || []);
+            } catch (err) {
+                setError(err.message);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchUsers();
+    }, []);
+
+    const filteredUsers = search.trim() === ''
+        ? users
+        : users.filter(u => u.name.toLowerCase().includes(search.toLowerCase()));
+
+    const handleSelect = (user) => {
+        onChange(user);
+        setShowDropdown(false);
+        setSearch('');
+    };
+
+    return (
+        <div className={`relative ${className}`}>
+            <input
+                type="text"
+                value={value ? value.name : search}
+                onChange={(e) => setSearch(e.target.value)}
+                onFocus={() => setShowDropdown(true)}
+                onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+                placeholder="Wyszukaj handlowca..."
+                className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            />
+            {showDropdown && (
+                <div className="absolute z-10 mt-1 w-full bg-white border rounded-md shadow-lg max-h-60 overflow-auto">
+                    {isLoading && <div className="p-2">Ładowanie...</div>}
+                    {error && <div className="p-2 text-red-500">{error}</div>}
+                    {filteredUsers.map(user => (
+                        <div key={user.id} onClick={() => handleSelect(user)} className="p-2 hover:bg-gray-100 cursor-pointer">
+                            {user.name}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+
+// ------- Główny komponent strony -------
 export default function MojeWnioskiPage() {
   const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)
@@ -145,8 +165,11 @@ export default function MojeWnioskiPage() {
   const [showForm, setShowForm] = useState(false)
   const [editingRequest, setEditingRequest] = useState(null)
   const [userInfo, setUserInfo] = useState(null)
-  const [selectedConstruction, setSelectedConstruction] = useState(null)
-  
+
+  // NOWE STANY
+  const [recipientType, setRecipientType] = useState('construction'); // Domyślnie 'budowa'
+  const [selectedEntity, setSelectedEntity] = useState(null); // Przechowuje wybrany obiekt (budowę lub usera)
+
   const [formData, setFormData] = useState({
     destination_city: '',
     postal_code: '',
@@ -154,6 +177,7 @@ export default function MojeWnioskiPage() {
     delivery_date: '',
     justification: '',
     client_name: '',
+    mpk: '',
     contact_person: '',
     contact_phone: '',
     notes: ''
@@ -168,19 +192,13 @@ export default function MojeWnioskiPage() {
       try {
         const response = await fetch('/api/user')
         const data = await response.json()
-        
+
         if (data.isAuthenticated && data.user) {
           setUserInfo(data.user)
-          
-          if (data.user.role !== 'handlowiec' && data.user.role !== 'admin') {
-            setError('Brak uprawnień do przeglądania wniosków transportowych')
-            return
-          }
         } else {
           setError('Brak autoryzacji')
         }
       } catch (err) {
-        console.error('Błąd pobierania danych użytkownika:', err)
         setError('Błąd pobierania danych użytkownika')
       }
     }
@@ -201,7 +219,6 @@ export default function MojeWnioskiPage() {
         setError(data.error)
       }
     } catch (err) {
-      console.error('Błąd pobierania wniosków:', err)
       setError('Wystąpił błąd podczas pobierania wniosków')
     } finally {
       setLoading(false)
@@ -216,81 +233,46 @@ export default function MojeWnioskiPage() {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }))
-    
+    setFormData(prev => ({ ...prev, [name]: value }))
     if (formErrors[name]) {
-      setFormErrors(prev => ({
-        ...prev,
-        [name]: null
-      }))
+      setFormErrors(prev => ({ ...prev, [name]: null }))
     }
   }
 
   const validateForm = () => {
     const errors = {}
-    
-    if (!formData.destination_city.trim()) {
-      errors.destination_city = 'Miasto docelowe jest wymagane'
-    }
-    
-    if (!formData.delivery_date) {
-      errors.delivery_date = 'Data dostawy jest wymagana'
-    } else {
-      const selectedDate = new Date(formData.delivery_date)
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      
-      if (selectedDate < today) {
-        errors.delivery_date = 'Data dostawy nie może być w przeszłości'
-      }
-    }
-    
-    if (!formData.justification.trim()) {
-      errors.justification = 'Uzasadnienie jest wymagane'
-    }
-    
-    if (!selectedConstruction) {
-      errors.construction = 'Wybór budowy/MPK jest wymagany'
-    }
-    
+    if (!formData.destination_city.trim()) errors.destination_city = 'Miasto docelowe jest wymagane'
+    if (!formData.delivery_date) errors.delivery_date = 'Data dostawy jest wymagana'
+    if (!formData.justification.trim()) errors.justification = 'Uzasadnienie jest wymagane'
+    if (!selectedEntity) errors.entity = 'Wybór budowy lub handlowca jest wymagany'
+
     setFormErrors(errors)
     return Object.keys(errors).length === 0
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    
-    if (!validateForm()) {
-      return
-    }
+    if (!validateForm()) return
 
     setSubmitting(true)
-    
     try {
       const url = '/api/transport-requests'
       const method = editingRequest ? 'PUT' : 'POST'
-      
+
       const dataToSend = {
         ...formData,
-        mpk: selectedConstruction?.mpk || null,
-        construction_name: selectedConstruction?.name || null,
-        construction_id: selectedConstruction?.id || null
-      }
+        // Zależnie od typu, wysyłamy ID budowy lub użytkownika
+        construction_id: recipientType === 'construction' ? selectedEntity?.id : null,
+        user_id: recipientType === 'sales' ? selectedEntity?.id : null
+      };
       
-      const body = editingRequest 
+      const body = editingRequest
         ? { ...dataToSend, requestId: editingRequest.id, action: 'edit' }
         : dataToSend
 
-      console.log('Wysyłam dane wniosku:', body)
-
       const response = await fetch(url, {
         method,
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       })
 
@@ -298,28 +280,12 @@ export default function MojeWnioskiPage() {
 
       if (data.success) {
         alert(editingRequest ? 'Wniosek został zaktualizowany' : 'Wniosek został złożony')
-        
-        setFormData({
-          destination_city: '',
-          postal_code: '',
-          street: '',
-          delivery_date: '',
-          justification: '',
-          client_name: '',
-          contact_person: '',
-          contact_phone: '',
-          notes: ''
-        })
-        
-        setSelectedConstruction(null)
-        setShowForm(false)
-        setEditingRequest(null)
+        cancelForm()
         fetchRequests()
       } else {
         alert('Błąd: ' + data.error)
       }
     } catch (err) {
-      console.error('Błąd wysyłania formularza:', err)
       alert('Wystąpił błąd podczas wysyłania wniosku')
     } finally {
       setSubmitting(false)
@@ -334,21 +300,23 @@ export default function MojeWnioskiPage() {
       delivery_date: request.delivery_date || '',
       justification: request.justification || '',
       client_name: request.client_name || '',
+      mpk: request.mpk || '',
       contact_person: request.contact_person || '',
       contact_phone: request.contact_phone || '',
       notes: request.notes || ''
     })
-    
-    if (request.mpk && request.construction_name) {
-      setSelectedConstruction({
-        id: request.construction_id || 'temp',
-        name: request.construction_name,
-        mpk: request.mpk
-      })
+
+    // Ustawienie typu i wybranego elementu na podstawie danych z edytowanego wniosku
+    if(request.construction_id) {
+        setRecipientType('construction');
+        setSelectedEntity({ id: request.construction_id, name: request.construction_name || request.client_name, mpk: request.mpk });
+    } else if (request.user_id) {
+        setRecipientType('sales');
+        setSelectedEntity({ id: request.user_id, name: request.requester_name || request.client_name, mpk: request.mpk });
     } else {
-      setSelectedConstruction(null)
+        setSelectedEntity(null);
     }
-    
+
     setEditingRequest(request)
     setShowForm(true)
   }
@@ -357,17 +325,11 @@ export default function MojeWnioskiPage() {
     setShowForm(false)
     setEditingRequest(null)
     setFormData({
-      destination_city: '',
-      postal_code: '',
-      street: '',
-      delivery_date: '',
-      justification: '',
-      client_name: '',
-      contact_person: '',
-      contact_phone: '',
-      notes: ''
+      destination_city: '', postal_code: '', street: '',
+      delivery_date: '', justification: '', client_name: '',
+      mpk: '', contact_person: '', contact_phone: '', notes: ''
     })
-    setSelectedConstruction(null)
+    setSelectedEntity(null)
     setFormErrors({})
   }
 
@@ -424,17 +386,24 @@ export default function MojeWnioskiPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        {/* Nagłówek */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Moje wnioski transportowe</h1>
-          <p className="mt-2 text-gray-600">Złóż wniosek o transport własny dla wybranej budowy</p>
+          <p className="mt-2 text-gray-600">Złóż wniosek o transport własny dla wybranej budowy lub handlowca</p>
         </div>
 
-        {/* Przycisk dodawania */}
         {!showForm && (
           <div className="mb-6">
             <button
-              onClick={() => setShowForm(true)}
+              onClick={() => {
+                setShowForm(true)
+                setRecipientType('construction'); // Reset do domyślnego przy otwieraniu
+                setSelectedEntity(null);
+                setFormData({ // Resetowanie formularza
+                  destination_city: '', postal_code: '', street: '',
+                  delivery_date: '', justification: '', client_name: '',
+                  mpk: '', contact_person: '', contact_phone: '', notes: ''
+                });
+              }}
               className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
             >
               <Plus className="w-4 h-4 mr-2" />
@@ -443,7 +412,6 @@ export default function MojeWnioskiPage() {
           </div>
         )}
 
-        {/* Formularz */}
         {showForm && (
           <div className="bg-white shadow rounded-lg mb-6">
             <div className="px-6 py-4 border-b border-gray-200">
@@ -451,195 +419,115 @@ export default function MojeWnioskiPage() {
                 {editingRequest ? 'Edytuj wniosek' : 'Nowy wniosek transportowy'}
               </h2>
             </div>
-            
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              {/* Wybór budowy/MPK */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Wybierz budowę/MPK *
-                </label>
-                <ConstructionSelector
-                  value={selectedConstruction}
-                  onChange={setSelectedConstruction}
-                  className={formErrors.construction ? 'border-red-300' : ''}
-                />
-                {formErrors.construction && (
-                  <p className="mt-1 text-sm text-red-600">{formErrors.construction}</p>
-                )}
-                <p className="mt-1 text-xs text-gray-500">
-                  Wybierz budowę lub MPK, dla którego składasz wniosek o transport
-                </p>
+              {/* NOWY BLOK: Wybór typu odbiorcy */}
+              <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <h4 className="text-base font-medium text-gray-800 mb-3">Wybierz typ odbiorcy</h4>
+                <div className="flex space-x-4">
+                  <button
+                    type="button"
+                    onClick={() => { setRecipientType('construction'); setSelectedEntity(null); setFormData(prev => ({...prev, client_name: '', mpk: ''})) }}
+                    className={`px-4 py-2 rounded-md transition-colors ${recipientType === 'construction' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-700 border hover:bg-gray-100'}`}
+                  >
+                    Budowa
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setRecipientType('sales'); setSelectedEntity(null); setFormData(prev => ({...prev, client_name: '', mpk: ''})) }}
+                    className={`px-4 py-2 rounded-md transition-colors ${recipientType === 'sales' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-700 border hover:bg-gray-100'}`}
+                  >
+                    Handlowiec
+                  </button>
+                </div>
               </div>
 
-              {/* Podstawowe informacje */}
+              {/* NOWA LOGIKA: Warunkowe wyświetlanie selektorów */}
+              {recipientType === 'construction' ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Wybierz budowę/MPK *</label>
+                  <ConstructionSelector
+                    value={selectedEntity}
+                    onChange={(selection) => {
+                      setSelectedEntity(selection);
+                      if (selection) setFormData(prev => ({ ...prev, client_name: selection.name, mpk: selection.mpk }));
+                    }}
+                    className={formErrors.entity ? 'border-red-300' : ''}
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Wybierz handlowca *</label>
+                  <UserSelector
+                    value={selectedEntity}
+                    onChange={(user) => {
+                      setSelectedEntity(user);
+                      if (user) setFormData(prev => ({ ...prev, client_name: user.name, mpk: user.mpk || '' }));
+                    }}
+                    className={formErrors.entity ? 'border-red-300' : ''}
+                  />
+                </div>
+              )}
+              {formErrors.entity && (<p className="mt-1 text-sm text-red-600">{formErrors.entity}</p>)}
+
+              {/* Pola nieedytowalne (klient i MPK) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Nazwa klienta / Odbiorca</label>
+                    <input type="text" name="client_name" value={formData.client_name} className="mt-1 block w-full rounded-md border-gray-300 bg-gray-100" readOnly />
+                  </div>
+                   <div>
+                    <label className="block text-sm font-medium text-gray-700">MPK</label>
+                    <input type="text" name="mpk" value={formData.mpk} className="mt-1 block w-full rounded-md border-gray-300 bg-gray-100" readOnly />
+                  </div>
+              </div>
+              
+              {/* Reszta formularza */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Miasto docelowe *
-                  </label>
-                  <input
-                    type="text"
-                    name="destination_city"
-                    value={formData.destination_city}
-                    onChange={handleInputChange}
-                    className={`mt-1 block w-full rounded-md shadow-sm ${
-                      formErrors.destination_city 
-                        ? 'border-red-300 focus:border-red-500 focus:ring-red-500' 
-                        : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
-                    }`}
-                    placeholder="np. Warszawa"
-                  />
-                  {formErrors.destination_city && (
-                    <p className="mt-1 text-sm text-red-600">{formErrors.destination_city}</p>
-                  )}
+                  <label className="block text-sm font-medium text-gray-700">Miasto docelowe *</label>
+                  <input type="text" name="destination_city" value={formData.destination_city} onChange={handleInputChange} className={`mt-1 block w-full rounded-md shadow-sm ${formErrors.destination_city ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'}`} />
+                  {formErrors.destination_city && (<p className="mt-1 text-sm text-red-600">{formErrors.destination_city}</p>)}
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Data dostawy *
-                  </label>
-                  <input
-                    type="date"
-                    name="delivery_date"
-                    value={formData.delivery_date}
-                    onChange={handleInputChange}
-                    min={new Date().toISOString().split('T')[0]}
-                    className={`mt-1 block w-full rounded-md shadow-sm ${
-                      formErrors.delivery_date 
-                        ? 'border-red-300 focus:border-red-500 focus:ring-red-500' 
-                        : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
-                    }`}
-                  />
-                  {formErrors.delivery_date && (
-                    <p className="mt-1 text-sm text-red-600">{formErrors.delivery_date}</p>
-                  )}
+                  <label className="block text-sm font-medium text-gray-700">Data dostawy *</label>
+                  <input type="date" name="delivery_date" value={formData.delivery_date} onChange={handleInputChange} min={new Date().toISOString().split('T')[0]} className={`mt-1 block w-full rounded-md shadow-sm ${formErrors.delivery_date ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'}`} />
+                  {formErrors.delivery_date && (<p className="mt-1 text-sm text-red-600">{formErrors.delivery_date}</p>)}
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Kod pocztowy
-                  </label>
-                  <input
-                    type="text"
-                    name="postal_code"
-                    value={formData.postal_code}
-                    onChange={handleInputChange}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    placeholder="np. 00-001"
-                  />
+                  <label className="block text-sm font-medium text-gray-700">Kod pocztowy</label>
+                  <input type="text" name="postal_code" value={formData.postal_code} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"/>
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Ulica i numer
-                  </label>
-                  <input
-                    type="text"
-                    name="street"
-                    value={formData.street}
-                    onChange={handleInputChange}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    placeholder="np. ul. Marszałkowska 1"
-                  />
+                  <label className="block text-sm font-medium text-gray-700">Ulica i numer</label>
+                  <input type="text" name="street" value={formData.street} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"/>
                 </div>
               </div>
-
-              {/* Informacje o kliencie */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Nazwa klienta
-                  </label>
-                  <input
-                    type="text"
-                    name="client_name"
-                    value={formData.client_name}
-                    onChange={handleInputChange}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    placeholder="np. ABC Sp. z o.o."
-                  />
+                  <label className="block text-sm font-medium text-gray-700">Osoba kontaktowa</label>
+                  <input type="text" name="contact_person" value={formData.contact_person} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"/>
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Osoba kontaktowa
-                  </label>
-                  <input
-                    type="text"
-                    name="contact_person"
-                    value={formData.contact_person}
-                    onChange={handleInputChange}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    placeholder="np. Jan Kowalski"
-                  />
+                 <div>
+                  <label className="block text-sm font-medium text-gray-700">Telefon kontaktowy</label>
+                  <input type="text" name="contact_phone" value={formData.contact_phone} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"/>
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Telefon kontaktowy
-                </label>
-                <input
-                  type="text"
-                  name="contact_phone"
-                  value={formData.contact_phone}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  placeholder="np. +48 123 456 789"
-                />
+                <label className="block text-sm font-medium text-gray-700">Uzasadnienie wniosku *</label>
+                <textarea name="justification" value={formData.justification} onChange={handleInputChange} rows={4} className={`mt-1 block w-full rounded-md shadow-sm ${formErrors.justification ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'}`} />
+                {formErrors.justification && (<p className="mt-1 text-sm text-red-600">{formErrors.justification}</p>)}
               </div>
-
-              {/* Uzasadnienie */}
+              
               <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Uzasadnienie wniosku *
-                </label>
-                <textarea
-                  name="justification"
-                  value={formData.justification}
-                  onChange={handleInputChange}
-                  rows={4}
-                  className={`mt-1 block w-full rounded-md shadow-sm ${
-                    formErrors.justification 
-                      ? 'border-red-300 focus:border-red-500 focus:ring-red-500' 
-                      : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
-                  }`}
-                  placeholder="Opisz powód wniosku o transport własny..."
-                />
-                {formErrors.justification && (
-                  <p className="mt-1 text-sm text-red-600">{formErrors.justification}</p>
-                )}
+                <label className="block text-sm font-medium text-gray-700">Dodatkowe uwagi</label>
+                <textarea name="notes" value={formData.notes} onChange={handleInputChange} rows={3} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"/>
               </div>
 
-              {/* Dodatkowe uwagi */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Dodatkowe uwagi
-                </label>
-                <textarea
-                  name="notes"
-                  value={formData.notes}
-                  onChange={handleInputChange}
-                  rows={3}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  placeholder="Dodatkowe informacje, wymogi specjalne, itp."
-                />
-              </div>
-
-              {/* Przyciski */}
               <div className="flex justify-end space-x-3">
-                <button
-                  type="button"
-                  onClick={cancelForm}
-                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                >
-                  Anuluj
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-                >
+                <button type="button" onClick={cancelForm} className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Anuluj</button>
+                <button type="submit" disabled={submitting} className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50">
                   {submitting ? 'Zapisywanie...' : (editingRequest ? 'Zaktualizuj' : 'Złóż wniosek')}
                 </button>
               </div>
