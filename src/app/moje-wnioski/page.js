@@ -122,7 +122,10 @@ function UserSelector({ value, onChange, className = '' }) {
 
     const filteredUsers = search.trim() === ''
         ? users
-        : users.filter(u => u.name.toLowerCase().includes(search.toLowerCase()));
+        : users.filter(u =>
+            u.name.toLowerCase().includes(search.toLowerCase()) ||
+            (u.mpk && u.mpk.toLowerCase().includes(search.toLowerCase()))
+          );
 
     const handleSelect = (user) => {
         onChange(user);
