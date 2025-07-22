@@ -147,7 +147,8 @@ function UserSelector({ value, onChange, className = '' }) {
                     {error && <div className="p-2 text-red-500">{error}</div>}
                     {filteredUsers.map(user => (
                         <div key={user.id} onClick={() => handleSelect(user)} className="p-2 hover:bg-gray-100 cursor-pointer">
-                            {user.name}
+                            <div className="font-medium">{user.name}</div>
+                            {user.mpk && <div className="text-sm text-gray-500">MPK: {user.mpk}</div>}
                         </div>
                     ))}
                 </div>
