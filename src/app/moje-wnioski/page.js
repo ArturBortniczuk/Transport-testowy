@@ -254,47 +254,62 @@ export default function MojeWnioskiPage() {
     return Object.keys(errors).length === 0
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!validateForm()) return
+const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!validateForm()) return;
 
-    setSubmitting(true)
+    setSubmitting(true);
+    let isMounted = true; // Flaga do śledzenia stanu komponentu
+
     try {
-      const url = '/api/transport-requests'
-      const method = editingRequest ? 'PUT' : 'POST'
+      const url = '/api/transport-requests';
+      const method = editingRequest ? 'PUT' : 'POST';
 
       const dataToSend = {
         ...formData,
-        // Zależnie od typu, wysyłamy ID budowy lub użytkownika
         construction_id: recipientType === 'construction' ? selectedEntity?.id : null,
-        user_id: recipientType === 'sales' ? selectedEntity?.id : null
+        user_id: recipientType === 'sales' ? selectedEntity?.id : null,
       };
-      
+
       const body = editingRequest
         ? { ...dataToSend, requestId: editingRequest.id, action: 'edit' }
-        : dataToSend
+        : dataToSend;
 
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      })
+        body: JSON.stringify(body),
+      });
 
-      const data = await response.json()
+      const data = await response.json();
 
-      if (data.success) {
-        alert(editingRequest ? 'Wniosek został zaktualizowany' : 'Wniosek został złożony')
-        cancelForm()
-        fetchRequests()
-      } else {
-        alert('Błąd: ' + data.error)
+      // Sprawdzamy, czy komponent wciąż istnieje PRZED aktualizacją stanu
+      if (isMounted) {
+        if (data.success) {
+          alert(editingRequest ? 'Wniosek został zaktualizowany' : 'Wniosek został złożony');
+          cancelForm(); // Ta funkcja ukrywa formularz i "odmontowuje" go
+          fetchRequests();
+        } else {
+          alert('Błąd: ' + data.error);
+        }
       }
     } catch (err) {
-      alert('Wystąpił błąd podczas wysyłania wniosku')
+      console.error('Błąd wysyłania formularza:', err);
+      if (isMounted) {
+        alert('Wystąpił błąd podczas wysyłania wniosku');
+      }
     } finally {
-      setSubmitting(false)
+      if (isMounted) {
+        setSubmitting(false);
+      }
     }
-  }
+
+    // Po wykonaniu logiki, funkcja "czyszcząca" zmieni flagę,
+    // gdy komponent zostanie odmontowany w przyszłości.
+    return () => {
+      isMounted = false;
+    };
+  };
 
   const startEdit = (request) => {
     setFormData({
