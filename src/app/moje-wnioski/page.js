@@ -1,4 +1,4 @@
-// src/app/moje-wnioski/page.js
+// src/app/moje-wnioski/page.js - KOMPLETNY NAPRAWIONY KOD
 'use client'
 import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
@@ -25,13 +25,12 @@ export default function MojeWnioskiPage() {
   const [editingRequest, setEditingRequest] = useState(null)
   const [userInfo, setUserInfo] = useState(null)
   
-  // Stan formularza
+  // Stan formularza - USUNIĘTO MPK (jest automatycznie przypisywane)
   const [formData, setFormData] = useState({
     destination_city: '',
     postal_code: '',
     street: '',
     delivery_date: '',
-    mpk: '',
     justification: '',
     client_name: '',
     contact_person: '',
@@ -156,9 +155,18 @@ export default function MojeWnioskiPage() {
         : '/api/transport-requests'
       
       const method = editingRequest ? 'PUT' : 'POST'
+      
+      // Przygotuj dane do wysłania - MPK automatycznie przypisywane z danych użytkownika
+      const dataToSend = {
+        ...formData,
+        mpk: userInfo?.mpk || null // Automatyczne przypisanie MPK użytkownika
+      }
+      
       const body = editingRequest 
-        ? { ...formData, requestId: editingRequest.id, action: 'edit' }
-        : formData
+        ? { ...dataToSend, requestId: editingRequest.id, action: 'edit' }
+        : dataToSend
+
+      console.log('Wysyłam dane wniosku:', body)
 
       const response = await fetch(url, {
         method,
@@ -179,7 +187,6 @@ export default function MojeWnioskiPage() {
           postal_code: '',
           street: '',
           delivery_date: '',
-          mpk: '',
           justification: '',
           client_name: '',
           contact_person: '',
@@ -208,12 +215,12 @@ export default function MojeWnioskiPage() {
       postal_code: request.postal_code || '',
       street: request.street || '',
       delivery_date: request.delivery_date || '',
-      mpk: request.mpk || '',
       justification: request.justification || '',
       client_name: request.client_name || '',
       contact_person: request.contact_person || '',
       contact_phone: request.contact_phone || '',
       notes: request.notes || ''
+      // MPK nie jest edytowalne - przypisywane automatycznie
     })
     setEditingRequest(request)
     setShowForm(true)
@@ -228,7 +235,6 @@ export default function MojeWnioskiPage() {
       postal_code: '',
       street: '',
       delivery_date: '',
-      mpk: '',
       justification: '',
       client_name: '',
       contact_person: '',
@@ -296,6 +302,12 @@ export default function MojeWnioskiPage() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Moje wnioski transportowe</h1>
           <p className="mt-2 text-gray-600">Złóż wniosek o transport własny lub zarządzaj istniejącymi wnioskami</p>
+          {userInfo?.mpk && (
+            <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800">
+              <FileText className="w-4 h-4 mr-1" />
+              Twój MPK: {userInfo.mpk}
+            </div>
+          )}
         </div>
 
         {/* Przycisk dodawania */}
@@ -573,6 +585,12 @@ export default function MojeWnioskiPage() {
                             {request.contact_phone}
                           </div>
                         )}
+                        {request.mpk && (
+                          <div className="flex items-center">
+                            <FileText className="w-4 h-4 mr-2" />
+                            MPK: {request.mpk}
+                          </div>
+                        )}
                       </div>
 
                       <div className="mt-3">
@@ -603,6 +621,11 @@ export default function MojeWnioskiPage() {
                           <span className="ml-4">
                             {request.status === 'approved' ? 'Zaakceptowany' : 'Przetworzony'}: {format(new Date(request.approved_at), 'dd.MM.yyyy HH:mm', { locale: pl })}
                             {request.approved_by && ` przez ${request.approved_by}`}
+                          </span>
+                        )}
+                        {request.transport_id && (
+                          <span className="ml-4 text-blue-600">
+                            (Transport #{request.transport_id} - dodany do kalendarza)
                           </span>
                         )}
                       </div>
