@@ -294,7 +294,7 @@ export async function POST(request) {
       postal_code: requestData.postal_code || null,
       street: requestData.street || null,
       delivery_date: requestData.delivery_date,
-      mpk: requestData.mpk || null,
+      mpk: user.mpk || null, // ZMIANA: MPK z danych użytkownika, nie z formularza
       justification: requestData.justification,
       client_name: requestData.client_name || null,
       contact_person: requestData.contact_person || null,
