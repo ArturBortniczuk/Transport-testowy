@@ -14,8 +14,129 @@ import {
   CheckCircle, 
   XCircle, 
   Edit,
-  Trash2
+  Building,
+  ChevronDown
 } from 'lucide-react'
+
+// Komponent selektora budów
+function ConstructionSelector({ value, onChange, className = '' }) {
+  const [constructions, setConstructions] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [search, setSearch] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+  
+  useEffect(() => {
+    const fetchConstructions = async () => {
+      try {
+        setIsLoading(true);
+        const response = await fetch('/api/constructions');
+        
+        if (!response.ok) {
+          throw new Error('Problem z pobraniem danych');
+        }
+        
+        const data = await response.json();
+        setConstructions(data.constructions || []);
+      } catch (err) {
+        setError('Nie udało się pobrać listy budów');
+        console.error('Error fetching constructions:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchConstructions();
+  }, []);
+
+  const filteredConstructions = search.trim() === '' 
+    ? constructions 
+    : constructions.filter(c => 
+        c.name.toLowerCase().includes(search.toLowerCase()) || 
+        c.mpk.toLowerCase().includes(search.toLowerCase())
+      );
+
+  const handleSelect = (construction) => {
+    onChange(construction);
+    setShowDropdown(false);
+    setSearch('');
+  };
+
+  const handleClear = () => {
+    onChange(null);
+    setSearch('');
+  };
+
+  return (
+    <div className={`relative ${className}`}>
+      <div className="flex items-center">
+        <div className="flex-1">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onFocus={() => setShowDropdown(true)}
+            onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+            placeholder="Wyszukaj budowę lub MPK..."
+            className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+          />
+        </div>
+        {value && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="ml-2 p-2 text-gray-400 hover:text-gray-600"
+            title="Wyczyść wybór"
+          >
+            <XCircle className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+      
+      {value && (
+        <div className="mt-2 p-3 bg-blue-50 rounded-md border border-blue-200">
+          <div className="flex items-center">
+            <Building className="w-4 h-4 text-blue-600 mr-2" />
+            <div>
+              <div className="font-medium text-blue-900">{value.name}</div>
+              <div className="text-sm text-blue-600">MPK: {value.mpk}</div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {showDropdown && (
+        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto">
+          {isLoading ? (
+            <div className="p-3 text-center text-gray-500">Ładowanie...</div>
+          ) : error ? (
+            <div className="p-3 text-center text-red-500">{error}</div>
+          ) : filteredConstructions.length === 0 ? (
+            <div className="p-3 text-center text-gray-500">
+              {search.trim() === '' ? 'Brak dostępnych budów' : 'Nie znaleziono budów'}
+            </div>
+          ) : (
+            filteredConstructions.map((construction) => (
+              <div
+                key={construction.id}
+                className="p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                onClick={() => handleSelect(construction)}
+              >
+                <div className="flex items-center">
+                  <Building className="w-4 h-4 text-gray-400 mr-2" />
+                  <div>
+                    <div className="font-medium">{construction.name}</div>
+                    <div className="text-sm text-gray-500">MPK: {construction.mpk}</div>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function MojeWnioskiPage() {
   const [requests, setRequests] = useState([])
@@ -24,8 +145,8 @@ export default function MojeWnioskiPage() {
   const [showForm, setShowForm] = useState(false)
   const [editingRequest, setEditingRequest] = useState(null)
   const [userInfo, setUserInfo] = useState(null)
+  const [selectedConstruction, setSelectedConstruction] = useState(null)
   
-  // Stan formularza - USUNIĘTO MPK (jest automatycznie przypisywane)
   const [formData, setFormData] = useState({
     destination_city: '',
     postal_code: '',
@@ -51,7 +172,6 @@ export default function MojeWnioskiPage() {
         if (data.isAuthenticated && data.user) {
           setUserInfo(data.user)
           
-          // Sprawdź czy użytkownik ma uprawnienia
           if (data.user.role !== 'handlowiec' && data.user.role !== 'admin') {
             setError('Brak uprawnień do przeglądania wniosków transportowych')
             return
@@ -94,7 +214,6 @@ export default function MojeWnioskiPage() {
     }
   }, [userInfo])
 
-  // Obsługa zmian w formularzu
   const handleInputChange = (e) => {
     const { name, value } = e.target
     setFormData(prev => ({
@@ -102,7 +221,6 @@ export default function MojeWnioskiPage() {
       [name]: value
     }))
     
-    // Usuń błąd dla tego pola
     if (formErrors[name]) {
       setFormErrors(prev => ({
         ...prev,
@@ -111,7 +229,6 @@ export default function MojeWnioskiPage() {
     }
   }
 
-  // Walidacja formularza
   const validateForm = () => {
     const errors = {}
     
@@ -135,11 +252,14 @@ export default function MojeWnioskiPage() {
       errors.justification = 'Uzasadnienie jest wymagane'
     }
     
+    if (!selectedConstruction) {
+      errors.construction = 'Wybór budowy/MPK jest wymagany'
+    }
+    
     setFormErrors(errors)
     return Object.keys(errors).length === 0
   }
 
-  // Wysyłanie formularza
   const handleSubmit = async (e) => {
     e.preventDefault()
     
@@ -150,16 +270,14 @@ export default function MojeWnioskiPage() {
     setSubmitting(true)
     
     try {
-      const url = editingRequest 
-        ? '/api/transport-requests'
-        : '/api/transport-requests'
-      
+      const url = '/api/transport-requests'
       const method = editingRequest ? 'PUT' : 'POST'
       
-      // Przygotuj dane do wysłania - MPK automatycznie przypisywane z danych użytkownika
       const dataToSend = {
         ...formData,
-        mpk: userInfo?.mpk || null // Automatyczne przypisanie MPK użytkownika
+        mpk: selectedConstruction?.mpk || null,
+        construction_name: selectedConstruction?.name || null,
+        construction_id: selectedConstruction?.id || null
       }
       
       const body = editingRequest 
@@ -181,7 +299,6 @@ export default function MojeWnioskiPage() {
       if (data.success) {
         alert(editingRequest ? 'Wniosek został zaktualizowany' : 'Wniosek został złożony')
         
-        // Resetuj formularz i odśwież listę
         setFormData({
           destination_city: '',
           postal_code: '',
@@ -194,6 +311,7 @@ export default function MojeWnioskiPage() {
           notes: ''
         })
         
+        setSelectedConstruction(null)
         setShowForm(false)
         setEditingRequest(null)
         fetchRequests()
@@ -208,7 +326,6 @@ export default function MojeWnioskiPage() {
     }
   }
 
-  // Rozpocznij edycję
   const startEdit = (request) => {
     setFormData({
       destination_city: request.destination_city || '',
@@ -220,13 +337,22 @@ export default function MojeWnioskiPage() {
       contact_person: request.contact_person || '',
       contact_phone: request.contact_phone || '',
       notes: request.notes || ''
-      // MPK nie jest edytowalne - przypisywane automatycznie
     })
+    
+    if (request.mpk && request.construction_name) {
+      setSelectedConstruction({
+        id: request.construction_id || 'temp',
+        name: request.construction_name,
+        mpk: request.mpk
+      })
+    } else {
+      setSelectedConstruction(null)
+    }
+    
     setEditingRequest(request)
     setShowForm(true)
   }
 
-  // Anuluj edycję/dodawanie
   const cancelForm = () => {
     setShowForm(false)
     setEditingRequest(null)
@@ -241,10 +367,10 @@ export default function MojeWnioskiPage() {
       contact_phone: '',
       notes: ''
     })
+    setSelectedConstruction(null)
     setFormErrors({})
   }
 
-  // Funkcja do formatowania statusu
   const getStatusBadge = (status) => {
     switch (status) {
       case 'pending':
@@ -301,13 +427,7 @@ export default function MojeWnioskiPage() {
         {/* Nagłówek */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Moje wnioski transportowe</h1>
-          <p className="mt-2 text-gray-600">Złóż wniosek o transport własny lub zarządzaj istniejącymi wnioskami</p>
-          {userInfo?.mpk && (
-            <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800">
-              <FileText className="w-4 h-4 mr-1" />
-              Twój MPK: {userInfo.mpk}
-            </div>
-          )}
+          <p className="mt-2 text-gray-600">Złóż wniosek o transport własny dla wybranej budowy</p>
         </div>
 
         {/* Przycisk dodawania */}
@@ -333,6 +453,24 @@ export default function MojeWnioskiPage() {
             </div>
             
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
+              {/* Wybór budowy/MPK */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Wybierz budowę/MPK *
+                </label>
+                <ConstructionSelector
+                  value={selectedConstruction}
+                  onChange={setSelectedConstruction}
+                  className={formErrors.construction ? 'border-red-300' : ''}
+                />
+                {formErrors.construction && (
+                  <p className="mt-1 text-sm text-red-600">{formErrors.construction}</p>
+                )}
+                <p className="mt-1 text-xs text-gray-500">
+                  Wybierz budowę lub MPK, dla którego składasz wniosek o transport
+                </p>
+              </div>
+
               {/* Podstawowe informacje */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
@@ -391,37 +529,19 @@ export default function MojeWnioskiPage() {
                   />
                 </div>
 
-                {/* MPK/Budowa - TYLKO WYŚWIETLENIE, nie edycja */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
-                    MPK/Budowa (automatycznie przypisane)
+                    Ulica i numer
                   </label>
                   <input
                     type="text"
-                    value={userInfo?.mpk || 'Brak przypisanego MPK'}
-                    readOnly
-                    className="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 shadow-sm text-gray-600 cursor-not-allowed"
-                    placeholder="MPK zostanie automatycznie przypisane z Twoich danych"
+                    name="street"
+                    value={formData.street}
+                    onChange={handleInputChange}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                    placeholder="np. ul. Marszałkowska 1"
                   />
-                  <p className="mt-1 text-xs text-gray-500">
-                    MPK zostanie automatycznie przypisane z Twoich danych użytkownika
-                  </p>
                 </div>
-              </div>
-
-              {/* Adres */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Ulica i numer
-                </label>
-                <input
-                  type="text"
-                  name="street"
-                  value={formData.street}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  placeholder="np. ul. Marszałkowska 1"
-                />
               </div>
 
               {/* Informacje o kliencie */}
@@ -585,10 +705,13 @@ export default function MojeWnioskiPage() {
                             {request.contact_phone}
                           </div>
                         )}
-                        {request.mpk && (
-                          <div className="flex items-center">
-                            <FileText className="w-4 h-4 mr-2" />
-                            MPK: {request.mpk}
+                        {(request.mpk || request.construction_name) && (
+                          <div className="flex items-center md:col-span-2">
+                            <Building className="w-4 h-4 mr-2" />
+                            <span>
+                              {request.construction_name && `${request.construction_name} - `}
+                              MPK: {request.mpk}
+                            </span>
                           </div>
                         )}
                       </div>
