@@ -50,6 +50,8 @@ const ensureTableExists = async () => {
         table.string('street');
         table.date('delivery_date').notNullable();
         table.string('mpk');
+        table.string('construction_name'); // Nazwa budowy
+        table.integer('construction_id');   // ID budowy
         table.text('justification'); // uzasadnienie wniosku
         table.string('client_name');
         table.string('contact_person');
@@ -64,6 +66,23 @@ const ensureTableExists = async () => {
       });
       
       console.log('Tabela transport_requests została utworzona');
+    } else {
+      // Sprawdź i dodaj nowe kolumny jeśli nie istnieją
+      const hasConstructionName = await db.schema.hasColumn('transport_requests', 'construction_name');
+      if (!hasConstructionName) {
+        await db.schema.table('transport_requests', table => {
+          table.string('construction_name');
+        });
+        console.log('Dodano kolumnę construction_name');
+      }
+
+      const hasConstructionId = await db.schema.hasColumn('transport_requests', 'construction_id');
+      if (!hasConstructionId) {
+        await db.schema.table('transport_requests', table => {
+          table.integer('construction_id');
+        });
+        console.log('Dodano kolumnę construction_id');
+      }
     }
     
     return true;
@@ -260,7 +279,7 @@ export async function POST(request) {
     }
 
     const requestData = await request.json();
-    console.log('Request data:', requestData);
+    console.log('Request data z budową:', requestData);
 
     // Walidacja wymaganych pól
     const requiredFields = ['destination_city', 'delivery_date', 'justification'];
@@ -271,6 +290,14 @@ export async function POST(request) {
           error: `Pole ${field} jest wymagane` 
         }, { status: 400 });
       }
+    }
+
+    // Walidacja budowy/MPK
+    if (!requestData.mpk && !requestData.construction_name) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Wybór budowy/MPK jest wymagany' 
+      }, { status: 400 });
     }
 
     // Sprawdź czy data dostawy nie jest w przeszłości
@@ -285,7 +312,7 @@ export async function POST(request) {
       }, { status: 400 });
     }
 
-    // Przygotuj dane do zapisania
+    // Przygotuj dane do zapisania - z danymi budowy
     const newRequest = {
       status: 'pending',
       requester_email: userId,
@@ -294,7 +321,9 @@ export async function POST(request) {
       postal_code: requestData.postal_code || null,
       street: requestData.street || null,
       delivery_date: requestData.delivery_date,
-      mpk: user.mpk || null, // ZMIANA: MPK z danych użytkownika, nie z formularza
+      mpk: requestData.mpk || null, // MPK z wybranej budowy
+      construction_name: requestData.construction_name || null, // Nazwa budowy
+      construction_id: requestData.construction_id || null, // ID budowy
       justification: requestData.justification,
       client_name: requestData.client_name || null,
       contact_person: requestData.contact_person || null,
@@ -304,17 +333,19 @@ export async function POST(request) {
       updated_at: new Date()
     };
 
-    console.log('Inserting request:', newRequest);
+    console.log('Inserting request z budową:', newRequest);
 
     // Zapisz wniosek do bazy
     const [insertedId] = await db('transport_requests').insert(newRequest);
 
-    console.log(`Utworzono wniosek transportowy ID: ${insertedId}`);
+    console.log(`Utworzono wniosek transportowy ID: ${insertedId} dla budowy: ${requestData.construction_name} (MPK: ${requestData.mpk})`);
 
     return NextResponse.json({ 
       success: true, 
       message: 'Wniosek transportowy został złożony',
-      requestId: insertedId
+      requestId: insertedId,
+      assignedConstruction: requestData.construction_name,
+      assignedMpk: requestData.mpk
     });
 
   } catch (error) {
@@ -545,8 +576,7 @@ export async function PUT(request) {
             success: false, 
             error: 'Błąd podczas akceptacji wniosku: ' + approveError.message 
           }, { status: 500 });
-        };
-      }
+        }
 
       case 'reject':
         if (!canApprove) {
@@ -591,9 +621,12 @@ export async function PUT(request) {
           }, { status: 400 });
         }
 
-        // Przygotuj dane do aktualizacji
+        // Przygotuj dane do aktualizacji - z danymi budowy
         const editData = {
           ...data,
+          mpk: data.mpk || null, // MPK z wybranej budowy
+          construction_name: data.construction_name || null, // Nazwa budowy
+          construction_id: data.construction_id || null, // ID budowy
           updated_at: new Date()
         };
 
@@ -607,15 +640,24 @@ export async function PUT(request) {
         delete editData.action;
         delete editData.requestId;
 
+        console.log('Aktualizacja wniosku z budową:', {
+          requestId,
+          constructionName: data.construction_name,
+          mpk: data.mpk,
+          otherData: Object.keys(editData)
+        });
+
         await db('transport_requests')
           .where('id', requestId)
           .update(editData);
 
-        console.log(`Zaktualizowano wniosek ${requestId}`);
+        console.log(`Zaktualizowano wniosek ${requestId} z budową: ${data.construction_name} (MPK: ${data.mpk})`);
 
         return NextResponse.json({ 
           success: true, 
-          message: 'Wniosek został zaktualizowany'
+          message: 'Wniosek został zaktualizowany',
+          updatedConstruction: data.construction_name,
+          updatedMpk: data.mpk
         });
 
       default:
