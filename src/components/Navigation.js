@@ -1,3 +1,4 @@
+// src/components/Navigation.js - KOMPLETNY ZAKTUALIZOWANY KOD
 'use client'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
@@ -71,12 +72,9 @@ export default function Navigation() {
           packagings: adminStatus || hasPackagingsAccess,
           constructions: adminStatus || hasConstructionsAccess
         });
-        
-        console.log('Stan po aktualizacji:', {
-          isLoggedIn: true,
-          userRole: normalizedRole,
-          originalRole: role,
-          userName: data.user.name,
+
+        console.log('Stan użytkownika ustawiony:', {
+          role: normalizedRole,
           isAdmin: adminStatus,
           adminAccess: {
             isFullAdmin: adminStatus,
@@ -85,6 +83,7 @@ export default function Navigation() {
           }
         });
       } else {
+        // Reset state gdy użytkownik nie jest zalogowany
         setUserRole(null);
         setUserName('');
         setIsAdmin(false);
@@ -93,25 +92,31 @@ export default function Navigation() {
           packagings: false,
           constructions: false
         });
-        console.log('Użytkownik niezalogowany');
       }
     } catch (error) {
-      console.error('Błąd sprawdzania autoryzacji:', error);
+      console.error('Error fetching user info:', error);
       setIsLoggedIn(false);
+      setUserRole(null);
+      setUserName('');
+      setIsAdmin(false);
+      setAdminAccess({
+        isFullAdmin: false,
+        packagings: false,
+        constructions: false
+      });
     }
   };
 
-  // Wywołujemy funkcję przy montowaniu komponentu i przy zmianie ścieżki
   useEffect(() => {
     fetchUserInfo();
     
-    // Okresowe odświeżanie stanu co 60 sekund (tylko w środowisku deweloperskim)
-    const intervalId = process.env.NODE_ENV === 'development' 
-      ? setInterval(() => {
-          setLastRefresh(Date.now());
-          fetchUserInfo();
-        }, 60000)
-      : null;
+    // Odświeżaj co minutę tylko jeśli użytkownik jest zalogowany
+    const intervalId = isLoggedIn ? 
+      setInterval(() => {
+        setLastRefresh(Date.now());
+        fetchUserInfo();
+      }, 60000)
+    : null;
       
     // Własne zdarzenie do odświeżania po zalogowaniu
     const handleAuthChange = () => {
@@ -189,6 +194,21 @@ export default function Navigation() {
     { name: 'Mapa', path: '/mapa' },
     { name: 'Spedycja', path: '/spedycja' }
   ];
+
+  // Dodaj wnioski transportowe na podstawie roli
+  if (userRole === 'handlowiec') {
+    // Handlowiec może składać własne wnioski
+    privateLinks.push({ name: 'Moje wnioski', path: '/moje-wnioski' });
+  }
+
+  if (userRole === 'magazyn' || userRole?.startsWith('magazyn_') || userRole === 'admin') {
+    // Magazyn i admin mogą zarządzać wszystkimi wnioskami
+    privateLinks.push({ name: 'Wnioski transportowe', path: '/wnioski-transportowe' });
+    // Dodaj również archiwum (jeśli nie ma już tego kodu)
+    if (!privateLinks.find(link => link.path === '/archiwum')) {
+      privateLinks.push({ name: 'Archiwum', path: '/archiwum' });
+    }
+  }
   
   // Dodaj link do panelu admina, jeśli ma jakiekolwiek uprawnienia administracyjne
   if (adminAccess.isFullAdmin || adminAccess.packagings || adminAccess.constructions) {
