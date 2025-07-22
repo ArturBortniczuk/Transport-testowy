@@ -1,39 +1,45 @@
-// src/app/api/transport-requests/route.js
+// src/app/api/transport-requests/route.js - NAPRAWIONA WERSJA
 import { NextResponse } from 'next/server';
-import db from '@/database/db';
+
+// Dynamiczny import bazy danych
+let db;
+try {
+  db = (await import('@/database/db')).default;
+} catch (error) {
+  console.error('Błąd importu bazy danych:', error);
+}
 
 // Funkcja pomocnicza do weryfikacji sesji
 const validateSession = async (authToken) => {
-  if (!authToken) {
+  if (!authToken || !db) {
     return null;
   }
   
-  const session = await db('sessions')
-    .where('token', authToken)
-    .whereRaw('expires_at > NOW()')
-    .select('user_id')
-    .first();
-  
-  return session?.user_id;
+  try {
+    const session = await db('sessions')
+      .where('token', authToken)
+      .whereRaw('expires_at > NOW()')
+      .select('user_id')
+      .first();
+    
+    return session?.user_id;
+  } catch (error) {
+    console.error('Błąd walidacji sesji:', error);
+    return null;
+  }
 };
 
-// GET - Pobieranie wniosków transportowych
-export async function GET(request) {
+// Funkcja do tworzenia tabeli transport_requests
+const ensureTableExists = async () => {
   try {
-    // Sprawdzamy uwierzytelnienie
-    const authToken = request.cookies.get('authToken')?.value;
-    const userId = await validateSession(authToken);
-    
-    if (!userId) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Unauthorized' 
-      }, { status: 401 });
+    if (!db) {
+      throw new Error('Baza danych nie jest dostępna');
     }
 
-    // Sprawdź czy tabela istnieje, jeśli nie - utwórz ją
     const tableExists = await db.schema.hasTable('transport_requests');
     if (!tableExists) {
+      console.log('Tworzenie tabeli transport_requests...');
+      
       await db.schema.createTable('transport_requests', table => {
         table.increments('id').primary();
         table.string('status').defaultTo('pending'); // pending, approved, rejected
@@ -57,7 +63,50 @@ export async function GET(request) {
         table.timestamp('updated_at').defaultTo(db.fn.now());
       });
       
-      console.log('Utworzono tabelę transport_requests');
+      console.log('Tabela transport_requests została utworzona');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Błąd tworzenia tabeli transport_requests:', error);
+    return false;
+  }
+};
+
+// GET - Pobieranie wniosków transportowych
+export async function GET(request) {
+  try {
+    console.log('=== START GET /api/transport-requests ===');
+    
+    if (!db) {
+      console.error('Baza danych nie jest dostępna');
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Błąd połączenia z bazą danych' 
+      }, { status: 500 });
+    }
+
+    // Sprawdzamy uwierzytelnienie
+    const authToken = request.cookies.get('authToken')?.value;
+    console.log('AuthToken:', authToken ? 'Present' : 'Missing');
+    
+    const userId = await validateSession(authToken);
+    console.log('UserId:', userId);
+    
+    if (!userId) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Unauthorized' 
+      }, { status: 401 });
+    }
+
+    // Upewnij się, że tabela istnieje
+    const tableReady = await ensureTableExists();
+    if (!tableReady) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Błąd inicjalizacji tabeli' 
+      }, { status: 500 });
     }
 
     // Pobierz dane użytkownika
@@ -65,6 +114,8 @@ export async function GET(request) {
       .where('email', userId)
       .select('role', 'name', 'permissions')
       .first();
+
+    console.log('User data:', user);
 
     if (!user) {
       return NextResponse.json({ 
@@ -81,11 +132,14 @@ export async function GET(request) {
       }
     } catch (e) {
       console.error('Błąd parsowania uprawnień:', e);
+      permissions = {};
     }
 
     const isAdmin = user.role === 'admin';
     const isMagazyn = user.role === 'magazyn' || user.role?.startsWith('magazyn_');
     const canViewAll = isAdmin || isMagazyn || permissions?.transport_requests?.approve === true;
+
+    console.log('User permissions:', { isAdmin, isMagazyn, canViewAll });
 
     let query = db('transport_requests');
 
@@ -117,6 +171,7 @@ export async function GET(request) {
     query = query.orderBy('created_at', 'desc');
 
     const requests = await query;
+    console.log('Pobrano wniosków:', requests.length);
 
     return NextResponse.json({ 
       success: true, 
@@ -126,10 +181,10 @@ export async function GET(request) {
     });
 
   } catch (error) {
-    console.error('Error fetching transport requests:', error);
+    console.error('Error in GET /api/transport-requests:', error);
     return NextResponse.json({ 
       success: false, 
-      error: error.message 
+      error: 'Błąd serwera: ' + error.message 
     }, { status: 500 });
   }
 }
@@ -137,6 +192,16 @@ export async function GET(request) {
 // POST - Dodawanie nowego wniosku transportowego
 export async function POST(request) {
   try {
+    console.log('=== START POST /api/transport-requests ===');
+    
+    if (!db) {
+      console.error('Baza danych nie jest dostępna');
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Błąd połączenia z bazą danych' 
+      }, { status: 500 });
+    }
+
     // Sprawdzamy uwierzytelnienie
     const authToken = request.cookies.get('authToken')?.value;
     const userId = await validateSession(authToken);
@@ -146,6 +211,15 @@ export async function POST(request) {
         success: false, 
         error: 'Unauthorized' 
       }, { status: 401 });
+    }
+
+    // Upewnij się, że tabela istnieje
+    const tableReady = await ensureTableExists();
+    if (!tableReady) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Błąd inicjalizacji tabeli' 
+      }, { status: 500 });
     }
 
     // Pobierz dane użytkownika
@@ -169,11 +243,14 @@ export async function POST(request) {
       }
     } catch (e) {
       console.error('Błąd parsowania uprawnień:', e);
+      permissions = {};
     }
 
     const isAdmin = user.role === 'admin';
     const isHandlowiec = user.role === 'handlowiec';
     const canAddRequests = isAdmin || isHandlowiec || permissions?.transport_requests?.add === true;
+
+    console.log('Permission check:', { isAdmin, isHandlowiec, canAddRequests });
 
     if (!canAddRequests) {
       return NextResponse.json({ 
@@ -183,7 +260,7 @@ export async function POST(request) {
     }
 
     const requestData = await request.json();
-    console.log('Otrzymane dane wniosku:', requestData);
+    console.log('Request data:', requestData);
 
     // Walidacja wymaganych pól
     const requiredFields = ['destination_city', 'delivery_date', 'justification'];
@@ -227,6 +304,8 @@ export async function POST(request) {
       updated_at: new Date()
     };
 
+    console.log('Inserting request:', newRequest);
+
     // Zapisz wniosek do bazy
     const [insertedId] = await db('transport_requests').insert(newRequest);
 
@@ -239,10 +318,10 @@ export async function POST(request) {
     });
 
   } catch (error) {
-    console.error('Error creating transport request:', error);
+    console.error('Error in POST /api/transport-requests:', error);
     return NextResponse.json({ 
       success: false, 
-      error: error.message 
+      error: 'Błąd serwera: ' + error.message 
     }, { status: 500 });
   }
 }
@@ -250,6 +329,15 @@ export async function POST(request) {
 // PUT - Aktualizacja wniosku (akceptacja/odrzucenie lub edycja)
 export async function PUT(request) {
   try {
+    console.log('=== START PUT /api/transport-requests ===');
+    
+    if (!db) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Błąd połączenia z bazą danych' 
+      }, { status: 500 });
+    }
+
     // Sprawdzamy uwierzytelnienie
     const authToken = request.cookies.get('authToken')?.value;
     const userId = await validateSession(authToken);
@@ -259,6 +347,15 @@ export async function PUT(request) {
         success: false, 
         error: 'Unauthorized' 
       }, { status: 401 });
+    }
+
+    // Upewnij się, że tabela istnieje
+    const tableReady = await ensureTableExists();
+    if (!tableReady) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Błąd inicjalizacji tabeli' 
+      }, { status: 500 });
     }
 
     // Pobierz dane użytkownika
@@ -276,6 +373,8 @@ export async function PUT(request) {
 
     const updateData = await request.json();
     const { requestId, action, ...data } = updateData;
+    
+    console.log('Update data:', { requestId, action });
 
     if (!requestId) {
       return NextResponse.json({ 
@@ -304,6 +403,7 @@ export async function PUT(request) {
       }
     } catch (e) {
       console.error('Błąd parsowania uprawnień:', e);
+      permissions = {};
     }
 
     const isAdmin = user.role === 'admin';
@@ -321,6 +421,15 @@ export async function PUT(request) {
           }, { status: 403 });
         }
 
+        // Sprawdź czy tabela transports istnieje
+        const transportsTableExists = await db.schema.hasTable('transports');
+        if (!transportsTableExists) {
+          return NextResponse.json({ 
+            success: false, 
+            error: 'Tabela transportów nie istnieje' 
+          }, { status: 500 });
+        }
+
         // Akceptuj wniosek i utwórz transport
         const approvedData = {
           status: 'approved',
@@ -335,6 +444,7 @@ export async function PUT(request) {
 
         // Utwórz transport na podstawie wniosku
         const newTransport = {
+          source_warehouse: 'bialystok', // Domyślne źródło
           destination_city: existingRequest.destination_city,
           postal_code: existingRequest.postal_code,
           street: existingRequest.street,
@@ -344,8 +454,7 @@ export async function PUT(request) {
           requester_name: existingRequest.requester_name,
           requester_email: existingRequest.requester_email,
           status: 'active',
-          created_at: new Date(),
-          notes: `Utworzony z wniosku #${requestId}. ${existingRequest.notes || ''}`
+          notes: `Utworzony z wniosku #${requestId}. ${existingRequest.notes || ''}`.trim()
         };
 
         const [transportId] = await db('transports').insert(newTransport);
@@ -419,6 +528,8 @@ export async function PUT(request) {
         delete editData.approved_by;
         delete editData.approved_at;
         delete editData.transport_id;
+        delete editData.action;
+        delete editData.requestId;
 
         await db('transport_requests')
           .where('id', requestId)
@@ -439,10 +550,10 @@ export async function PUT(request) {
     }
 
   } catch (error) {
-    console.error('Error updating transport request:', error);
+    console.error('Error in PUT /api/transport-requests:', error);
     return NextResponse.json({ 
       success: false, 
-      error: error.message 
+      error: 'Błąd serwera: ' + error.message 
     }, { status: 500 });
   }
 }
