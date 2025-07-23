@@ -333,6 +333,9 @@ const handleSubmit = async (e) => {
       delivery_date: request.delivery_date || '',
       justification: request.justification || '',
       client_name: request.client_name || '',
+      real_client_name: request.real_client_name || '',  // ← NOWE
+      wz_numbers: request.wz_numbers || '',              // ← NOWE  
+      market_id: request.market_id || '',                // ← NOWE
       mpk: request.mpk || '',
       contact_person: request.contact_person || '',
       contact_phone: request.contact_phone || '',
@@ -360,6 +363,7 @@ const handleSubmit = async (e) => {
     setFormData({
       destination_city: '', postal_code: '', street: '',
       delivery_date: '', justification: '', client_name: '',
+      real_client_name: '', wz_numbers: '', market_id: '',  // ← NOWE
       mpk: '', contact_person: '', contact_phone: '', notes: ''
     })
     setSelectedEntity(null)
