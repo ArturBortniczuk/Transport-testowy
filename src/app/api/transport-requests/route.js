@@ -310,7 +310,8 @@ export async function POST(request) {
     console.log('Inserting request z budową:', newRequest);
 
     // Zapisz wniosek do bazy
-    const [insertedId] = await db('transport_requests').insert(newRequest);
+    const [result] = await db('transport_requests').insert(newRequest).returning('id');
+    const insertedId = result.id;
 
     console.log(`Utworzono wniosek transportowy ID: ${insertedId} dla budowy: ${requestData.construction_name} (MPK: ${requestData.mpk})`);
 
