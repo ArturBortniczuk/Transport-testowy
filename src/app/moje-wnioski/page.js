@@ -180,10 +180,10 @@ export default function MojeWnioskiPage() {
     street: '',
     delivery_date: '',
     justification: '',
-    client_name: '',        // ← To zostaje (nazwa handlowca/budowy)
-    real_client_name: '',   // ← NOWE: rzeczywisty klient
-    wz_numbers: '',         // ← NOWE: numery WZ
-    market_id: '',          // ← NOWE: rynek
+    client_name: '',
+    real_client_name: '',   // ← NOWE
+    wz_numbers: '',         // ← NOWE  
+    market_id: '',          // ← NOWE
     mpk: '',
     contact_person: '',
     contact_phone: '',
@@ -586,7 +586,7 @@ const handleSubmit = async (e) => {
                     onChange={handleInputChange}
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                   >
-                    <option value="">Rynek</option>
+                    <option value="">Wybierz rynek</option>
                     <option value="1">Podlaski</option>
                     <option value="2">Mazowiecki</option>
                     <option value="3">Małopolski</option>
