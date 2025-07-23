@@ -491,12 +491,12 @@ export async function PUT(request) {
             source_warehouse: 'bialystok',
             postal_code: existingRequest.postal_code,
             street: existingRequest.street,
-            mpk: existingRequest.mpk,
-            client_name: existingRequest.real_client_name,        // ← POPRAWKA: rzeczywisty klient
-            requester_name: existingRequest.client_name,          // ← POPRAWKA: handlowiec/budowa jako zlecający
-            requester_email: existingRequest.requester_email,
-            wz_number: existingRequest.wz_numbers,                // ← NOWE: WZ
-            market_id: existingRequest.market_id,                 // ← NOWE: rynek
+            mpk: existingRequest.mpk,                           // ✅ MPK z wniosku
+            client_name: existingRequest.real_client_name,      // ✅ Rzeczywisty klient → Klient w kalendarzu
+            requester_name: existingRequest.client_name,        // ✅ Handlowiec/budowa → Osoba zlecająca w kalendarzu
+            requester_email: existingRequest.requester_email,   // ✅ Email zlecającego
+            wz_number: existingRequest.wz_numbers,              // ✅ WZ z wniosku → Numer WZ w kalendarzu
+            market: getMarketName(existingRequest.market_id),   // ✅ Rynek z wniosku → Rynek w kalendarzu
             notes: `Utworzony z wniosku #${requestId} dla budowy: ${existingRequest.construction_name || 'brak'}. ${existingRequest.notes || ''}`.trim()
           };
 
