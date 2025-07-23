@@ -2,7 +2,19 @@
 import { NextResponse } from 'next/server';
 import db from '@/database/db';
 
-
+const getMarketName = (marketId) => {
+  const markets = {
+    1: 'Podlaski',
+    2: 'Mazowiecki', 
+    3: 'Małopolski',
+    4: 'Wielkopolski',
+    5: 'Dolnośląski',
+    6: 'Śląski',
+    7: 'Lubelski',
+    8: 'Pomorski'
+  };
+  return markets[marketId] || null;
+};
 
 // Funkcja pomocnicza do weryfikacji sesji
 const validateSession = async (authToken) => {
