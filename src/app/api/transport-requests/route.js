@@ -498,7 +498,8 @@ export async function PUT(request) {
             console.log('Wniosek zaktualizowany na approved');
 
             // 2. Utwórz transport
-            const [transportId] = await trx('transports').insert(newTransport);
+            const [result] = await trx('transports').insert(newTransport).returning('id');
+            const transportId = result.id;
             console.log('Transport utworzony z ID:', transportId);
 
             // 3. Zaktualizuj wniosek o ID utworzonego transportu
