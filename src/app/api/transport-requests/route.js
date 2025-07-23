@@ -27,14 +27,13 @@ const validateSession = async (authToken) => {
 // Funkcja do tworzenia tabeli transport_requests
 const ensureTableExists = async () => {
   try {
-
     const tableExists = await db.schema.hasTable('transport_requests');
     if (!tableExists) {
       console.log('Tworzenie tabeli transport_requests...');
       
       await db.schema.createTable('transport_requests', table => {
         table.increments('id').primary();
-        table.string('status').defaultTo('pending'); // pending, approved, rejected
+        table.string('status').defaultTo('pending');
         table.string('requester_email').notNullable();
         table.string('requester_name').notNullable();
         table.string('destination_city').notNullable();
@@ -42,24 +41,27 @@ const ensureTableExists = async () => {
         table.string('street');
         table.date('delivery_date').notNullable();
         table.string('mpk');
-        table.string('construction_name'); // Nazwa budowy
-        table.integer('construction_id');   // ID budowy
-        table.text('justification'); // uzasadnienie wniosku
+        table.string('construction_name');
+        table.integer('construction_id');
+        table.text('justification');
         table.string('client_name');
+        table.string('real_client_name');      // ← NOWE POLE
+        table.string('wz_numbers');            // ← NOWE POLE  
+        table.integer('market_id');            // ← NOWE POLE
         table.string('contact_person');
         table.string('contact_phone');
-        table.text('notes'); // dodatkowe uwagi
+        table.text('notes');
         table.string('approved_by');
         table.timestamp('approved_at');
         table.string('rejection_reason');
-        table.integer('transport_id'); // ID transportu po akceptacji
+        table.integer('transport_id');
         table.timestamp('created_at').defaultTo(db.fn.now());
         table.timestamp('updated_at').defaultTo(db.fn.now());
       });
       
       console.log('Tabela transport_requests została utworzona');
     } else {
-      // Sprawdź i dodaj nowe kolumny jeśli nie istnieją
+      // ISTNIEJĄCE SPRAWDZENIA
       const hasConstructionName = await db.schema.hasColumn('transport_requests', 'construction_name');
       if (!hasConstructionName) {
         await db.schema.table('transport_requests', table => {
@@ -75,6 +77,32 @@ const ensureTableExists = async () => {
         });
         console.log('Dodano kolumnę construction_id');
       }
+
+      // ===== NOWE SPRAWDZENIA - DODAJ TUTAJ =====
+      const hasRealClientName = await db.schema.hasColumn('transport_requests', 'real_client_name');
+      if (!hasRealClientName) {
+        await db.schema.table('transport_requests', table => {
+          table.string('real_client_name');
+        });
+        console.log('Dodano kolumnę real_client_name');
+      }
+
+      const hasWzNumbers = await db.schema.hasColumn('transport_requests', 'wz_numbers');
+      if (!hasWzNumbers) {
+        await db.schema.table('transport_requests', table => {
+          table.string('wz_numbers');
+        });
+        console.log('Dodano kolumnę wz_numbers');
+      }
+
+      const hasMarketId = await db.schema.hasColumn('transport_requests', 'market_id');
+      if (!hasMarketId) {
+        await db.schema.table('transport_requests', table => {
+          table.integer('market_id');
+        });
+        console.log('Dodano kolumnę market_id');
+      }
+      // ===== KONIEC NOWYCH SPRAWDZEŃ =====
     }
     
     return true;
@@ -295,11 +323,14 @@ export async function POST(request) {
       postal_code: requestData.postal_code || null,
       street: requestData.street || null,
       delivery_date: requestData.delivery_date,
-      mpk: requestData.mpk || null, // MPK z wybranej budowy
-      construction_name: requestData.construction_name || null, // Nazwa budowy
-      construction_id: requestData.construction_id || null, // ID budowy
+      mpk: requestData.mpk || null,
+      construction_name: requestData.construction_name || null,
+      construction_id: requestData.construction_id || null,
       justification: requestData.justification,
-      client_name: requestData.client_name || null,
+      client_name: requestData.client_name || null,        // handlowiec/budowa
+      real_client_name: requestData.real_client_name || null, // ← NOWE: rzeczywisty klient
+      wz_numbers: requestData.wz_numbers || null,          // ← NOWE: WZ
+      market_id: requestData.market_id || null,            // ← NOWE: rynek
       contact_person: requestData.contact_person || null,
       contact_phone: requestData.contact_phone || null,
       notes: requestData.notes || null,
@@ -460,10 +491,12 @@ export async function PUT(request) {
             source_warehouse: 'bialystok',
             postal_code: existingRequest.postal_code,
             street: existingRequest.street,
-            mpk: existingRequest.mpk, // MPK z wniosku
-            client_name: existingRequest.client_name,
-            requester_name: existingRequest.requester_name,
+            mpk: existingRequest.mpk,
+            client_name: existingRequest.real_client_name,        // ← POPRAWKA: rzeczywisty klient
+            requester_name: existingRequest.client_name,          // ← POPRAWKA: handlowiec/budowa jako zlecający
             requester_email: existingRequest.requester_email,
+            wz_number: existingRequest.wz_numbers,                // ← NOWE: WZ
+            market_id: existingRequest.market_id,                 // ← NOWE: rynek
             notes: `Utworzony z wniosku #${requestId} dla budowy: ${existingRequest.construction_name || 'brak'}. ${existingRequest.notes || ''}`.trim()
           };
 
