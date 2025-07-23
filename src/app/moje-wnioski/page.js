@@ -180,7 +180,10 @@ export default function MojeWnioskiPage() {
     street: '',
     delivery_date: '',
     justification: '',
-    client_name: '',
+    client_name: '',        // ← To zostaje (nazwa handlowca/budowy)
+    real_client_name: '',   // ← NOWE: rzeczywisty klient
+    wz_numbers: '',         // ← NOWE: numery WZ
+    market_id: '',          // ← NOWE: rynek
     mpk: '',
     contact_person: '',
     contact_phone: '',
@@ -248,6 +251,7 @@ export default function MojeWnioskiPage() {
     if (!formData.destination_city.trim()) errors.destination_city = 'Miasto docelowe jest wymagane'
     if (!formData.delivery_date) errors.delivery_date = 'Data dostawy jest wymagana'
     if (!formData.justification.trim()) errors.justification = 'Uzasadnienie jest wymagane'
+    if (!formData.real_client_name.trim()) errors.real_client_name = 'Rzeczywisty klient jest wymagany'
     if (!selectedEntity) errors.entity = 'Wybór budowy lub handlowca jest wymagany'
 
     setFormErrors(errors)
@@ -543,6 +547,55 @@ const handleSubmit = async (e) => {
                 </div>
               </div>
 
+              {/* NOWE POLA - dodaj po polach contact_person/contact_phone */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Rzeczywisty klient *</label>
+                  <input 
+                    type="text" 
+                    name="real_client_name" 
+                    value={formData.real_client_name} 
+                    onChange={handleInputChange} 
+                    placeholder="Nazwa firmy/klienta docelowego"
+                    className={`mt-1 block w-full rounded-md shadow-sm ${formErrors.real_client_name ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'}`} 
+                  />
+                  {formErrors.real_client_name && (<p className="mt-1 text-sm text-red-600">{formErrors.real_client_name}</p>)}
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Numery WZ</label>
+                  <input 
+                    type="text" 
+                    name="wz_numbers" 
+                    value={formData.wz_numbers} 
+                    onChange={handleInputChange} 
+                    placeholder="np. WZ001, WZ002"
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Rynek</label>
+                  <select 
+                    name="market_id" 
+                    value={formData.market_id} 
+                    onChange={handleInputChange}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  >
+                    <option value="">Rynek</option>
+                    <option value="1">Podlaski</option>
+                    <option value="2">Mazowiecki</option>
+                    <option value="3">Małopolski</option>
+                    <option value="4">Wielkopolski</option>
+                    <option value="5">Dolnośląski</option>
+                    <option value="6">Śląski</option>
+                    <option value="7">Lubelski</option>
+                    <option value="8">Pomorski</option>
+                  </select>
+                </div>
+              </div>
+
+                    
               <div>
                 <label className="block text-sm font-medium text-gray-700">Uzasadnienie wniosku *</label>
                 <textarea name="justification" value={formData.justification} onChange={handleInputChange} rows={4} className={`mt-1 block w-full rounded-md shadow-sm ${formErrors.justification ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'}`} />
