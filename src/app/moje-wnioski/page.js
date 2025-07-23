@@ -266,9 +266,19 @@ const handleSubmit = async (e) => {
       const method = editingRequest ? 'PUT' : 'POST';
 
       const dataToSend = {
-        ...formData,
-        construction_id: recipientType === 'construction' ? selectedEntity?.id : null,
-        user_id: recipientType === 'sales' ? selectedEntity?.id : null,
+        destination_city: formData.destination_city || '',
+        postal_code: formData.postal_code || '',
+        street: formData.street || '',
+        delivery_date: formData.delivery_date || '',
+        justification: formData.justification || '',
+        client_name: formData.client_name || '',
+        mpk: formData.mpk || '',
+        contact_person: formData.contact_person || '',
+        contact_phone: formData.contact_phone || '',
+        notes: formData.notes || '',
+        construction_id: recipientType === 'construction' ? (selectedEntity?.id || null) : null,
+        construction_name: recipientType === 'construction' ? (selectedEntity?.name || null) : null,
+        user_id: recipientType === 'sales' ? (selectedEntity?.id || null) : null,
       };
 
       const body = editingRequest
