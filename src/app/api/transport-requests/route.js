@@ -1,13 +1,8 @@
 // src/app/api/transport-requests/route.js - KOMPLETNY NAPRAWIONY KOD
 import { NextResponse } from 'next/server';
+import db from '@/database/db';
 
-// Dynamiczny import bazy danych
-let db;
-try {
-  db = (await import('@/database/db')).default;
-} catch (error) {
-  console.error('Błąd importu bazy danych:', error);
-}
+
 
 // Funkcja pomocnicza do weryfikacji sesji
 const validateSession = async (authToken) => {
@@ -32,9 +27,6 @@ const validateSession = async (authToken) => {
 // Funkcja do tworzenia tabeli transport_requests
 const ensureTableExists = async () => {
   try {
-    if (!db) {
-      throw new Error('Baza danych nie jest dostępna');
-    }
 
     const tableExists = await db.schema.hasTable('transport_requests');
     if (!tableExists) {
@@ -96,15 +88,6 @@ const ensureTableExists = async () => {
 export async function GET(request) {
   try {
     console.log('=== START GET /api/transport-requests ===');
-    
-    if (!db) {
-      console.error('Baza danych nie jest dostępna');
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Błąd połączenia z bazą danych' 
-      }, { status: 500 });
-    }
-
     // Sprawdzamy uwierzytelnienie
     const authToken = request.cookies.get('authToken')?.value;
     console.log('AuthToken:', authToken ? 'Present' : 'Missing');
@@ -212,16 +195,7 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     console.log('=== START POST /api/transport-requests ===');
-    
-    if (!db) {
-      console.error('Baza danych nie jest dostępna');
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Błąd połączenia z bazą danych' 
-      }, { status: 500 });
-    }
-
-    // Sprawdzamy uwierzytelnienie
+   // Sprawdzamy uwierzytelnienie
     const authToken = request.cookies.get('authToken')?.value;
     const userId = await validateSession(authToken);
     
@@ -361,14 +335,6 @@ export async function POST(request) {
 export async function PUT(request) {
   try {
     console.log('=== START PUT /api/transport-requests ===');
-    
-    if (!db) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Błąd połączenia z bazą danych' 
-      }, { status: 500 });
-    }
-
     // Sprawdzamy uwierzytelnienie
     const authToken = request.cookies.get('authToken')?.value;
     const userId = await validateSession(authToken);
