@@ -270,20 +270,36 @@ const handleSubmit = async (e) => {
       const method = editingRequest ? 'PUT' : 'POST';
 
       const dataToSend = {
+        // Lokalizacja
         destination_city: formData.destination_city || '',
         postal_code: formData.postal_code || '',
         street: formData.street || '',
         delivery_date: formData.delivery_date || '',
+        
+        // Uzasadnienie i uwagi
         justification: formData.justification || '',
+        notes: formData.notes || '',
+        
+        // Podstawowe pola klienta  
         client_name: formData.client_name || '',
         mpk: formData.mpk || '',
+        
+        // KLUCZOWE NOWE POLA - te które muszą być wysłane
+        real_client_name: formData.real_client_name || '',      // Rzeczywisty klient
+        wz_numbers: formData.wz_numbers || '',                  // Numery WZ  
+        market_id: formData.market_id || '',                    // Rynek (jako string, będzie konwertowane na int)
+        
+        // Kontakt
         contact_person: formData.contact_person || '',
         contact_phone: formData.contact_phone || '',
-        notes: formData.notes || '',
+        
+        // Budowa (z selektora)
         construction_id: recipientType === 'construction' ? (selectedEntity?.id || null) : null,
         construction_name: recipientType === 'construction' ? (selectedEntity?.name || null) : null,
         user_id: recipientType === 'sales' ? (selectedEntity?.id || null) : null,
       };
+      
+      console.log('🚀 WYSYŁANIE DANYCH Z FORMULARZA:', JSON.stringify(dataToSend, null, 2));
 
       const body = editingRequest
         ? { ...dataToSend, requestId: editingRequest.id, action: 'edit' }
