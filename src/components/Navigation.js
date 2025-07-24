@@ -231,7 +231,7 @@ export default function Navigation() {
         { name: 'Spedycja', path: '/spedycja', icon: Send },
         { name: 'Archiwum spedycji', path: '/archiwum-spedycji', icon: Archive },
         { name: 'Kurier', path: '/kurier', icon: Package },
-        { name: 'Mapa spedycji', path: '/mapa-spedycji', icon: Map }
+        { name: 'Mapa spedycji', path: '/mapa', icon: Map }
       ]
     }
   };
@@ -265,7 +265,23 @@ export default function Navigation() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
               <Link href="/" className="flex items-center space-x-3">
-                <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <img 
+                  src="/logo.png" 
+                  alt="Logo TransportSystem" 
+                  className="h-10 w-auto"
+                  onError={(e) => {
+                    // Fallback do ikony SVG jeśli logo nie zostanie znalezione
+                    e.target.style.display = 'none';
+                    e.target.nextElementSibling.style.display = 'block';
+                  }}
+                />
+                <svg 
+                  className="h-8 w-8 hidden" 
+                  fill="none" 
+                  viewBox="0 0 24 24" 
+                  stroke="currentColor"
+                  style={{display: 'none'}}
+                >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
                 <span className="font-bold text-xl">TransportSystem</span>
@@ -290,7 +306,23 @@ export default function Navigation() {
           {/* Logo */}
           <div className="flex items-center">
             <Link href="/" className="flex items-center space-x-3">
-              <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <img 
+                src="/logo.png" 
+                alt="Logo TransportSystem" 
+                className="h-10 w-auto"
+                onError={(e) => {
+                  // Fallback do ikony SVG jeśli logo nie zostanie znalezione
+                  e.target.style.display = 'none';
+                  e.target.nextElementSibling.style.display = 'block';
+                }}
+              />
+              <svg 
+                className="h-8 w-8 hidden" 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor"
+                style={{display: 'none'}}
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
               <span className="font-bold text-xl">TransportSystem</span>
