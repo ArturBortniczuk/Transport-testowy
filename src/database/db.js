@@ -337,7 +337,28 @@ const checkTransportsTable = async () => {
     const columnNames = columns.rows.map(row => row.column_name);
     console.log('Kolumny w tabeli transports:', columnNames);
 
-    // Dodaj brakujące kolumny
+    // Dodaj brakujące kolumny dla wniosków transportowych
+    if (!columnNames.includes('wz_number')) {
+      await db.schema.table('transports', table => {
+        table.string('wz_number');
+      });
+      console.log('Dodano kolumnę wz_number do tabeli transports');
+    }
+
+    if (!columnNames.includes('market')) {
+      await db.schema.table('transports', table => {
+        table.string('market');
+      });
+      console.log('Dodano kolumnę market do tabeli transports');
+    }
+
+    if (!columnNames.includes('real_client_name')) {
+      await db.schema.table('transports', table => {
+        table.string('real_client_name');
+      });
+      console.log('Dodano kolumnę real_client_name do tabeli transports');
+    }
+
     if (!columnNames.includes('goods_description')) {
       await db.schema.table('transports', table => {
         table.text('goods_description');
