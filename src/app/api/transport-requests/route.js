@@ -231,10 +231,11 @@ export async function GET(request) {
 }
 
 // POST - Dodawanie nowego wniosku transportowego
+// POST - Dodawanie nowego wniosku transportowego - NAPRAWIONA WERSJA
 export async function POST(request) {
   try {
     console.log('=== START POST /api/transport-requests ===');
-   // Sprawdzamy uwierzytelnienie
+    // Sprawdzamy uwierzytelnienie
     const authToken = request.cookies.get('authToken')?.value;
     const userId = await validateSession(authToken);
     
@@ -292,7 +293,7 @@ export async function POST(request) {
     }
 
     const requestData = await request.json();
-    console.log('Request data z budową:', requestData);
+    console.log('🚀 PEŁNE DANE Z FORMULARZA:', JSON.stringify(requestData, null, 2));
 
     // Walidacja wymaganych pól
     const requiredFields = ['destination_city', 'delivery_date', 'justification'];
@@ -325,48 +326,67 @@ export async function POST(request) {
       }, { status: 400 });
     }
 
-    // Przygotuj dane do zapisania - z danymi budowy
+    // NAPRAWIONE PRZYGOTOWANIE DANYCH - wszystkie pola z formularza
     const newRequest = {
+      // Podstawowe pola
       status: 'pending',
       requester_email: userId,
       requester_name: user.name || userId,
-      destination_city: requestData.destination_city,
+      
+      // Lokalizacja
+      destination_city: requestData.destination_city || '',
       postal_code: requestData.postal_code || null,
       street: requestData.street || null,
       delivery_date: requestData.delivery_date,
+      
+      // Budowa/MPK
       mpk: requestData.mpk || null,
       construction_name: requestData.construction_name || null,
-      construction_id: requestData.construction_id || null,
-      justification: requestData.justification,
-      client_name: requestData.client_name || null,        // handlowiec/budowa
-      real_client_name: requestData.real_client_name || null, // ← NOWE: rzeczywisty klient
-      wz_numbers: requestData.wz_numbers || null,          // ← NOWE: WZ
-      market_id: requestData.market_id || null,            // ← NOWE: rynek
+      construction_id: requestData.construction_id ? parseInt(requestData.construction_id) : null,
+      
+      // Uzasadnienie i uwagi
+      justification: requestData.justification || '',
+      notes: requestData.notes || null,
+      
+      // KLUCZOWE POLA - te które brakowały
+      client_name: requestData.client_name || null,                    // Handlowiec/budowa
+      real_client_name: requestData.real_client_name || null,          // Rzeczywisty klient  
+      wz_numbers: requestData.wz_numbers || null,                      // Numery WZ
+      market_id: requestData.market_id ? parseInt(requestData.market_id) : null, // Rynek
+      
+      // Kontakt
       contact_person: requestData.contact_person || null,
       contact_phone: requestData.contact_phone || null,
-      notes: requestData.notes || null,
+      
+      // Metadane
       created_at: new Date(),
       updated_at: new Date()
     };
 
-    console.log('Inserting request z budową:', newRequest);
+    console.log('🚀 DANE DO ZAPISANIA W BAZIE:', JSON.stringify(newRequest, null, 2));
 
     // Zapisz wniosek do bazy
-    const [result] = await db('transport_requests').insert(newRequest).returning('id');
-    const insertedId = result.id;
+    const [result] = await db('transport_requests').insert(newRequest).returning('*');
+    const insertedRequest = result;
 
-    console.log(`Utworzono wniosek transportowy ID: ${insertedId} dla budowy: ${requestData.construction_name} (MPK: ${requestData.mpk})`);
+    console.log('🚀 ZAPISANO W BAZIE (pełny rekord):', JSON.stringify(insertedRequest, null, 2));
+    console.log(`✅ Utworzono wniosek transportowy ID: ${insertedRequest.id}`);
+    console.log(`✅ Z danymi: real_client_name="${insertedRequest.real_client_name}", wz_numbers="${insertedRequest.wz_numbers}", market_id="${insertedRequest.market_id}"`);
 
     return NextResponse.json({ 
       success: true, 
       message: 'Wniosek transportowy został złożony',
-      requestId: insertedId,
-      assignedConstruction: requestData.construction_name,
-      assignedMpk: requestData.mpk
+      requestId: insertedRequest.id,
+      savedData: {
+        real_client_name: insertedRequest.real_client_name,
+        wz_numbers: insertedRequest.wz_numbers,
+        market_id: insertedRequest.market_id,
+        construction_name: insertedRequest.construction_name
+      }
     });
 
   } catch (error) {
-    console.error('Error in POST /api/transport-requests:', error);
+    console.error('❌ Error in POST /api/transport-requests:', error);
     return NextResponse.json({ 
       success: false, 
       error: 'Błąd serwera: ' + error.message 
