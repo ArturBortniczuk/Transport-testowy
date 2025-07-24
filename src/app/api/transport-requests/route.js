@@ -90,7 +90,7 @@ const ensureTableExists = async () => {
         console.log('Dodano kolumnę construction_id');
       }
 
-      // ===== NOWE SPRAWDZENIA - DODAJ TUTAJ =====
+      // ===== NOWE SPRAWDZENIA =====
       const hasRealClientName = await db.schema.hasColumn('transport_requests', 'real_client_name');
       if (!hasRealClientName) {
         await db.schema.table('transport_requests', table => {
@@ -114,7 +114,6 @@ const ensureTableExists = async () => {
         });
         console.log('Dodano kolumnę market_id');
       }
-      // ===== KONIEC NOWYCH SPRAWDZEŃ =====
     }
     
     return true;
@@ -465,7 +464,7 @@ export async function PUT(request) {
         console.log('Rozpoczynam akceptację wniosku:', requestId);
 
         try {
-          // Sprawdź czy tabela transports istnieje i jakie ma kolumny
+          // Sprawdź czy tabela transports istnieje
           const transportsTableExists = await db.schema.hasTable('transports');
           if (!transportsTableExists) {
             return NextResponse.json({ 
@@ -474,57 +473,27 @@ export async function PUT(request) {
             }, { status: 500 });
           }
 
-          // Pobierz informacje o kolumnach tabeli transports
-          let availableColumns = [];
-          try {
-            const columnsResult = await db.raw(`
-              SELECT column_name 
-              FROM information_schema.columns 
-              WHERE table_name = 'transports' 
-              AND table_schema = 'public'
-            `);
-            availableColumns = columnsResult.rows.map(row => row.column_name);
-            console.log('Dostępne kolumny w tabeli transports:', availableColumns);
-          } catch (columnError) {
-            console.warn('Nie udało się pobrać informacji o kolumnach:', columnError.message);
-            // Użyj podstawowe kolumny, które powinny istnieć
-            availableColumns = ['id', 'destination_city', 'delivery_date', 'status'];
-          }
-
-          // Przygotuj podstawowe dane transportu
-          const baseTransportData = {
+          // NOWA LOGIKA MAPOWANIA DANYCH - bez sprawdzania kolumn
+          const transportData = {
             destination_city: existingRequest.destination_city,
             delivery_date: existingRequest.delivery_date,
-            status: 'active'
-          };
-
-          // Dodaj opcjonalne pola tylko jeśli kolumny istnieją
-          const optionalFields = {
+            status: 'active',
             source_warehouse: 'bialystok',
-            postal_code: existingRequest.postal_code,
-            street: existingRequest.street,
-            mpk: existingRequest.mpk,                           // ✅ MPK z wniosku
-            client_name: existingRequest.real_client_name,      // ✅ Rzeczywisty klient → Klient w kalendarzu
-            requester_name: existingRequest.client_name,        // ✅ Handlowiec/budowa → Osoba zlecająca w kalendarzu
-            requester_email: existingRequest.requester_email,   // ✅ Email zlecającego
-            wz_number: existingRequest.wz_numbers,              // ✅ WZ z wniosku → Numer WZ w kalendarzu
-            market: getMarketName(existingRequest.market_id),   // ✅ Rynek z wniosku → Rynek w kalendarzu
-            notes: `Utworzony z wniosku #${requestId} dla budowy: ${existingRequest.construction_name || 'brak'}. ${existingRequest.notes || ''}`.trim()
+            postal_code: existingRequest.postal_code || null,
+            street: existingRequest.street || null,
+            mpk: existingRequest.mpk || null,
+            client_name: existingRequest.real_client_name || existingRequest.client_name || null,
+            requester_name: existingRequest.client_name || existingRequest.requester_name || null,
+            requester_email: existingRequest.requester_email || null,
+            wz_number: existingRequest.wz_numbers || null, // WAŻNE: mapowanie wz_numbers → wz_number
+            market: getMarketName(existingRequest.market_id) || null,
+            notes: `Utworzony z wniosku #${requestId}${existingRequest.construction_name ? ` dla budowy: ${existingRequest.construction_name}` : ''}${existingRequest.notes ? `. ${existingRequest.notes}` : ''}`.trim(),
+            loading_level: '100%',
+            is_cyclical: false
           };
 
-          // Dodaj tylko te pola, dla których istnieją kolumny
-          const newTransport = { ...baseTransportData };
-          for (const [fieldName, fieldValue] of Object.entries(optionalFields)) {
-            if (availableColumns.includes(fieldName) && fieldValue) {
-              newTransport[fieldName] = fieldValue;
-            }
-          }
-
-          console.log('Dane transportu do utworzenia z budową:', {
-            ...newTransport,
-            construction_from_request: existingRequest.construction_name,
-            mpk_from_request: existingRequest.mpk
-          });
+          console.log('🚀 DEBUGOWANIE: Pełne dane wniosku:', existingRequest);
+          console.log('🚀 DEBUGOWANIE: Dane transportu do utworzenia:', transportData);
 
           // Rozpocznij transakcję
           const result = await db.transaction(async (trx) => {
@@ -542,8 +511,9 @@ export async function PUT(request) {
 
             console.log('Wniosek zaktualizowany na approved');
 
-            // 2. Utwórz transport
-            const [result] = await trx('transports').insert(newTransport).returning('id');
+            // 2. Utwórz transport z wszystkimi danymi
+            console.log('Tworzenie transportu z danymi:', transportData);
+            const [result] = await trx('transports').insert(transportData).returning('id');
             const transportId = result.id;
             console.log('Transport utworzony z ID:', transportId);
 
@@ -558,13 +528,20 @@ export async function PUT(request) {
           });
 
           console.log(`✅ Zaakceptowano wniosek ${requestId} dla budowy ${existingRequest.construction_name}, utworzono transport ${result}`);
+          console.log(`✅ WZ Numbers z wniosku: ${existingRequest.wz_numbers} → zapisane jako wz_number w transporcie`);
+          console.log(`✅ Rynek z wniosku: ${existingRequest.market_id} → ${getMarketName(existingRequest.market_id)}`);
 
           return NextResponse.json({ 
             success: true, 
             message: `Wniosek został zaakceptowany i dodany do kalendarza dla budowy: ${existingRequest.construction_name || 'brak nazwy'}`,
             transportId: result,
             constructionName: existingRequest.construction_name,
-            mpk: existingRequest.mpk
+            mpk: existingRequest.mpk,
+            debugInfo: {
+              wzNumbers: existingRequest.wz_numbers,
+              market: getMarketName(existingRequest.market_id),
+              realClient: existingRequest.real_client_name
+            }
           });
 
         } catch (approveError) {
@@ -637,9 +614,12 @@ export async function PUT(request) {
         // Przygotuj dane do aktualizacji - z danymi budowy
         const editData = {
           ...data,
-          mpk: data.mpk || null, // MPK z wybranej budowy
-          construction_name: data.construction_name || null, // Nazwa budowy
-          construction_id: data.construction_id || null, // ID budowy
+          mpk: data.mpk || null,
+          construction_name: data.construction_name || null,
+          construction_id: data.construction_id || null,
+          real_client_name: data.real_client_name || null,
+          wz_numbers: data.wz_numbers || null,
+          market_id: data.market_id || null,
           updated_at: new Date()
         };
 
@@ -657,6 +637,8 @@ export async function PUT(request) {
           requestId,
           constructionName: data.construction_name,
           mpk: data.mpk,
+          wzNumbers: data.wz_numbers,
+          marketId: data.market_id,
           otherData: Object.keys(editData)
         });
 
