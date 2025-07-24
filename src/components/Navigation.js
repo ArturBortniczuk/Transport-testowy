@@ -284,7 +284,7 @@ export default function Navigation() {
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                <span className="font-bold text-xl">TransportSystem</span>
+                <span className="font-bold text-xl">TRANSPORT</span>
               </Link>
             </div>
             <Link
