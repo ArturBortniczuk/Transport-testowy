@@ -267,7 +267,7 @@ export default function Navigation() {
               <Link href="/" className="flex items-center space-x-3">
                 <img 
                   src="/logo.png" 
-                  alt="Logo TransportSystem" 
+                  alt="Logo TRANSPORT" 
                   className="h-10 w-auto"
                   onError={(e) => {
                     // Fallback do ikony SVG jeśli logo nie zostanie znalezione
