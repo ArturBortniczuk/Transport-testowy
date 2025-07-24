@@ -140,6 +140,8 @@ export default function WnioskiTransportowePage() {
         req.destination_city.toLowerCase().includes(term) ||
         req.requester_name.toLowerCase().includes(term) ||
         req.client_name?.toLowerCase().includes(term) ||
+        req.real_client_name?.toLowerCase().includes(term) ||
+        req.construction_name?.toLowerCase().includes(term) ||
         req.mpk?.toLowerCase().includes(term) ||
         req.justification.toLowerCase().includes(term)
       )
@@ -271,6 +273,12 @@ export default function WnioskiTransportowePage() {
       )
     }
     return null
+  }
+
+  // Funkcja do mapowania ID rynku na nazwę
+  const getMarketName = (marketId) => {
+    const markets = ['', 'Podlaski', 'Mazowiecki', 'Małopolski', 'Wielkopolski', 'Dolnośląski', 'Śląski', 'Lubelski', 'Pomorski'];
+    return markets[marketId] || 'Nieznany';
   }
 
   if (loading && !userInfo) {
@@ -466,18 +474,55 @@ export default function WnioskiTransportowePage() {
                         </div>
                       </div>
 
+                      {/* NOWA SEKCJA: Szczegółowe informacje z wniosku */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm mb-4 bg-blue-50 p-4 rounded-lg">
+                        <div>
+                          <div className="text-gray-600 mb-1">
+                            <strong>Handlowiec/Budowa:</strong>
+                          </div>
+                          <div className="text-gray-900">{request.client_name || 'Brak danych'}</div>
+                        </div>
+
+                        <div>
+                          <div className="text-gray-600 mb-1">
+                            <strong>Rzeczywisty klient:</strong>
+                          </div>
+                          <div className="text-gray-900">{request.real_client_name || 'Brak danych'}</div>
+                        </div>
+
+                        <div>
+                          <div className="text-gray-600 mb-1">
+                            <strong>Numery WZ:</strong>
+                          </div>
+                          <div className="text-gray-900">{request.wz_numbers || 'Brak danych'}</div>
+                        </div>
+
+                        <div>
+                          <div className="text-gray-600 mb-1">
+                            <strong>Rynek:</strong>
+                          </div>
+                          <div className="text-gray-900">
+                            {request.market_id ? getMarketName(request.market_id) : 'Brak danych'}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-gray-600 mb-1">
+                            <strong>Budowa:</strong>
+                          </div>
+                          <div className="text-gray-900">{request.construction_name || 'Brak danych'}</div>
+                        </div>
+
+                        <div>
+                          <div className="text-gray-600 mb-1">
+                            <strong>MPK:</strong>
+                          </div>
+                          <div className="text-gray-900">{request.mpk || 'Brak danych'}</div>
+                        </div>
+                      </div>
+
                       {/* Dodatkowe informacje */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mb-4">
-                        {request.client_name && (
-                          <div>
-                            <div className="flex items-center text-gray-600 mb-1">
-                              <Building className="w-4 h-4 mr-2" />
-                              <strong>Klient:</strong>
-                            </div>
-                            <div className="ml-6 text-gray-900">{request.client_name}</div>
-                          </div>
-                        )}
-
                         {request.contact_person && (
                           <div>
                             <div className="flex items-center text-gray-600 mb-1">
@@ -493,15 +538,6 @@ export default function WnioskiTransportowePage() {
                                 </div>
                               )}
                             </div>
-                          </div>
-                        )}
-
-                        {request.mpk && (
-                          <div className="md:col-span-2">
-                            <div className="text-gray-600 mb-1">
-                              <strong>MPK/Budowa:</strong>
-                            </div>
-                            <div className="text-gray-900">{request.mpk}</div>
                           </div>
                         )}
                       </div>
