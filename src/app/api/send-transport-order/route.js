@@ -292,6 +292,13 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
         contact: spedycja.loading_contact,
         date: dataZaladunku
       });
+    } else if (spedycja.location === 'Odbiory własne' && spedycja.producerAddress) {
+      const addr = spedycja.producerAddress;
+      places.push({
+        address: `${addr.city}, ${addr.postalCode}<br>${addr.street}<br>${spedycja.sourceClientName || 'Klient'}`,
+        contact: spedycja.loading_contact,
+        date: dataZaladunku
+      });
     } else {
       places.push({
         address: spedycja.location || 'Brak danych',
@@ -319,6 +326,14 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
             address = 'Białystok, 15-169<br>ul. Wysockiego 69B<br>Grupa Eltron Sp z o.o';
           } else if (transport.location === 'Magazyn Zielonka') {
             address = 'Zielonka, 05-220<br>ul. Krótka 2<br>Grupa Eltron Sp z o.o';
+          } else if (transport.location === 'Odbiory własne') {
+            try {
+              const locationData = typeof transport.location_data === 'string' ? 
+                JSON.parse(transport.location_data) : transport.location_data;
+              address = `${locationData.city}, ${locationData.postalCode}<br>${locationData.street}<br>${transport.sourceClientName || 'Klient'}`;
+            } catch (error) {
+              address = transport.sourceClientName || 'Odbiory własne';
+            }
           } else {
             address = transport.location;
           }
