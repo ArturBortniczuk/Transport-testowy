@@ -142,7 +142,7 @@ export default function ArchiwumSpedycjiPage() {
   // Funkcja pomocnicza do określania miasta załadunku
   const getLoadingCity = (transport) => {
     if (transport.location === 'Odbiory własne' && transport.producerAddress) {
-      return transport.producerAddress.city || 'Odbiory własne';
+      return transport.producerAddress.city || 'Brak miasta';
     } else if (transport.location === 'Magazyn Białystok') {
       return 'Białystok';
     } else if (transport.location === 'Magazyn Zielonka') {
