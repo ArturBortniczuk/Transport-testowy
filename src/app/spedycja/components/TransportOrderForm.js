@@ -69,9 +69,16 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
   
   // Funkcja formatująca trasę transportu
   const getTransportRoute = (transport) => {
-    const start = transport.location === 'Odbiory własne' && transport.producerAddress 
-      ? transport.producerAddress.city 
-      : transport.location.replace('Magazyn ', '')
+    let start;
+    if (transport.location === 'Odbiory własne' && transport.producerAddress) {
+      start = transport.producerAddress.city || 'Brak miasta';
+    } else if (transport.location === 'Magazyn Białystok') {
+      start = 'Białystok';
+    } else if (transport.location === 'Magazyn Zielonka') {
+      start = 'Zielonka';
+    } else {
+      start = transport.location?.replace('Magazyn ', '') || 'Nie podano';
+    }
     
     const end = transport.delivery?.city || 'Brak danych'
     
