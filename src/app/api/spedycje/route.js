@@ -96,7 +96,7 @@ const generateRoutePointsFromConfiguration = (mainTransport, transportsToMerge, 
   const mainUnloadingPoint = {
     type: 'unloading',
     transportId: 'main',
-    order: 1000,
+    order: 15,
     location: getTransportDeliveryCoords(mainTransport),
     description: 'Rozładunek główny',
     address: mainTransport.delivery ? 
