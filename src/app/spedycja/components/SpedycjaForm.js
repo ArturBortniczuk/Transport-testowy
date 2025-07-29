@@ -260,12 +260,8 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     allPoints.push(mainUnloading);
     
     // Sortuj punkty według kolejności
-    const sortedPoints = allPoints.sort((a, b) => {
-      if (a.order !== b.order) return a.order - b.order;
-      if (a.type === 'loading' && b.type === 'unloading') return -1;
-      if (a.type === 'unloading' && b.type === 'loading') return 1;
-      return 0;
-    });
+    const sortedPoints = allPoints.sort((a, b) => a.order - b.order);
+
     
     return { 
       points: sortedPoints, 
