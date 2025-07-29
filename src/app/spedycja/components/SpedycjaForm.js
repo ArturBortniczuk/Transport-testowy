@@ -251,7 +251,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     const mainUnloading = {
       type: 'unloading',
       transportId: 'main',
-      order: mainUnloadingOrder + 10, // Używa wybranej kolejności
+      order: mainUnloadingOrder || 15,
       location: null,
       description: deliveryCity,
       address: 'Adres dostawy głównej'
