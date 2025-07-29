@@ -35,7 +35,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
   })
   
   // Stan dla kolejności głównego rozładunku
-  const [mainUnloadingOrder, setMainUnloadingOrder] = useState(999);
+  const [mainUnloadingOrder, setMainUnloadingOrder] = useState(15);
   const [transportsToMerge, setTransportsToMerge] = useState([])
   const [costDistribution, setCostDistribution] = useState({})
   const [availableTransports, setAvailableTransports] = useState([])
@@ -71,6 +71,113 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     }
   };
 
+  // Klasy dla przycisków
+  const buttonClasses = {
+    primary: "px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors flex items-center gap-2",
+    outline: "px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors flex items-center gap-2",
+    selected: "px-4 py-2 bg-blue-500 text-white rounded-md",
+    unselected: "px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50",
+    toggle: "px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors",
+    toggleActive: "px-4 py-2 bg-blue-100 border border-blue-400 text-blue-700 rounded-md font-medium",
+    orderButton: "px-2 py-1 text-sm border rounded hover:bg-gray-50 transition-colors",
+    orderButtonActive: "px-2 py-1 text-sm border bg-blue-500 text-white rounded font-medium",
+    orderButtonDisabled: "px-2 py-1 text-sm border rounded bg-gray-100 text-gray-400 cursor-not-allowed"
+  };
+
+  // NOWE FUNKCJE POMOCNICZE DLA INTELIGENTNEGO SYSTEMU KOLEJNOŚCI:
+
+  // 1. Obliczanie całkowitej liczby punktów w trasie
+  const getTotalRoutePointsCount = () => {
+    let totalPoints = 2; // Główny transport (załadunek + rozładunek)
+    
+    transportsToMerge.forEach(transport => {
+      const config = routeConfiguration[transport.id] || {};
+      if (config.useLoading) totalPoints++;
+      if (config.useUnloading) totalPoints++;
+    });
+    
+    return totalPoints;
+  };
+
+  // 2. Pobieranie wszystkich zajętych pozycji
+  const getOccupiedPositions = (excludeTransportId = null, excludeType = null) => {
+    const occupied = new Set();
+    
+    // Główny załadunek zawsze na pozycji 1
+    occupied.add(1);
+    
+    // Główny rozładunek
+    if (mainUnloadingOrder && !(excludeTransportId === 'main' && excludeType === 'unloading')) {
+      occupied.add(mainUnloadingOrder);
+    }
+    
+    // Dodatkowe transporty
+    transportsToMerge.forEach(transport => {
+      const config = routeConfiguration[transport.id] || {};
+      
+      if (config.useLoading && config.loadingOrder && 
+          !(excludeTransportId === transport.id && excludeType === 'loading')) {
+        occupied.add(config.loadingOrder);
+      }
+      
+      if (config.useUnloading && config.unloadingOrder && 
+          !(excludeTransportId === transport.id && excludeType === 'unloading')) {
+        occupied.add(config.unloadingOrder);
+      }
+    });
+    
+    return occupied;
+  };
+
+  // 3. Sprawdzanie czy pozycja jest dostępna
+  const isPositionAvailable = (position, transportId, type) => {
+    const occupiedPositions = getOccupiedPositions(transportId, type);
+    return !occupiedPositions.has(position);
+  };
+
+  // 4. Znajdowania następnej dostępnej pozycji
+  const getNextAvailablePosition = (transportId, type) => {
+    const totalPoints = getTotalRoutePointsCount();
+    const occupiedPositions = getOccupiedPositions(transportId, type);
+    
+    for (let i = 1; i <= totalPoints; i++) {
+      if (!occupiedPositions.has(i)) {
+        return i;
+      }
+    }
+    return totalPoints; // Fallback
+  };
+
+  // 5. Renderowanie przycisków kolejności
+  const renderOrderButtons = (transportId, type, currentOrder) => {
+    const totalPoints = getTotalRoutePointsCount();
+    
+    return Array.from({ length: totalPoints }, (_, i) => i + 1).map(num => {
+      const isAvailable = isPositionAvailable(num, transportId, type);
+      const isSelected = num === currentOrder;
+      
+      return (
+        <button
+          key={num}
+          type="button"
+          disabled={!isAvailable && !isSelected}
+          className={
+            isSelected 
+              ? buttonClasses.orderButtonActive 
+              : isAvailable 
+                ? buttonClasses.orderButton 
+                : buttonClasses.orderButtonDisabled
+          }
+          onClick={() => handleRouteConfigurationChange(transportId, type === 'loading' ? 'loadingOrder' : 'unloadingOrder', num)}
+          style={{ marginLeft: '4px' }}
+          title={!isAvailable && !isSelected ? 'Pozycja zajęta' : ''}
+        >
+          {num}
+        </button>
+      );
+    });
+  };
+
   // Funkcja pomocnicza do formatowania trasy
   const getTransportRoute = (transport) => {
     const start = transport.location === 'Odbiory własne' && transport.producerAddress 
@@ -81,6 +188,8 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     
     return `${start} → ${end}`
   }
+
+  // Funkcja pomocnicza do wyświetlania nazwy lokalizacji
   const getLocationDisplayName = (transport) => {
     if (transport.location === 'Odbiory własne' && transport.producerAddress) {
       return transport.producerAddress.city || 'Brak miasta';
@@ -98,11 +207,15 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     const transport = availableTransports.find(t => t.id === parseInt(transportId));
     if (transport && !transportsToMerge.find(t => t.id === transport.id)) {
       
+      // Automatycznie znajdź dostępne pozycje
+      const loadingOrder = getNextAvailablePosition(transport.id, 'loading');
+      const unloadingOrder = getNextAvailablePosition(transport.id, 'unloading');
+      
       const defaultConfig = {
         useLoading: false,
         useUnloading: true,
-        loadingOrder: 2,
-        unloadingOrder: transportsToMerge.length + 2
+        loadingOrder: loadingOrder,
+        unloadingOrder: unloadingOrder
       };
       
       const newTransport = {
@@ -131,6 +244,15 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
   };
 
   const handleRouteConfigurationChange = (transportId, field, value) => {
+    // Walidacja - sprawdź czy pozycja jest dostępna
+    if (field.includes('Order')) {
+      const type = field.includes('loading') ? 'loading' : 'unloading';
+      if (!isPositionAvailable(value, transportId, type)) {
+        console.warn(`Pozycja ${value} jest już zajęta!`);
+        return; // Nie pozwól na zmianę
+      }
+    }
+    
     setRouteConfiguration({
       ...routeConfiguration,
       [transportId]: {
@@ -211,7 +333,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       transportId: 'main',
       order: 1,
       location: getLocationCoords(initialData || { location: selectedLocation, producerAddress: null }),
-      description: selectedLocation.replace('Magazyn ', ''),
+      description: getLocationDisplayName({ location: selectedLocation, producerAddress: initialData?.producerAddress }),
       address: selectedLocation
     };
     
@@ -225,9 +347,9 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         allPoints.push({
           type: 'loading',
           transportId: transport.id,
-          order: config.loadingOrder + 1,
+          order: config.loadingOrder,
           location: getLocationCoords(transport),
-          description: transport.location.replace('Magazyn ', ''),
+          description: getLocationDisplayName(transport),
           address: transport.location
         });
       }
@@ -236,7 +358,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         allPoints.push({
           type: 'unloading',
           transportId: transport.id,
-          order: config.unloadingOrder + 10,
+          order: config.unloadingOrder,
           location: getDeliveryCoords(transport),
           description: transport.delivery?.city || 'Nie podano',
           address: transport.delivery ? 
@@ -246,7 +368,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       }
     });
     
-    // Główny rozładunek - EDYTOWALNY!
+    // Główny rozładunek
     const deliveryCity = document.querySelector('input[name="deliveryCity"]')?.value || initialData?.delivery?.city || 'Miejsce dostawy';
     const mainUnloading = {
       type: 'unloading',
@@ -259,9 +381,8 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     
     allPoints.push(mainUnloading);
     
-    // Sortuj punkty według kolejności
+    // Sortuj punkty TYLKO według kolejności
     const sortedPoints = allPoints.sort((a, b) => a.order - b.order);
-
     
     return { 
       points: sortedPoints, 
@@ -275,19 +396,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     return Math.max(0, totalPrice - distributedCosts);
   };
 
-  // Klasy dla przycisków
-  const buttonClasses = {
-    primary: "px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors flex items-center gap-2",
-    outline: "px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors flex items-center gap-2",
-    selected: "px-4 py-2 bg-blue-500 text-white rounded-md",
-    unselected: "px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50",
-    toggle: "px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors",
-    toggleActive: "px-4 py-2 bg-blue-100 border border-blue-400 text-blue-700 rounded-md font-medium",
-    // DODAJ TE DWIE LINIE:
-    orderButton: "px-2 py-1 text-sm border rounded hover:bg-gray-50 transition-colors",
-    orderButtonActive: "px-2 py-1 text-sm border bg-blue-500 text-white rounded font-medium"
-  };
-  
   // Funkcja do geokodowania adresu
   async function getGoogleCoordinates(addressString) {
     try {
@@ -341,41 +449,24 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       throw new Error('Nieprawidłowa odpowiedź API');
     } catch (error) {
       console.error('Błąd obliczania odległości:', error);
-      
-      const straightLineDistance = calculateStraightLineDistance(
-        originLat, originLng, destinationLat, destinationLng
-      );
-      
-      return Math.round(straightLineDistance * 1.3);
+      throw error;
     }
   }
-  
-  // Pomocnicza funkcja do obliczania odległości w linii prostej
-  function calculateStraightLineDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  }
-  
-  // Funkcja do obliczania odległości trasy
-  const calculateRouteDistance = async (fromLocation, toLocation) => {
+
+  // Obliczanie odległości
+  const handleCalculateDistance = async () => {
     try {
       setIsCalculatingDistance(true);
+      
       let originLat, originLng, destLat, destLng;
       
-      if (fromLocation === 'Odbiory własne') {
+      if (selectedLocation === 'Odbiory własne') {
         const producerCity = document.querySelector('input[name="producerCity"]').value;
         const producerPostalCode = document.querySelector('input[name="producerPostalCode"]').value;
         const producerStreet = document.querySelector('input[name="producerStreet"]').value;
         
         if (!producerCity || !producerPostalCode) {
-          alert('Wprowadź dane adresowe punktu odbioru');
+          alert('Wprowadź dane adresowe producenta');
           setIsCalculatingDistance(false);
           return 0;
         }
@@ -384,7 +475,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         originLat = originCoords.lat;
         originLng = originCoords.lng;
       } else {
-        const warehouseKey = fromLocation === 'Magazyn Białystok' ? 'bialystok' : 'zielonka';
+        const warehouseKey = selectedLocation === 'Magazyn Białystok' ? 'bialystok' : 'zielonka';
         originLat = MAGAZYNY[warehouseKey].lat;
         originLng = MAGAZYNY[warehouseKey].lng;
       }
@@ -448,14 +539,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
             name: data.user.name || '',
             mpk: data.user.mpk || ''
           });
-          
-          if (!isEditing && !initialData) {
-            setSelectedUser({
-              email: data.user.email,
-              name: data.user.name,
-              mpk: data.user.mpk || ''
-            });
-          }
         }
       } catch (error) {
         console.error('Błąd pobierania danych użytkownika:', error);
@@ -464,57 +547,47 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
 
     const fetchUsers = async () => {
       try {
-        const response = await fetch('/api/users/list');
+        const response = await fetch('/api/users');
         const data = await response.json();
-        
-        const formattedUsers = data.map(user => ({
-          email: user.email,
-          name: user.name,
-          mpk: user.mpk || '',
-          type: 'user'
-        }));
-        
-        setUsers(formattedUsers);
+        setUsers(data);
       } catch (error) {
-        console.error('Błąd pobierania listy użytkowników:', error);
+        console.error('Błąd pobierania użytkowników:', error);
       }
     };
-    
+
     const fetchConstructions = async () => {
       try {
         const response = await fetch('/api/constructions');
-        const data = await response.json();
-        
-        if (data.constructions) {
-          const formattedConstructions = data.constructions.map(construction => ({
-            id: construction.id,
-            name: construction.name,
-            mpk: construction.mpk || '',
-            type: 'construction'
-          }));
-          
-          setConstructions(formattedConstructions);
+        if (response.ok) {
+          const data = await response.json();
+          setConstructions(data);
         }
       } catch (error) {
-        console.error('Błąd pobierania listy budów:', error);
+        console.error('Błąd pobierania budów:', error);
       }
     };
     
     const fetchAvailableTransports = async () => {
-      if (!isResponse) return;
-      
       try {
         const response = await fetch('/api/spedycje?status=new');
         if (response.ok) {
           const data = await response.json();
+          const allTransports = data.spedycje || [];
           
-          if (data.success && data.spedycje) {
-            const filteredTransports = data.spedycje.filter(t => 
-              t.id !== (initialData?.id || 0) && 
-              t.status === 'new' &&
-              !t.merged_transports && 
-              (!t.response || Object.keys(t.response).length === 0)
-            );
+          // Filtruj transporty dostępne do łączenia
+          const filteredTransports = allTransports.filter(transport => {
+            // Wykluczaj aktualnie edytowany transport
+            if (isEditing && initialData && transport.id === initialData.id) {
+              return false;
+            }
+            // Wykluczaj transporty które już mają odpowiedź
+            if (transport.status !== 'new') {
+              return false;
+            }
+            return true;
+          });
+          
+          if (filteredTransports.length > 0) {
             setAvailableTransports(filteredTransports);
           }
         }
@@ -580,209 +653,48 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
         }
       }
     }
-  }, [initialData, isResponse, isEditing, users, constructions]);
-  
-  // Filter users and constructions based on search term
-  const filteredItems = [...users, ...constructions].filter(item => 
-    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (item.email && item.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (item.mpk && item.mpk.toLowerCase().includes(searchTerm.toLowerCase()))
+  }, [initialData, users, isResponse, isEditing]);
+
+  // Filtrowanie użytkowników na podstawie wyszukiwanego terminu
+  const filteredUsers = users.filter(user =>
+    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
-  
-  // Handle user or construction selection from dropdown
-  const handleSelectItem = (item) => {
-    if (item.type === 'user') {
-      setSelectedUser(item);
-      setSelectedConstructions([]);
-    } else if (item.type === 'construction') {
-      setSelectedConstructions([item]);
-      setSelectedUser(null);
-    }
-    setSearchTerm(item.name);
-    setIsDropdownOpen(false);
-  };
-  
-  // Add a construction to selection
-  const handleAddConstruction = (construction) => {
-    if (selectedConstructions.some(c => c.id === construction.id)) {
-      return;
-    }
-    
-    setSelectedConstructions(prev => [...prev, construction]);
-    setSelectedUser(null);
-  };
-  
-  // Remove a construction from selection
-  const handleRemoveConstruction = (constructionId) => {
-    setSelectedConstructions(prev => prev.filter(c => c.id !== constructionId));
-  };
-  
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
-
-    if (isCopying) {
-      if (!selectedUser && selectedConstructions.length === 0) {
-        alert('Wybierz osobę lub budowę odpowiedzialną za zlecenie');
-        return;
-      }
-      
-      let routeDistance = distance;
-      if (routeDistance === 0) {
-        try {
-          routeDistance = await calculateRouteDistance(selectedLocation, 'destination');
-        } catch (error) {
-          console.error('Błąd obliczania odległości:', error);
-        }
-      }
-      
-      const data = {
-        location: selectedLocation,
-        documents: formData.get('documents'),
-        clientName: formData.get('clientName') || '',
-        producerAddress: selectedLocation === 'Odbiory własne' ? {
-          city: formData.get('producerCity'),
-          postalCode: formData.get('producerPostalCode'),
-          street: formData.get('producerStreet'),
-          pinLocation: formData.get('producerPinLocation')
-        } : null,
-        delivery: {
-          city: formData.get('deliveryCity'),
-          postalCode: formData.get('deliveryPostalCode'),
-          street: formData.get('deliveryStreet'),
-          pinLocation: formData.get('deliveryPinLocation')
-        },
-        loadingContact: formData.get('loadingContact'),
-        unloadingContact: formData.get('unloadingContact'),
-        deliveryDate: formData.get('deliveryDate'),
-        distanceKm: routeDistance,
-        notes: formData.get('notes'),
-        createdBy: currentUser.name,
-        createdByEmail: currentUser.email,
-        responsiblePerson: selectedUser ? selectedUser.name : null,
-        responsibleEmail: selectedUser ? selectedUser.email : null,
-        mpk: selectedUser ? selectedUser.mpk || '' : '',
-        responsibleConstructions: selectedConstructions.length > 0 ? selectedConstructions : null,
-        goodsDescription: showGoodsDescription ? goodsDescription : null
-      };
-      
-      onSubmit(data);
-      onCancel();
-      return;
+    
+    let newDistance = distance;
+    
+    // Oblicz odległość jeśli nie została obliczona
+    if ((!isResponse && !isEditing) || distance === 0) {
+      newDistance = await handleCalculateDistance();
     }
-
+    
     if (isResponse) {
-      const distanceKm = calculatedRouteDistance > 0 ? calculatedRouteDistance : (initialData.distanceKm || 0);
-                     
-      const totalDeliveryPrice = Number(totalPrice);
-      const pricePerKm = distanceKm > 0 ? (totalDeliveryPrice / distanceKm).toFixed(2) : 0;
-      
       const responseData = {
-        driverName: formData.get('driverName'),
-        driverSurname: formData.get('driverSurname'),
-        driverPhone: formData.get('driverPhone'),
-        vehicleNumber: formData.get('vehicleNumber'),
-        deliveryPrice: totalDeliveryPrice,
-        distanceKm: Number(distanceKm),
-        pricePerKm: Number(pricePerKm),
-        adminNotes: formData.get('adminNotes')
+        driverName: formData.get('driverName') || '',
+        driverSurname: formData.get('driverSurname') || '',
+        driverPhone: formData.get('driverPhone') || '',
+        vehicleNumber: formData.get('vehicleNumber') || '',
+        deliveryPrice: parseFloat(formData.get('deliveryPrice')) || 0,
+        distance: newDistance,
+        deliveryDate: changeDeliveryDate ? newDeliveryDate : originalDeliveryDate,
+        adminNotes: formData.get('adminNotes') || '',
+        goodsDescription: showGoodsDescription ? goodsDescription.description : '',
+        // Dodaj dane o połączonych transportach
+        transportsToMerge: transportsToMerge,
+        costDistribution: costDistribution,
+        routeConfiguration: routeConfiguration,
+        mergedRouteDistance: calculatedRouteDistance,
+        totalPrice: totalPrice
       };
-      
-      if (changeDeliveryDate && newDeliveryDate !== originalDeliveryDate) {
-        responseData.newDeliveryDate = newDeliveryDate;
-        responseData.originalDeliveryDate = originalDeliveryDate;
-        responseData.dateChanged = true;
-      }
-      
-      if (transportsToMerge.length > 0) {
-        responseData.transportsToMerge = transportsToMerge;
-        responseData.costDistribution = costDistribution;
-        responseData.routeConfiguration = routeConfiguration;
-        
-        const routeInfo = calculateMergedRoute();
-        
-        const lastPoint = routeInfo.points[routeInfo.points.length - 1];
-        const deliveryCity = formData.get('deliveryCity');
-        const deliveryPostalCode = formData.get('deliveryPostalCode');
-        const deliveryStreet = formData.get('deliveryStreet');
-        
-        lastPoint.location = {
-          city: deliveryCity,
-          postalCode: deliveryPostalCode,
-          street: deliveryStreet
-        };
-        lastPoint.address = `${deliveryCity}, ${deliveryPostalCode}, ${deliveryStreet}`;
-        
-        responseData.routePoints = routeInfo.points;
-        responseData.realRouteDistance = calculatedRouteDistance || 0;
-      }
       
       onSubmit(initialData.id, responseData);
-    } else if (isEditing) {
-      if (!selectedUser && selectedConstructions.length === 0) {
-        alert('Wybierz osobę lub budowę odpowiedzialną za zlecenie');
-        return;
-      }
-      
-      let routeDistance = distance;
-      if (routeDistance === 0) {
-        try {
-          routeDistance = await calculateRouteDistance(selectedLocation, 'destination');
-        } catch (error) {
-          console.error('Błąd obliczania odległości:', error);
-        }
-      }
-      
-      const editedData = {
-        location: selectedLocation,
-        documents: formData.get('documents'),
-        clientName: formData.get('clientName') || '',
-        producerAddress: selectedLocation === 'Odbiory własne' ? {
-          city: formData.get('producerCity'),
-          postalCode: formData.get('producerPostalCode'),
-          street: formData.get('producerStreet'),
-          pinLocation: formData.get('producerPinLocation')
-        } : null,
-        delivery: {
-          city: formData.get('deliveryCity'),
-          postalCode: formData.get('deliveryPostalCode'),
-          street: formData.get('deliveryStreet'),
-          pinLocation: formData.get('deliveryPinLocation')
-        },
-        loadingContact: formData.get('loadingContact'),
-        unloadingContact: formData.get('unloadingContact'),
-        deliveryDate: formData.get('deliveryDate'),
-        distanceKm: routeDistance,
-        notes: formData.get('notes'),
-        responsiblePerson: selectedUser ? selectedUser.name : null,
-        responsibleEmail: selectedUser ? selectedUser.email : null,
-        mpk: selectedUser ? selectedUser.mpk || '' : '',
-        responsibleConstructions: selectedConstructions.length > 0 ? selectedConstructions : null,
-        goodsDescription: showGoodsDescription ? goodsDescription : null,
-        createdBy: initialData.createdBy,
-        createdByEmail: initialData.createdByEmail
-      };
-      
-      onSubmit(initialData.id, editedData);
     } else {
-      if (!selectedUser && selectedConstructions.length === 0) {
-        alert('Wybierz osobę lub budowę odpowiedzialną za zlecenie');
-        return;
-      }
-      
-      let routeDistance = distance;
-      if (routeDistance === 0) {
-        try {
-          routeDistance = await calculateRouteDistance(selectedLocation, 'destination');
-        } catch (error) {
-          console.error('Błąd obliczania odległości:', error);
-        }
-      }
-      
       const data = {
         location: selectedLocation,
-        documents: formData.get('documents'),
-        clientName: formData.get('clientName') || '',
         producerAddress: selectedLocation === 'Odbiory własne' ? {
           city: formData.get('producerCity'),
           postalCode: formData.get('producerPostalCode'),
@@ -795,11 +707,13 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
           street: formData.get('deliveryStreet'),
           pinLocation: formData.get('deliveryPinLocation')
         },
+        clientName: formData.get('clientName'),
         loadingContact: formData.get('loadingContact'),
         unloadingContact: formData.get('unloadingContact'),
         deliveryDate: formData.get('deliveryDate'),
-        distanceKm: routeDistance,
+        documents: formData.get('documents'),
         notes: formData.get('notes'),
+        distanceKm: newDistance,
         createdBy: currentUser.name,
         createdByEmail: currentUser.email,
         responsiblePerson: selectedUser ? selectedUser.name : null,
@@ -869,466 +783,460 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
             </div>
             
             {changeDeliveryDate && (
-              <div className="mt-3 pl-8">
+              <div className="mt-4">
                 <label className="block text-sm font-medium mb-1">Nowa data dostawy</label>
                 <input
                   type="date"
                   value={newDeliveryDate}
                   onChange={(e) => setNewDeliveryDate(e.target.value)}
                   className="w-full p-2 border rounded-md"
-                  required
                 />
               </div>
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Imię kierowcy</label>
-              <input
-                name="driverName"
-                type="text"
-                className="w-full p-2 border rounded-md"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Nazwisko kierowcy</label>
-              <input
-                name="driverSurname"
-                type="text"
-                className="w-full p-2 border rounded-md"
-                required
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Telefon do kierowcy</label>
-              <input
-                name="driverPhone"
-                type="tel"
-                className="w-full p-2 border rounded-md"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Numery auta</label>
-              <input
-                name="vehicleNumber"
-                type="text"
-                className="w-full p-2 border rounded-md"
-                required
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Cena całkowita transportu
-              </label>
-              <input
-                name="totalPrice"
-                type="number"
-                className="w-full p-2 border rounded-md"
-                value={totalPrice}
-                onChange={(e) => setTotalPrice(Number(e.target.value))}
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Odległość</label>
-              <input
-                name="distanceKm"
-                type="number"
-                className="w-full p-2 border rounded-md bg-gray-100"
-                value={calculatedRouteDistance > 0 ? calculatedRouteDistance : (initialData.distanceKm || 0)}
-                readOnly
-              />
-            </div>
-          </div>
-          
-          <div className="mt-6 border-t pt-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-medium flex items-center">
-                <LinkIcon size={20} className="mr-2 text-blue-600" />
-                Połącz z innymi transportami
-              </h3>
-              <button
-                type="button"
-                className={showMergeSection ? buttonClasses.toggleActive : buttonClasses.toggle}
-                onClick={() => setShowMergeSection(!showMergeSection)}
-              >
-                {showMergeSection ? 'Ukryj łączenie' : 'Pokaż łączenie'}
-              </button>
-            </div>
-            
-            {showMergeSection && (
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                <div className="mb-4">
-                  <label className="block text-sm font-medium mb-2">
-                    Wybierz transporty do połączenia:
-                  </label>
-                  <select 
-                    className="w-full p-2 border rounded-md"
-                    onChange={(e) => {
-                      const transportId = e.target.value;
-                      if (transportId) {
-                        handleAddTransportToMerge(transportId);
-                        e.target.value = '';
+          {/* SEKCJA ŁĄCZENIA TRANSPORTÓW - TYLKO W TRYBIE ODPOWIEDZI */}
+          {!isEditing && (
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium flex items-center">
+                  <LinkIcon size={20} className="mr-2 text-blue-600" />
+                  Łączenie transportów
+                </h3>
+                <button
+                  type="button"
+                  className={showMergeSection ? buttonClasses.toggleActive : buttonClasses.toggle}
+                  onClick={() => setShowMergeSection(!showMergeSection)}
+                >
+                  {showMergeSection ? 'Ukryj łączenie' : 'Pokaż łączenie'}
+                </button>
+              </div>
+              
+              {showMergeSection && (
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium mb-2">
+                      Wybierz transporty do połączenia:
+                    </label>
+                    <select 
+                      className="w-full p-2 border rounded-md"
+                      onChange={(e) => {
+                        const transportId = e.target.value;
+                        if (transportId) {
+                          handleAddTransportToMerge(transportId);
+                          e.target.value = '';
+                        }
+                      }}
+                      value=""
+                    >
+                      <option value="">Wybierz transport do połączenia...</option>
+                      {availableTransports
+                        .filter(t => !transportsToMerge.find(tm => tm.id === t.id))
+                        .map(transport => (
+                          <option key={transport.id} value={transport.id}>
+                            {transport.orderNumber || transport.id} - {getTransportRoute(transport)} (MPK: {transport.mpk})
+                          </option>
+                        ))
                       }
-                    }}
-                    value=""
-                  >
-                    <option value="">Wybierz transport do połączenia...</option>
-                    {availableTransports
-                      .filter(t => !transportsToMerge.find(tm => tm.id === t.id))
-                      .map(transport => (
-                        <option key={transport.id} value={transport.id}>
-                          {transport.orderNumber || transport.id} - {getTransportRoute(transport)} (MPK: {transport.mpk})
-                        </option>
-                      ))
-                    }
-                  </select>
-                </div>
+                    </select>
+                  </div>
 
-                {transportsToMerge.length > 0 && (
-                  <div className="space-y-4">
-                    <h4 className="font-medium text-blue-700">Konfiguracja trasy:</h4>
-                    
-                    <div className="p-3 bg-blue-50 rounded border border-blue-200 mb-4">
-                      <div className="font-medium text-blue-700 mb-2">
-                        GŁÓWNY: {initialData?.orderNumber || 'Nowy'} (MPK: {initialData?.mpk || 'Brak'})
-                      </div>
-                      <div className="text-sm text-gray-600 mb-2">
-                        🟢 Załadunek: {selectedLocation.replace('Magazyn ', '')}
-                      </div>
-                      <div className="text-sm text-gray-600 mb-2">
-                        🔴 Rozładunek: {(() => {
-                          const deliveryCity = document.querySelector('input[name="deliveryCity"]')?.value || initialData?.delivery?.city || 'Miejsce dostawy';
-                          return deliveryCity;
-                        })()}
-                        <div className="mt-2">
-                          Kolejność rozładunku:
-                          {Array.from({ length: transportsToMerge.length + 1 }, (_, i) => i + 1).map(num => (
-                            <button
-                              key={num}
-                              type="button"
-                              className={num === mainUnloadingOrder ? buttonClasses.orderButtonActive : buttonClasses.orderButton}
-                              onClick={() => setMainUnloadingOrder(num)}
-                              style={{ marginLeft: '4px' }}
-                            >
-                              {num}
-                            </button>
-                          ))}
+                  {transportsToMerge.length > 0 && (
+                    <div className="space-y-4">
+                      <h4 className="font-medium text-blue-700">Konfiguracja trasy:</h4>
+                      
+                      <div className="p-3 bg-blue-50 rounded border border-blue-200 mb-4">
+                        <div className="font-medium text-blue-700 mb-2">
+                          GŁÓWNY: {initialData?.orderNumber || 'Nowy'} (MPK: {initialData?.mpk || 'Brak'})
+                        </div>
+                        <div className="text-sm text-gray-600 mb-2">
+                          🟢 Załadunek: {getLocationDisplayName({ location: initialData?.location, producerAddress: initialData?.producerAddress })}
+                        </div>
+                        <div className="text-sm text-gray-600 mb-2">
+                          🔴 Rozładunek: {initialData?.delivery?.city || 'Miejsce dostawy'}
+                          <div className="mt-2">
+                            Kolejność rozładunku:
+                            {renderOrderButtons('main', 'unloading', mainUnloadingOrder)}
+                          </div>
+                        </div>
+                        <div className="text-sm text-green-600">
+                          Koszt główny: {getMainTransportCost().toFixed(2)} PLN
                         </div>
                       </div>
-                      <div className="text-sm font-medium text-green-700 mt-2">
-                        Koszt: {getMainTransportCost().toFixed(2)} PLN
-                      </div>
-                    </div>
-                    
-                    {transportsToMerge.map((transport, index) => {
-                      const config = routeConfiguration[transport.id] || {};
-                      return (
-                        <div key={transport.id} className="p-3 bg-white rounded border border-gray-200">
-                          <div className="flex justify-between items-start mb-3">
-                            <div>
-                              <div className="font-medium">{transport.orderNumber || transport.id}</div>
-                              <div className="text-sm text-gray-600">{getTransportRoute(transport)} (MPK: {transport.mpk})</div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveTransportFromMerge(transport.id)}
-                              className="text-red-500 hover:text-red-700 p-1"
-                            >
-                              <X size={16} />
-                            </button>
-                          </div>
-                          
-                          <div className="grid grid-cols-2 gap-4 mb-3">
-                            <div className="bg-green-50 p-2 rounded">
-                              <div className="flex items-center mb-2">
-                                <input
-                                  type="checkbox"
-                                  checked={config.useLoading !== false}
-                                  onChange={(e) => handleRouteConfigurationChange(transport.id, 'useLoading', e.target.checked)}
-                                  className="mr-2"
-                                />
-                                <label className="text-sm font-medium text-green-700">Użyj załadunek</label>
-                              </div>
-                              {config.useLoading !== false && (
-                                <div>
-                                  <div className="text-xs text-gray-600 mb-1">📍 {getLocationDisplayName(transport)}</div>
-                                  <div>
-                                    Kolejność:
-                                    {Array.from({ length: 15 }, (_, i) => i + 1).map(num => (
-                                      <button
-                                        key={num}
-                                        type="button"
-                                        className={num === config.loadingOrder ?
-                                          buttonClasses.orderButtonActive : buttonClasses.orderButton}
-                                        onClick={() => handleRouteConfigurationChange(transport.id, 'loadingOrder', num)}
-                                        style={{ marginLeft: '4px' }}
-                                      >
-                                        {num}
-                                      </button>
-                                    ))}
-                                  </div>
+
+                      {transportsToMerge.map((transport, index) => {
+                        const config = routeConfiguration[transport.id] || {};
+                        return (
+                          <div key={transport.id} className="p-4 border rounded-lg bg-white">
+                            <div className="flex justify-between items-start mb-3">
+                              <div className="flex-1">
+                                <div className="font-medium mb-1">
+                                  {transport.orderNumber} - {getTransportRoute(transport)}
                                 </div>
-                              )}
+                                <div className="text-sm text-gray-600">MPK: {transport.mpk}</div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveTransportFromMerge(transport.id)}
+                                className="text-red-500 hover:text-red-700 ml-2"
+                              >
+                                <X size={16} />
+                              </button>
                             </div>
                             
-                            <div className="bg-red-50 p-2 rounded">
-                              <div className="flex items-center mb-2">
-                                <input
-                                  type="checkbox"
-                                  checked={config.useUnloading !== false}
-                                  onChange={(e) => handleRouteConfigurationChange(transport.id, 'useUnloading', e.target.checked)}
-                                  className="mr-2"
-                                />
-                                <label className="text-sm font-medium text-red-700">Użyj rozładunek</label>
-                              </div>
-                              {config.useUnloading !== false && (
-                                <div>
-                                  <div className="text-xs text-gray-600 mb-1">📍 {transport.delivery?.city || 'Brak danych'}</div>
-                                  <div>
-                                    Kolejność:
-                                    {Array.from({ length: 15 }, (_, i) => i + 1).map(num => (
-                                      <button
-                                        key={num}
-                                        type="button"
-                                        className={num === config.unloadingOrder ?
-                                          buttonClasses.orderButtonActive : buttonClasses.orderButton}
-                                        onClick={() => handleRouteConfigurationChange(transport.id, 'unloadingOrder', num)}
-                                        style={{ marginLeft: '4px' }}
-                                      >
-                                        {num}
-                                      </button>
-                                    ))}
-                                  </div>
+                            <div className="grid grid-cols-2 gap-4 mb-3">
+                              <div className="bg-green-50 p-2 rounded">
+                                <div className="flex items-center mb-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={config.useLoading !== false}
+                                    onChange={(e) => handleRouteConfigurationChange(transport.id, 'useLoading', e.target.checked)}
+                                    className="mr-2"
+                                  />
+                                  <label className="text-sm font-medium text-green-700">Użyj załadunek</label>
                                 </div>
-                              )}
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center space-x-2">
-                            <DollarSign size={14} className="text-gray-500" />
-                            <input
-                              type="number"
-                              placeholder="Koszt PLN"
-                              className="w-24 p-1 border rounded text-sm"
-                              value={costDistribution[transport.id] || ''}
-                              onChange={(e) => handleCostDistributionChange(transport.id, e.target.value)}
-                            />
-                            <span className="text-sm text-gray-600">PLN</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                      <h4 className="font-medium text-blue-700 mb-3 flex items-center">
-                        <Route size={18} className="mr-2" />
-                        Podgląd trasy:
-                      </h4>
-                      {(() => {
-                        const routeInfo = calculateMergedRoute();
-                        const sortedPoints = routeInfo.points;
-                    
-                        return (
-                          <div className="space-y-2">
-                            {sortedPoints.map((point, index) => (
-                              <div key={`${point.transportId}-${point.type}-${index}`} className="flex items-center">
-                                <span className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center mr-3">
-                                  {index + 1}
-                                </span>
-                                <span className={`mr-2 ${point.type === 'loading' ? 'text-green-600' : 'text-red-600'}`}>
-                                  {point.type === 'loading' ? '🟢 Załadunek' : '🔴 Rozładunek'}
-                                </span>
-                                <span className="font-medium">{point.description}</span>
-                                {point.transportId !== 'main' && (
-                                  <span className="ml-2 text-sm text-purple-600">Transport #{point.transportId}</span>
+                                {config.useLoading !== false && (
+                                  <div>
+                                    <div className="text-xs text-gray-600 mb-1">📍 {getLocationDisplayName(transport)}</div>
+                                    <div>
+                                      Kolejność:
+                                      {renderOrderButtons(transport.id, 'loading', config.loadingOrder)}
+                                    </div>
+                                  </div>
                                 )}
                               </div>
-                            ))}
+                              
+                              <div className="bg-red-50 p-2 rounded">
+                                <div className="flex items-center mb-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={config.useUnloading !== false}
+                                    onChange={(e) => handleRouteConfigurationChange(transport.id, 'useUnloading', e.target.checked)}
+                                    className="mr-2"
+                                  />
+                                  <label className="text-sm font-medium text-red-700">Użyj rozładunek</label>
+                                </div>
+                                {config.useUnloading !== false && (
+                                  <div>
+                                    <div className="text-xs text-gray-600 mb-1">📍 {transport.delivery?.city || 'Brak danych'}</div>
+                                    <div>
+                                      Kolejność:
+                                      {renderOrderButtons(transport.id, 'unloading', config.unloadingOrder)}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                             
-                            <div className="mt-4 bg-amber-50 border border-amber-200 rounded p-3">
-                              <div className="text-sm text-amber-700 font-medium mb-1">Cena całkowita: {(() => {
-                                const mainCost = getMainTransportCost();
-                                const additionalCosts = Object.values(costDistribution).reduce((sum, cost) => sum + parseFloat(cost || 0), 0);
-                                return (mainCost + additionalCosts).toFixed(2);
-                              })()} PLN</div>
-                              <div className="text-sm text-amber-600">
-                                Przydzielone do innych: {Object.values(costDistribution).reduce((sum, cost) => sum + parseFloat(cost || 0), 0).toFixed(2)} PLN
-                              </div>
-                              <div className="text-sm text-amber-600">
-                                Pozostaje dla głównego: {getMainTransportCost().toFixed(2)} PLN
-                              </div>
+                            <div className="flex items-center space-x-2">
+                              <DollarSign size={14} className="text-gray-500" />
+                              <input
+                                type="number"
+                                placeholder="Koszt PLN"
+                                className="w-24 p-1 border rounded text-sm"
+                                value={costDistribution[transport.id] || ''}
+                                onChange={(e) => handleCostDistributionChange(transport.id, e.target.value)}
+                              />
+                              <span className="text-sm text-gray-600">PLN</span>
                             </div>
                           </div>
                         );
-                      })()}
+                      })}
+                      
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                        <h4 className="font-medium text-blue-700 mb-3 flex items-center">
+                          <Route size={18} className="mr-2" />
+                          Podgląd trasy:
+                        </h4>
+                        {(() => {
+                          const routeInfo = calculateMergedRoute();
+                          const sortedPoints = routeInfo.points;
+                      
+                          return (
+                            <div className="space-y-2">
+                              {sortedPoints.map((point, index) => (
+                                <div key={`${point.transportId}-${point.type}-${index}`} className="flex items-center">
+                                  <span className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center mr-3">
+                                    {point.order}
+                                  </span>
+                                  <span className={`mr-2 ${point.type === 'loading' ? 'text-green-600' : 'text-red-600'}`}>
+                                    {point.type === 'loading' ? '🟢 Załadunek' : '🔴 Rozładunek'}
+                                  </span>
+                                  <span className="font-medium">{point.description}</span>
+                                  {point.transportId !== 'main' && (
+                                    <span className="ml-2 text-xs text-gray-500">
+                                      (Transport #{point.transportId})
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                              
+                              <div className="mt-4 p-3 bg-yellow-50 rounded border border-yellow-200">
+                                <div className="text-sm font-medium text-yellow-700">
+                                  Cena całkowita: {totalPrice.toFixed(2)} PLN
+                                </div>
+                                <div className="text-xs text-yellow-600 mt-1">
+                                  Przydzielono: {Object.values(costDistribution).reduce((sum, cost) => sum + parseFloat(cost || 0), 0).toFixed(2)} PLN
+                                  | Pozostaje dla głównego: {getMainTransportCost().toFixed(2)} PLN
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Uwagi do transportu</label>
-            <textarea
-              name="adminNotes"
-              className="w-full p-2 border rounded-md"
-              rows={3}
-            />
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium">Dane przewoźnika</h3>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Imię kierowcy</label>
+                <input
+                  name="driverName"
+                  type="text"
+                  className="w-full p-2 border rounded-md"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Nazwisko kierowcy</label>
+                <input
+                  name="driverSurname"
+                  type="text"
+                  className="w-full p-2 border rounded-md"
+                  required
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Telefon kierowcy</label>
+                <input
+                  name="driverPhone"
+                  type="tel"
+                  className="w-full p-2 border rounded-md"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Numer pojazdu</label>
+                <input
+                  name="vehicleNumber"
+                  type="text"
+                  className="w-full p-2 border rounded-md"
+                  required
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Cena transportu (PLN)</label>
+                <input
+                  name="deliveryPrice"
+                  type="number"
+                  step="0.01"
+                  className="w-full p-2 border rounded-md"
+                  value={totalPrice}
+                  onChange={(e) => setTotalPrice(parseFloat(e.target.value) || 0)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Odległość (km)</label>
+                <input
+                  type="number"
+                  className="w-full p-2 border rounded-md bg-gray-50"
+                  value={distance}
+                  readOnly
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <label className="block text-sm font-medium">Opis towaru</label>
+                <button
+                  type="button"
+                  className={showGoodsDescription ? buttonClasses.selected : buttonClasses.unselected}
+                  onClick={() => setShowGoodsDescription(!showGoodsDescription)}
+                >
+                  {showGoodsDescription ? 'Ukryj opis towaru' : 'Opisz towar'}
+                </button>
+              </div>
+              
+              {showGoodsDescription && (
+                <div className="p-4 border border-blue-100 rounded-md bg-blue-50 mt-2">
+                  <textarea
+                    name="goodsDescription"
+                    value={goodsDescription.description}
+                    onChange={handleGoodsDescriptionChange}
+                    className="w-full p-2 border rounded-md"
+                    rows={3}
+                    placeholder="Opis przewożonego towaru..."
+                  />
+                </div>
+              )}
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium mb-1">Uwagi administratora</label>
+              <textarea
+                name="adminNotes"
+                className="w-full p-2 border rounded-md"
+                rows={3}
+                placeholder="Dodatkowe informacje lub uwagi..."
+              />
+            </div>
           </div>
         </>
       ) : (
         <>
-          <div>
-            <label className="block text-sm font-medium mb-1">Miejsce załadunku</label>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                className={selectedLocation === 'Magazyn Białystok' ? buttonClasses.selected : buttonClasses.unselected}
-                onClick={() => setSelectedLocation('Magazyn Białystok')}
-              >
-                Magazyn Białystok
-              </button>
-              <button
-                type="button"
-                className={selectedLocation === 'Magazyn Zielonka' ? buttonClasses.selected : buttonClasses.unselected}
-                onClick={() => setSelectedLocation('Magazyn Zielonka')}
-              >
-                Magazyn Zielonka
-              </button>
-              <button
-                type="button"
-                className={selectedLocation === 'Odbiory własne' ? buttonClasses.selected : buttonClasses.unselected}
-                onClick={() => setSelectedLocation('Odbiory własne')}
-              >
-                Odbiory własne
-              </button>
-            </div>
-          </div>
-
-          {selectedLocation === 'Odbiory własne' && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-medium">Adres punktu odbioru</h3>
-              
-              <div>
-                <label className="block text-sm font-medium mb-1">Nazwa firmy (punkt odbioru)</label>
-                <input
-                  name="sourceClientName"
-                  type="text"
-                  className="w-full p-2 border rounded-md"
-                  defaultValue={initialData?.sourceClientName || ''}
-                  placeholder="Nazwa firmy lub osoby w punkcie odbioru"
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Miasto</label>
-                  <input
-                    name="producerCity"
-                    type="text"
-                    className="w-full p-2 border rounded-md"
-                    defaultValue={initialData?.producerAddress?.city || ''}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Kod pocztowy</label>
-                  <input
-                    name="producerPostalCode"
-                    type="text"
-                    className="w-full p-2 border rounded-md"
-                    defaultValue={initialData?.producerAddress?.postalCode || ''}
-                    required
-                  />
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium mb-1">Ulica i numer</label>
-                <input
-                  name="producerStreet"
-                  type="text"
-                  className="w-full p-2 border rounded-md"
-                  defaultValue={initialData?.producerAddress?.street || ''}
-                  required
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Lokalizacja na mapie (opcjonalnie)
-                </label>
-                <input
-                  name="producerPinLocation"
-                  type="text"
-                  className="w-full p-2 border rounded-md"
-                  defaultValue={initialData?.producerAddress?.pinLocation || ''}
-                  placeholder="Link do pineski na mapie"
-                />
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Numery dokumentów</label>
-            <input
-              name="documents"
-              type="text"
-              className="w-full p-2 border rounded-md"
-              defaultValue={initialData?.documents || ''}
-              required
-            />
-          </div>
-          
-          <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="block text-sm font-medium">Towar</label>
-              <button
-                type="button"
-                className={showGoodsDescription ? buttonClasses.selected : buttonClasses.unselected}
-                onClick={() => setShowGoodsDescription(!showGoodsDescription)}
-              >
-                {showGoodsDescription ? 'Ukryj opis towaru' : 'Opisz towar'}
-              </button>
-            </div>
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium">Źródło załadunku</h3>
             
-            {showGoodsDescription && (
-              <div className="p-4 border border-blue-100 rounded-md bg-blue-50 mt-2 space-y-3">
+            <div className="grid grid-cols-3 gap-4">
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  name="location"
+                  value="Magazyn Białystok"
+                  checked={selectedLocation === 'Magazyn Białystok'}
+                  onChange={(e) => setSelectedLocation(e.target.value)}
+                  className="mr-2"
+                />
+                Magazyn Białystok
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  name="location"
+                  value="Magazyn Zielonka"
+                  checked={selectedLocation === 'Magazyn Zielonka'}
+                  onChange={(e) => setSelectedLocation(e.target.value)}
+                  className="mr-2"
+                />
+                Magazyn Zielonka
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  name="location"
+                  value="Odbiory własne"
+                  checked={selectedLocation === 'Odbiory własne'}
+                  onChange={(e) => setSelectedLocation(e.target.value)}
+                  className="mr-2"
+                />
+                Odbiory własne
+              </label>
+            </div>
+
+            {selectedLocation === 'Odbiory własne' && (
+              <div className="p-4 border border-gray-200 rounded-md bg-gray-50 space-y-4">
+                <h4 className="font-medium">Adres producenta</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Miasto</label>
+                    <input
+                      name="producerCity"
+                      type="text"
+                      className="w-full p-2 border rounded-md"
+                      defaultValue={initialData?.producerAddress?.city || ''}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Kod pocztowy</label>
+                    <input
+                      name="producerPostalCode"
+                      type="text"
+                      className="w-full p-2 border rounded-md"
+                      defaultValue={initialData?.producerAddress?.postalCode || ''}
+                      required
+                    />
+                  </div>
+                </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Opis towaru</label>
-                  <textarea
-                    name="description"
-                    value={goodsDescription.description}
-                    onChange={handleGoodsDescriptionChange}
+                  <label className="block text-sm font-medium mb-1">Ulica i numer</label>
+                  <input
+                    name="producerStreet"
+                    type="text"
                     className="w-full p-2 border rounded-md"
-                    rows={2}
-                    placeholder="Opis przewożonego towaru..."
+                    defaultValue={initialData?.producerAddress?.street || ''}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Waga towaru</label>
+                  <label className="block text-sm font-medium mb-1">
+                    Lokalizacja na mapie (opcjonalnie)
+                  </label>
                   <input
-                    name="weight"
+                    name="producerPinLocation"
                     type="text"
-                    value={goodsDescription.weight}
-                    onChange={handleGoodsDescriptionChange}
                     className="w-full p-2 border rounded-md"
-                    placeholder="np. 1500 kg"
+                    defaultValue={initialData?.producerAddress?.pinLocation || ''}
+                    placeholder="Link do pineski na mapie"
                   />
                 </div>
               </div>
             )}
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Numery dokumentów</label>
+              <input
+                name="documents"
+                type="text"
+                className="w-full p-2 border rounded-md"
+                defaultValue={initialData?.documents || ''}
+                required
+              />
+            </div>
+            
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <label className="block text-sm font-medium">Towar</label>
+                <button
+                  type="button"
+                  className={showGoodsDescription ? buttonClasses.selected : buttonClasses.unselected}
+                  onClick={() => setShowGoodsDescription(!showGoodsDescription)}
+                >
+                  {showGoodsDescription ? 'Ukryj opis towaru' : 'Opisz towar'}
+                </button>
+              </div>
+              
+              {showGoodsDescription && (
+                <div className="p-4 border border-blue-100 rounded-md bg-blue-50 mt-2 space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Opis towaru</label>
+                    <textarea
+                      name="description"
+                      value={goodsDescription.description}
+                      onChange={handleGoodsDescriptionChange}
+                      className="w-full p-2 border rounded-md"
+                      rows={2}
+                      placeholder="Opis przewożonego towaru..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Waga towaru</label>
+                    <input
+                      name="weight"
+                      type="text"
+                      value={goodsDescription.weight}
+                      onChange={handleGoodsDescriptionChange}
+                      className="w-full p-2 border rounded-md"
+                      placeholder="np. 1500 kg"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -1376,7 +1284,6 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                 type="text"
                 className="w-full p-2 border rounded-md"
                 defaultValue={initialData?.delivery?.street || ''}
-                required
               />
             </div>
             <div>
@@ -1393,166 +1300,59 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Data dostawy</label>
-            <input
-              name="deliveryDate"
-              type="date"
-              className="w-full p-2 border rounded-md"
-              defaultValue={initialData?.deliveryDate || ''}
-              required
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Kontakt załadunek</label>
+              <input
+                name="loadingContact"
+                type="text"
+                className="w-full p-2 border rounded-md"
+                defaultValue={initialData?.loadingContact || ''}
+                placeholder="Telefon/email do kontaktu przy załadunku"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Kontakt rozładunek</label>
+              <input
+                name="unloadingContact"
+                type="text"
+                className="w-full p-2 border rounded-md"
+                defaultValue={initialData?.unloadingContact || ''}
+                placeholder="Telefon/email do kontaktu przy rozładunku"
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Telefon na załadunek</label>
+              <label className="block text-sm font-medium mb-1">Data dostawy</label>
               <input
-                name="loadingContact"
-                type="tel"
+                name="deliveryDate"
+                type="date"
                 className="w-full p-2 border rounded-md"
-                defaultValue={initialData?.loadingContact || ''}
+                defaultValue={initialData?.deliveryDate || ''}
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Telefon na rozładunek</label>
+              <label className="block text-sm font-medium mb-1 flex items-center">
+                Odległość (km)
+                <button
+                  type="button"
+                  onClick={handleCalculateDistance}
+                  disabled={isCalculatingDistance}
+                  className="ml-2 px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+                >
+                  {isCalculatingDistance ? 'Obliczam...' : 'Oblicz'}
+                </button>
+              </label>
               <input
-                name="unloadingContact"
-                type="tel"
-                className="w-full p-2 border rounded-md"
-                defaultValue={initialData?.unloadingContact || ''}
-                required
+                type="number"
+                className="w-full p-2 border rounded-md bg-gray-50"
+                value={distance}
+                readOnly
               />
             </div>
-          </div>
-
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-1">
-              Osoba odpowiedzialna / budowa / numer MPK
-            </label>
-            <div className="relative" ref={dropdownRef}>
-              <div className="flex items-center relative">
-                <div className="relative flex-grow">
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={handleSearchChange}
-                    onClick={() => setIsDropdownOpen(true)}
-                    placeholder="Wyszukaj osobę odpowiedzialną lub budowę..."
-                    className="w-full p-2 pl-10 border rounded-md"
-                    required
-                  />
-                  <div className="absolute left-3 top-2.5 text-gray-400">
-                    <Search size={18} />
-                  </div>
-                </div>
-                {searchTerm && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSearchTerm('');
-                      setSelectedUser(null);
-                      setSelectedConstructions([]);
-                    }}
-                    className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
-                  >
-                    <X size={18} />
-                  </button>
-                )}
-              </div>
-              
-              {isDropdownOpen && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                  {filteredItems.length > 0 ? (
-                    <>
-                      {filteredItems.filter(item => item.type === 'user').length > 0 && (
-                        <div className="px-3 py-1 bg-gray-100 text-gray-700 text-xs font-semibold">
-                          Osoby
-                        </div>
-                      )}
-                      {filteredItems
-                        .filter(item => item.type === 'user')
-                        .map((user) => (
-                          <div
-                            key={user.email}
-                            onClick={() => handleSelectItem(user)}
-                            className="p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100"
-                          >
-                            <div className="font-medium">{user.name}</div>
-                            <div className="text-sm text-gray-600 flex justify-between">
-                              <span>{user.email}</span>
-                              {user.mpk && <span className="text-blue-600">MPK: {user.mpk}</span>}
-                            </div>
-                          </div>
-                        ))
-                      }
-                      
-                      {filteredItems.filter(item => item.type === 'construction').length > 0 && (
-                        <div className="px-3 py-1 bg-gray-100 text-gray-700 text-xs font-semibold">
-                          Budowy
-                        </div>
-                      )}
-                      {filteredItems
-                        .filter(item => item.type === 'construction')
-                        .map((construction) => (
-                          <div
-                            key={construction.id}
-                            onClick={() => handleSelectItem(construction)}
-                            className="p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
-                          >
-                            <div className="font-medium">{construction.name}</div>
-                            <div className="text-sm text-gray-600">
-                              MPK: <span className="text-blue-600">{construction.mpk}</span>
-                            </div>
-                          </div>
-                        ))
-                      }
-                    </>
-                  ) : (
-                    <div className="p-2 text-gray-500">Brak wyników</div>
-                  )}
-                </div>
-              )}
-            </div>
-            
-            {selectedUser && (
-              <div className="mt-2 p-2 bg-blue-50 rounded-md border border-blue-100">
-                <div className="flex justify-between">
-                  <div>
-                    <span className="font-medium">Wybrana osoba:</span> {selectedUser.name}
-                  </div>
-                  {selectedUser.mpk && (
-                    <div>
-                      <span className="font-medium">MPK:</span> {selectedUser.mpk}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-            
-            {selectedConstructions.length > 0 && (
-              <div className="mt-2 p-2 bg-green-50 rounded-md border border-green-100">
-                <h4 className="font-medium text-sm mb-2">Wybrane budowy:</h4>
-                <div className="space-y-2">
-                  {selectedConstructions.map(construction => (
-                    <div key={construction.id} className="flex justify-between items-center text-sm">
-                      <div>
-                        <span className="font-medium">{construction.name}</span>
-                        <span className="ml-2 text-gray-600">MPK: {construction.mpk}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveConstruction(construction.id)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           <div>
@@ -1562,40 +1362,136 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
               className="w-full p-2 border rounded-md"
               rows={3}
               defaultValue={initialData?.notes || ''}
-              placeholder="Dodatkowe informacje..."
+              placeholder="Dodatkowe informacje lub uwagi..."
             />
           </div>
 
-          <div>
-            <button
-              type="button"
-              onClick={() => calculateRouteDistance(selectedLocation, 'destination')}
-              className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 mb-2"
-              disabled={isCalculatingDistance}
-            >
-              {isCalculatingDistance ? 'Obliczanie...' : 'Oblicz odległość trasy'}
-            </button>
-            
-            {distance > 0 && (
-              <div className="text-center text-green-700 bg-green-50 p-2 rounded-md">
-                Odległość trasy: <strong>{distance} km</strong>
+          {!isResponse && !isEditing && (
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium">Osoba odpowiedzialna</h3>
+              
+              <div className="relative" ref={dropdownRef}>
+                <label className="block text-sm font-medium mb-1">
+                  Wyszukaj użytkownika
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    className="w-full p-2 pl-8 border rounded-md"
+                    value={searchTerm}
+                    onChange={handleSearchChange}
+                    placeholder="Szukaj po imieniu lub email..."
+                    onFocus={() => setIsDropdownOpen(true)}
+                  />
+                  <Search size={16} className="absolute left-2 top-3 text-gray-400" />
+                </div>
+                
+                {isDropdownOpen && filteredUsers.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                    {filteredUsers.map(user => (
+                      <div
+                        key={user.email}
+                        className="p-3 hover:bg-gray-100 cursor-pointer border-b"
+                        onClick={() => {
+                          setSelectedUser(user);
+                          setSearchTerm(user.name);
+                          setIsDropdownOpen(false);
+                        }}
+                      >
+                        <div className="font-medium">{user.name}</div>
+                        <div className="text-sm text-gray-600">{user.email}</div>
+                        {user.mpk && (
+                          <div className="text-sm text-blue-600">MPK: {user.mpk}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+
+              {selectedUser && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-md">
+                  <div className="font-medium text-green-800">Wybrano: {selectedUser.name}</div>
+                  <div className="text-sm text-green-600">{selectedUser.email}</div>
+                  {selectedUser.mpk && (
+                    <div className="text-sm text-green-600">MPK: {selectedUser.mpk}</div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedUser(null);
+                      setSearchTerm('');
+                    }}
+                    className="mt-2 text-sm text-red-600 hover:text-red-800"
+                  >
+                    Usuń wybór
+                  </button>
+                </div>
+              )}
+
+              {constructions.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Wybierz budowy (opcjonalne)
+                  </label>
+                  <div className="space-y-2 max-h-40 overflow-y-auto border rounded-md p-2">
+                    {constructions.map(construction => (
+                      <label key={construction.id || construction.name} className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedConstructions.some(c => 
+                            (c.id && c.id === construction.id) || c.name === construction.name
+                          )}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedConstructions([...selectedConstructions, construction]);
+                            } else {
+                              setSelectedConstructions(selectedConstructions.filter(c => 
+                                (c.id && c.id !== construction.id) && c.name !== construction.name
+                              ));
+                            }
+                          }}
+                          className="mr-2"
+                        />
+                        <span className="text-sm">{construction.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                  
+                  {selectedConstructions.length > 0 && (
+                    <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
+                      <div className="text-sm font-medium text-blue-800 mb-1">Wybrane budowy:</div>
+                      <div className="flex flex-wrap gap-1">
+                        {selectedConstructions.map((construction, index) => (
+                          <span key={index} className="inline-block px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">
+                            {construction.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
 
-      <div className="flex justify-end gap-2">
+      <div className="flex justify-end gap-4 pt-6 border-t">
+        <button
+          type="button"
+          onClick={onCancel}
+          className={buttonClasses.outline}
+        >
+          Anuluj
+        </button>
         <button
           type="submit"
           className={buttonClasses.primary}
         >
-          {isResponse ? 'Zapisz odpowiedź' : 
-           isEditing ? 'Zapisz zmiany' : 
-           isCopying ? 'Zapisz jako nowe zamówienie' :
-           'Dodaj zamówienie'}
+          {isResponse ? 'Wyślij odpowiedź' : isEditing ? 'Zapisz zmiany' : 'Dodaj zamówienie'}
         </button>
       </div>
     </form>
-  )
+  );
 }
