@@ -2,6 +2,25 @@
 import { NextResponse } from 'next/server';
 import db from '@/database/db';
 
+const getLocationDisplayName = (transport, locationData = null) => {
+  if (transport.location === 'Odbiory własne') {
+    if (locationData) {
+      const data = typeof locationData === 'string' ? JSON.parse(locationData) : locationData;
+      return data.city || 'Brak miasta';
+    }
+    if (transport.producerAddress) {
+      return transport.producerAddress.city || 'Brak miasta';
+    }
+    return 'Brak danych lokalizacji';
+  } else if (transport.location === 'Magazyn Białystok') {
+    return 'Białystok';
+  } else if (transport.location === 'Magazyn Zielonka') {
+    return 'Zielonka';
+  }
+  return transport.location;
+};
+
+
 // Funkcja pomocnicza do weryfikacji sesji
 const validateSession = async (authToken) => {
   if (!authToken) {
@@ -32,7 +51,7 @@ const generateRoutePointsFromConfiguration = (mainTransport, transportsToMerge, 
     transportId: 'main',
     order: 1,
     location: getTransportLocationCoords(mainTransport),
-    description: `Załadunek główny: ${mainTransport.location}`,
+    description: `Załadunek główny: ${mainTransport.location === 'Odbiory własne' && mainTransport.producerAddress ? mainTransport.producerAddress.city : (mainTransport.location === 'Magazyn Białystok' ? 'Białystok' : (mainTransport.location === 'Magazyn Zielonka' ? 'Zielonka' : mainTransport.location))}`,
     address: mainTransport.location
   };
   
@@ -50,7 +69,7 @@ const generateRoutePointsFromConfiguration = (mainTransport, transportsToMerge, 
         transportId: transport.id,
         order: config.loadingOrder || 999,
         location: getTransportLocationCoords(transport),
-        description: `Załadunek: ${transport.location}`,
+        description: `Załadunek: ${transport.location === 'Odbiory własne' && transport.location_data ? (typeof transport.location_data === 'string' ? JSON.parse(transport.location_data).city : transport.location_data.city) : (transport.location === 'Magazyn Białystok' ? 'Białystok' : (transport.location === 'Magazyn Zielonka' ? 'Zielonka' : transport.location))}`,
         address: transport.location
       };
       allPoints.push(loadingPoint);
