@@ -81,6 +81,16 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     
     return `${start} → ${end}`
   }
+  const getLocationDisplayName = (transport) => {
+    if (transport.location === 'Odbiory własne' && transport.producerAddress) {
+      return transport.producerAddress.city || 'Brak miasta';
+    } else if (transport.location === 'Magazyn Białystok') {
+      return 'Białystok';
+    } else if (transport.location === 'Magazyn Zielonka') {
+      return 'Zielonka';
+    }
+    return transport.location;
+  };
 
   // FUNKCJE DLA ZAAWANSOWANEGO ŁĄCZENIA TRANSPORTÓW
 
@@ -277,9 +287,10 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     unselected: "px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50",
     toggle: "px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors",
     toggleActive: "px-4 py-2 bg-blue-100 border border-blue-400 text-blue-700 rounded-md font-medium",
-    orderButton: "px-2 py-1 text-sm border rounded hover:bg-gray-50",
-    orderButtonActive: "px-2 py-1 text-sm border rounded bg-blue-100 border-blue-400 text-blue-700"
-  }
+    // DODAJ TE DWIE LINIE:
+    orderButton: "px-2 py-1 text-sm border rounded hover:bg-gray-50 transition-colors",
+    orderButtonActive: "px-2 py-1 text-sm border bg-blue-500 text-white rounded font-medium"
+  };
   
   // Funkcja do geokodowania adresu
   async function getGoogleCoordinates(addressString) {
@@ -1054,14 +1065,15 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                               </div>
                               {config.useLoading !== false && (
                                 <div>
-                                  <div className="text-xs text-gray-600 mb-1">📍 {transport.location.replace('Magazyn ', '')}</div>
+                                  <div className="text-xs text-gray-600 mb-1">📍 {getLocationDisplayName(transport)}</div>
                                   <div>
                                     Kolejność:
-                                    {Array.from({ length: transportsToMerge.length }, (_, i) => i + 1).map(num => (
+                                    {Array.from({ length: 15 }, (_, i) => i + 1).map(num => (
                                       <button
                                         key={num}
                                         type="button"
-                                        className={num === config.loadingOrder ? buttonClasses.orderButtonActive : buttonClasses.orderButton}
+                                        className={num === config.loadingOrder ?
+                                          buttonClasses.orderButtonActive : buttonClasses.orderButton}
                                         onClick={() => handleRouteConfigurationChange(transport.id, 'loadingOrder', num)}
                                         style={{ marginLeft: '4px' }}
                                       >
@@ -1088,11 +1100,12 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
                                   <div className="text-xs text-gray-600 mb-1">📍 {transport.delivery?.city || 'Brak danych'}</div>
                                   <div>
                                     Kolejność:
-                                    {Array.from({ length: transportsToMerge.length + 1 }, (_, i) => i + 1).map(num => (
+                                    {Array.from({ length: 15 }, (_, i) => i + 1).map(num => (
                                       <button
                                         key={num}
                                         type="button"
-                                        className={num === config.unloadingOrder ? buttonClasses.orderButtonActive : buttonClasses.orderButton}
+                                        className={num === config.unloadingOrder ?
+                                          buttonClasses.orderButtonActive : buttonClasses.orderButton}
                                         onClick={() => handleRouteConfigurationChange(transport.id, 'unloadingOrder', num)}
                                         style={{ marginLeft: '4px' }}
                                       >
