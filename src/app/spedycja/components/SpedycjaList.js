@@ -43,13 +43,13 @@ export default function SpedycjaList({
   
   const getLoadingCity = (zamowienie) => {
     if (zamowienie.location === 'Odbiory własne' && zamowienie.producerAddress) {
-      return zamowienie.producerAddress.city || '';
+      return zamowienie.producerAddress.city || 'Brak miasta';
     } else if (zamowienie.location === 'Magazyn Białystok') {
       return 'Białystok';
     } else if (zamowienie.location === 'Magazyn Zielonka') {
       return 'Zielonka';
     }
-    return '';
+    return zamowienie.location || 'Nie podano';
   }
   
   const getDeliveryCity = (zamowienie) => {
@@ -59,7 +59,7 @@ export default function SpedycjaList({
   // Funkcja pomocnicza do określania nazwy firmy załadunku
   const getLoadingCompanyName = (transport) => {
     if (transport.location === 'Odbiory własne') {
-      return transport.sourceClientName || transport.clientName || 'Odbiory własne';
+      return transport.sourceClientName || transport.clientName || (transport.producerAddress?.city || 'Brak miasta');
     } else if (transport.location === 'Magazyn Białystok') {
       return 'Grupa Eltron Sp. z o.o.';
     } else if (transport.location === 'Magazyn Zielonka') {
