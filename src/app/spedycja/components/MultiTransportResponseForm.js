@@ -1,8 +1,7 @@
 // src/app/spedycja/components/MultiTransportResponseForm.js
 'use client'
 import { useState, useEffect } from 'react'
-import { X, Check, Package, MapPin, ArrowUp, ArrowDown, Truck, Calculator, Calendar, User, Phone, Hash, FileText, Weight } from 'lucide-react'
-import { KIEROWCY } from '../../kalendarz/constants'
+import { X, Check, Package, MapPin, ArrowUp, ArrowDown, Truck, Calculator, Calendar, User, Phone, Hash, FileText, Weight, RefreshCw, DollarSign, Zap } from 'lucide-react'
 
 export default function MultiTransportResponseForm({ 
   availableTransports = [], 
@@ -11,6 +10,7 @@ export default function MultiTransportResponseForm({
 }) {
   // Stan formularza
   const [selectedTransports, setSelectedTransports] = useState([])
+  const [transportOptions, setTransportOptions] = useState({}) // Czy brać załadunek/rozładunek
   const [routeSequence, setRouteSequence] = useState([])
   const [driverInfo, setDriverInfo] = useState({
     name: '',
@@ -24,6 +24,7 @@ export default function MultiTransportResponseForm({
   const [cargoDescription, setCargoDescription] = useState('')
   const [totalWeight, setTotalWeight] = useState('')
   const [totalDistance, setTotalDistance] = useState(0)
+  const [isUpdatingDistance, setIsUpdatingDistance] = useState(false)
 
   // Obsługa wyboru transportów
   const handleTransportToggle = (transport) => {
@@ -38,59 +39,79 @@ export default function MultiTransportResponseForm({
       const newBreakdown = { ...priceBreakdown }
       delete newBreakdown[transport.id]
       setPriceBreakdown(newBreakdown)
+      
+      // Usuń z opcji transportu
+      const newOptions = { ...transportOptions }
+      delete newOptions[transport.id]
+      setTransportOptions(newOptions)
     } else {
       // Dodaj transport
       setSelectedTransports([...selectedTransports, transport])
+      
+      // Domyślne opcje - oba punkty
+      setTransportOptions(prev => ({
+        ...prev,
+        [transport.id]: { loading: true, unloading: true }
+      }))
     }
   }
 
-  // Aktualizuj sekwencję trasy gdy zmienią się wybrane transporty
+  // Obsługa opcji transportu (załadunek/rozładunek)
+  const handleTransportOptionToggle = (transportId, option) => {
+    setTransportOptions(prev => ({
+      ...prev,
+      [transportId]: {
+        ...prev[transportId],
+        [option]: !prev[transportId]?.[option]
+      }
+    }))
+  }
+
+  // Aktualizuj sekwencję trasy gdy zmienią się wybrane transporty lub opcje
   useEffect(() => {
     if (selectedTransports.length === 0) {
       setRouteSequence([])
-      setTotalDistance(0)
       return
     }
 
     const newSequence = []
-    let distance = 0
 
     selectedTransports.forEach(transport => {
-      // Punkt załadunku
-      const loadingPoint = {
-        id: `loading_${transport.id}`,
-        transportId: transport.id,
-        type: 'loading',
-        city: getLoadingCity(transport),
-        company: getLoadingCompany(transport),
-        mpk: transport.mpk,
-        contact: transport.loading_contact,
-        address: getLoadingAddress(transport)
-      }
-
-      // Punkt rozładunku
-      const unloadingPoint = {
-        id: `unloading_${transport.id}`,
-        transportId: transport.id,
-        type: 'unloading',
-        city: getUnloadingCity(transport),
-        company: transport.clientName || 'Nie podano',
-        mpk: transport.mpk,
-        contact: transport.unloading_contact,
-        address: getUnloadingAddress(transport)
-      }
-
-      newSequence.push(loadingPoint, unloadingPoint)
+      const options = transportOptions[transport.id] || { loading: true, unloading: true }
       
-      // Dodaj odległość (jeśli dostępna)
-      if (transport.distanceKm || transport.distance_km) {
-        distance += parseFloat(transport.distanceKm || transport.distance_km || 0)
+      // Punkt załadunku (jeśli wybrany)
+      if (options.loading) {
+        const loadingPoint = {
+          id: `loading_${transport.id}`,
+          transportId: transport.id,
+          type: 'loading',
+          city: getLoadingCity(transport),
+          company: getLoadingCompany(transport),
+          mpk: transport.mpk,
+          contact: transport.loading_contact,
+          address: getLoadingAddress(transport)
+        }
+        newSequence.push(loadingPoint)
+      }
+
+      // Punkt rozładunku (jeśli wybrany)
+      if (options.unloading) {
+        const unloadingPoint = {
+          id: `unloading_${transport.id}`,
+          transportId: transport.id,
+          type: 'unloading',
+          city: getUnloadingCity(transport),
+          company: transport.clientName || 'Nie podano',
+          mpk: transport.mpk,
+          contact: transport.unloading_contact,
+          address: getUnloadingAddress(transport)
+        }
+        newSequence.push(unloadingPoint)
       }
     })
 
     setRouteSequence(newSequence)
-    setTotalDistance(distance)
-  }, [selectedTransports])
+  }, [selectedTransports, transportOptions])
 
   // Pomocnicze funkcje do pobierania danych transportu
   const getLoadingCity = (transport) => {
@@ -157,7 +178,7 @@ export default function MultiTransportResponseForm({
         return 'Nie podano'
       }
     }
-    return 'Nie podano'
+    return transport.delivery?.city || 'Nie podano'
   }
 
   const getUnloadingAddress = (transport) => {
@@ -170,6 +191,9 @@ export default function MultiTransportResponseForm({
       } catch (e) {
         return 'Nie podano'
       }
+    }
+    if (transport.delivery) {
+      return `${transport.delivery.city || ''}, ${transport.delivery.postalCode || ''}, ${transport.delivery.street || ''}`.replace(/^,\s*|,\s*$/g, '')
     }
     return 'Nie podano'
   }
@@ -185,6 +209,50 @@ export default function MultiTransportResponseForm({
     }
   }
 
+  // Aktualizacja odległości trasy
+  const updateRouteDistance = async () => {
+    if (routeSequence.length < 2) {
+      setTotalDistance(0)
+      return
+    }
+
+    setIsUpdatingDistance(true)
+    
+    try {
+      // Symulacja kalkulacji odległości - tutaj można dodać prawdziwą kalkulację
+      // Na przykład używając Google Maps API lub podobnego serwisu
+      
+      // Dla demonstracji - liczymy jako sumę odległości między kolejnymi punktami
+      let totalDist = 0
+      
+      // Dodaj podstawową odległość dla każdego transportu
+      selectedTransports.forEach(transport => {
+        const distance = transport.distanceKm || transport.distance_km || 50 // fallback 50km
+        totalDist += parseFloat(distance)
+      })
+      
+      // Dodaj 10% za łączenie tras (symulacja)
+      if (selectedTransports.length > 1) {
+        totalDist *= 1.1
+      }
+      
+      setTotalDistance(Math.round(totalDist))
+      
+    } catch (error) {
+      console.error('Błąd kalkulacji odległości:', error)
+      alert('Nie udało się zaktualizować odległości')
+    } finally {
+      setIsUpdatingDistance(false)
+    }
+  }
+
+  // Inicjalne wyliczenie odległości
+  useEffect(() => {
+    if (selectedTransports.length > 0) {
+      updateRouteDistance()
+    }
+  }, [selectedTransports])
+
   // Obsługa podziału kosztów
   const handlePriceBreakdownChange = (transportId, value) => {
     setPriceBreakdown(prev => ({
@@ -193,20 +261,34 @@ export default function MultiTransportResponseForm({
     }))
   }
 
+  // Podział kosztów po równo
+  const divideCostsEvenly = () => {
+    const total = parseFloat(totalPrice) || 0
+    const count = selectedTransports.length
+    
+    if (count === 0) return
+    
+    const evenAmount = Math.round((total / count) * 100) / 100 // Zaokrąglij do 2 miejsc
+    const newBreakdown = {}
+    
+    selectedTransports.forEach((transport, index) => {
+      if (index === count - 1) {
+        // Ostatni transport dostaje resztę żeby suma się zgadzała
+        const sum = Object.values(newBreakdown).reduce((acc, val) => acc + val, 0)
+        newBreakdown[transport.id] = Math.round((total - sum) * 100) / 100
+      } else {
+        newBreakdown[transport.id] = evenAmount
+      }
+    })
+    
+    setPriceBreakdown(newBreakdown)
+  }
+
   // Sprawdzenie czy suma podziału kosztów jest prawidłowa
   const isBreakdownValid = () => {
     const total = parseFloat(totalPrice) || 0
     const sum = Object.values(priceBreakdown).reduce((acc, val) => acc + (parseFloat(val) || 0), 0)
     return Math.abs(total - sum) < 0.01 // Tolerancja dla zaokrągleń
-  }
-
-  // Wybór kierowcy z listy
-  const handleDriverSelect = (kierowca) => {
-    setDriverInfo({
-      name: kierowca.name,
-      phone: kierowca.phone,
-      vehicleNumber: kierowca.vehicle || ''
-    })
   }
 
   // Walidacja formularza
@@ -244,7 +326,7 @@ export default function MultiTransportResponseForm({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="bg-white rounded-lg max-w-7xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Nagłówek */}
         <div className="flex items-center justify-between p-6 border-b">
           <h2 className="text-xl font-semibold">Odpowiedź na zapytania spedycyjne</h2>
@@ -268,18 +350,17 @@ export default function MultiTransportResponseForm({
                   {availableTransports.map(transport => (
                     <div
                       key={transport.id}
-                      className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                      className={`p-4 border rounded-lg transition-colors ${
                         selectedTransports.find(t => t.id === transport.id)
                           ? 'bg-blue-50 border-blue-300'
                           : 'hover:bg-gray-50'
                       }`}
-                      onClick={() => handleTransportToggle(transport)}
                     >
                       <div className="flex items-start gap-3">
                         <input
                           type="checkbox"
                           checked={selectedTransports.find(t => t.id === transport.id) !== undefined}
-                          onChange={() => {}} // Obsługiwane przez onClick div-a
+                          onChange={() => handleTransportToggle(transport)}
                           className="mt-1"
                         />
                         <div className="flex-1">
@@ -303,6 +384,33 @@ export default function MultiTransportResponseForm({
                               </div>
                             )}
                           </div>
+                          
+                          {/* Opcje wyboru punktów dla wybranego transportu */}
+                          {selectedTransports.find(t => t.id === transport.id) && (
+                            <div className="mt-3 p-2 bg-blue-50 rounded border">
+                              <div className="text-xs font-medium text-blue-800 mb-2">Które punkty dodać do trasy:</div>
+                              <div className="flex gap-4">
+                                <label className="flex items-center text-xs">
+                                  <input
+                                    type="checkbox"
+                                    checked={transportOptions[transport.id]?.loading || false}
+                                    onChange={() => handleTransportOptionToggle(transport.id, 'loading')}
+                                    className="mr-1"
+                                  />
+                                  <span className="text-green-600">⬆ Załadunek</span>
+                                </label>
+                                <label className="flex items-center text-xs">
+                                  <input
+                                    type="checkbox"
+                                    checked={transportOptions[transport.id]?.unloading || false}
+                                    onChange={() => handleTransportOptionToggle(transport.id, 'unloading')}
+                                    className="mr-1"
+                                  />
+                                  <span className="text-red-600">⬇ Rozładunek</span>
+                                </label>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -313,7 +421,18 @@ export default function MultiTransportResponseForm({
               {/* Podgląd trasy */}
               {routeSequence.length > 0 && (
                 <div>
-                  <h3 className="text-lg font-medium mb-4">Sekwencja trasy</h3>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-medium">Sekwencja trasy</h3>
+                    <button
+                      onClick={updateRouteDistance}
+                      disabled={isUpdatingDistance}
+                      className="flex items-center gap-2 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm"
+                    >
+                      <RefreshCw size={14} className={isUpdatingDistance ? 'animate-spin' : ''} />
+                      Aktualizuj odległość
+                    </button>
+                  </div>
+                  
                   <div className="space-y-2 max-h-60 overflow-y-auto">
                     {routeSequence.map((point, index) => (
                       <div
@@ -377,31 +496,10 @@ export default function MultiTransportResponseForm({
             {/* Prawa kolumna - Dane odpowiedzi */}
             <div className="space-y-6">
               
-              {/* Dane kierowcy */}
+              {/* Dane kierowcy - bez wyboru z listy */}
               <div>
                 <h3 className="text-lg font-medium mb-4">Dane kierowcy i pojazdu</h3>
                 
-                {/* Szybki wybór kierowcy */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Wybierz kierowcę z listy (opcjonalnie)
-                  </label>
-                  <select
-                    onChange={(e) => {
-                      const kierowca = KIEROWCY.find(k => k.name === e.target.value)
-                      if (kierowca) handleDriverSelect(kierowca)
-                    }}
-                    className="w-full p-3 border border-gray-300 rounded-lg"
-                  >
-                    <option value="">-- Wybierz kierowcę --</option>
-                    {KIEROWCY.map(kierowca => (
-                      <option key={kierowca.name} value={kierowca.name}>
-                        {kierowca.name} - {kierowca.phone}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
                 <div className="grid grid-cols-1 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -468,9 +566,18 @@ export default function MultiTransportResponseForm({
                 {/* Podział kosztów dla połączonych transportów */}
                 {selectedTransports.length > 1 && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Podział kosztów między transporty *
-                    </label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-medium text-gray-700">
+                        Podział kosztów między transporty *
+                      </label>
+                      <button
+                        onClick={divideCostsEvenly}
+                        className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition-colors"
+                      >
+                        <Zap size={14} />
+                        Podziel po równo
+                      </button>
+                    </div>
                     <div className="space-y-2">
                       {selectedTransports.map(transport => (
                         <div key={transport.id} className="flex items-center gap-3">
