@@ -33,7 +33,7 @@ export default function SpedycjaList({
   // NOWA FUNKCJA: Funkcja obsługi odpowiedzi zbiorczej na wiele transportów
   const handleMultiTransportResponse = async (responseData) => {
     try {
-      console.log('Odpowiedź na wiele transportów:', responseData)
+      console.log('📤 SpedycjaList: Otrzymałem dane odpowiedzi:', responseData)
       
       const payload = {
         transportIds: responseData.selectedTransports,
@@ -49,6 +49,8 @@ export default function SpedycjaList({
         isMerged: responseData.isMerged
       }
       
+      console.log('📋 SpedycjaList: Wysyłam do API:', JSON.stringify(payload, null, 2))
+      
       const response = await fetch('/api/spedycje/multi-response', {
         method: 'POST',
         headers: {
@@ -57,18 +59,36 @@ export default function SpedycjaList({
         body: JSON.stringify(payload)
       })
       
+      console.log('📡 SpedycjaList: Odpowiedź API status:', response.status)
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.log('❌ SpedycjaList: Błąd odpowiedzi API:', errorText)
+        throw new Error(`HTTP ${response.status}: ${errorText}`)
+      }
+      
       const data = await response.json()
+      console.log('✅ SpedycjaList: Sukces API:', data)
       
       if (data.success) {
-        showOperationMessage(`Odpowiedź została pomyślnie zapisana dla ${responseData.selectedTransports.length} transport${responseData.selectedTransports.length > 1 ? 'ów' : 'u'}`, 'success')
+        const message = `Odpowiedź została pomyślnie zapisana dla ${responseData.selectedTransports.length} transport${responseData.selectedTransports.length > 1 ? 'ów' : 'u'}`
+        showOperationMessage(message, 'success')
         setShowMultiResponseForm(false)
-        fetchSpedycje()
+        
+        // Wywołaj fetchSpedycje jeśli istnieje
+        if (typeof fetchSpedycje === 'function') {
+          await fetchSpedycje()
+        } else {
+          console.log('⚠️ fetchSpedycje nie jest funkcją, odświeżam stronę')
+          window.location.reload()
+        }
       } else {
-        throw new Error(data.error || 'Błąd zapisywania odpowiedzi')
+        throw new Error(data.error || 'Nieznany błąd API')
       }
     } catch (error) {
-      console.error('Błąd odpowiedzi zbiorczej:', error)
-      showOperationMessage('Wystąpił błąd podczas zapisywania odpowiedzi: ' + error.message, 'error')
+      console.error('❌ SpedycjaList: Błąd odpowiedzi zbiorczej:', error)
+      const errorMessage = error.message || 'Wystąpił nieoczekiwany błąd'
+      showOperationMessage('Wystąpił błąd podczas zapisywania odpowiedzi: ' + errorMessage, 'error')
     }
   }
 
