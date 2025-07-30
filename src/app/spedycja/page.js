@@ -568,6 +568,8 @@ export default function SpedycjaPage() {
               onEdit={handleEdit}
               onCopy={handleCopy}
               currentUserEmail={currentUserEmail}
+              fetchSpedycje={fetchSpedycje}
+              showOperationMessage={showOperationMessage}
             />
           ) : (
             <div className="p-12 text-center text-gray-500">
