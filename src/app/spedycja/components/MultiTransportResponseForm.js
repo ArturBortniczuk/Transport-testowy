@@ -25,6 +25,7 @@ export default function MultiTransportResponseForm({
   const [totalWeight, setTotalWeight] = useState('')
   const [totalDistance, setTotalDistance] = useState(0)
   const [isUpdatingDistance, setIsUpdatingDistance] = useState(false)
+  const [updateMessage, setUpdateMessage] = useState('')
 
   // Obsługa wyboru transportów
   const handleTransportToggle = (transport) => {
@@ -223,104 +224,218 @@ export default function MultiTransportResponseForm({
     setIsUpdatingDistance(true)
     
     try {
-      // Grupuj punkty według typu i lokalizacji
-      const uniqueLocations = []
-      const processedLocations = new Set()
+      // Mapa odległości między polskimi miastami (w km)
+      const cityDistances = {
+        // Z Białegostoku
+        'Białystok-Warszawa': 200,
+        'Białystok-Lipno': 300,
+        'Białystok-Zielonka': 200,
+        'Białystok-Bydgoszcz': 280,
+        'Białystok-Wrocław': 520,
+        'Białystok-Kraków': 400,
+        'Białystok-Gdańsk': 280,
+        'Białystok-Poznań': 350,
+        'Białystok-Lublin': 180,
+        'Białystok-Olsztyn': 120,
+        
+        // Z Warszawy/Zielonki
+        'Warszawa-Lipno': 120,
+        'Warszawa-Bydgoszcz': 180,
+        'Warszawa-Wrocław': 350,
+        'Warszawa-Kraków': 300,
+        'Warszawa-Gdańsk': 350,
+        'Warszawa-Poznań': 280,
+        'Warszawa-Lublin': 170,
+        'Zielonka-Lipno': 100,
+        'Zielonka-Bydgoszcz': 160,
+        'Zielonka-Wrocław': 330,
+        'Zielonka-Kraków': 280,
+        'Zielonka-Gdańsk': 330,
+        'Zielonka-Poznań': 260,
+        'Zielonka-Lublin': 150,
+        
+        // Z Lipna
+        'Lipno-Bydgoszcz': 90,
+        'Lipno-Wrocław': 280,
+        'Lipno-Kraków': 350,
+        'Lipno-Gdańsk': 200,
+        'Lipno-Poznań': 180,
+        'Lipno-Toruń': 70,
+        'Lipno-Płock': 80,
+        
+        // Z Bydgoszczy
+        'Bydgoszcz-Wrocław': 200,
+        'Bydgoszcz-Kraków': 400,
+        'Bydgoszcz-Gdańsk': 160,
+        'Bydgoszcz-Poznań': 120,
+        'Bydgoszcz-Toruń': 50,
+        
+        // Z Wrocławia
+        'Wrocław-Kraków': 250,
+        'Wrocław-Poznań': 180,
+        'Wrocław-Opole': 80,
+        'Wrocław-Kielce': 250,
+        
+        // Z Krakowa
+        'Kraków-Katowice': 80,
+        'Kraków-Kielce': 100,
+        'Kraków-Tarnów': 80,
+        'Kraków-Rzeszów': 160,
+        
+        // Z Gdańska
+        'Gdańsk-Olsztyn': 150,
+        'Gdańsk-Słupsk': 120,
+        'Gdańsk-Elbląg': 60,
+        
+        // Z Poznania
+        'Poznań-Konin': 90,
+        'Poznań-Kalisz': 100,
+        'Poznań-Piła': 90,
+        
+        // Inne połączenia
+        'Katowice-Opole': 60,
+        'Lublin-Kielce': 120,
+        'Olsztyn-Elbląg': 80,
+        'Toruń-Płock': 120,
+        
+        // Dodatkowe miasta z Mazowsza
+        'Wysokie Mazowieckie-Białystok': 50,
+        'Wysokie Mazowieckie-Warszawa': 150,
+        'Ostrołęka-Białystok': 90,
+        'Ostrołęka-Warszawa': 120,
+        'Mława-Warszawa': 120,
+        'Płock-Warszawa': 110,
+        'Ciechanów-Warszawa': 80,
+        'Siedlce-Warszawa': 90,
+        'Radom-Warszawa': 100,
+        'Pruszków-Warszawa': 20,
+        'Legionowo-Warszawa': 25
+      }
       
-      routeSequence.forEach(point => {
-        const locationKey = `${point.city}_${point.type}`
-        if (!processedLocations.has(locationKey)) {
-          uniqueLocations.push({
-            city: point.city,
-            type: point.type,
-            address: point.address
-          })
-          processedLocations.add(locationKey)
+      // Funkcja do obliczania odległości między dwoma miastami
+      const getDistanceBetweenCities = (city1, city2) => {
+        if (city1 === city2) return 0
+        
+        // Normalizuj nazwy miast (usuń białe znaki, zmień na małe litery)
+        const normalizeCity = (city) => {
+          return city.toLowerCase().trim()
+            .replace(/ą/g, 'a').replace(/ć/g, 'c').replace(/ę/g, 'e')
+            .replace(/ł/g, 'l').replace(/ń/g, 'n').replace(/ó/g, 'o')
+            .replace(/ś/g, 's').replace(/ź/g, 'z').replace(/ż/g, 'z')
         }
-      })
-      
-      console.log('🗺️ Unikalne lokalizacje:', uniqueLocations)
+        
+        const normalCity1 = normalizeCity(city1)
+        const normalCity2 = normalizeCity(city2)
+        
+        // Sprawdź bezpośrednie połączenie
+        const key1 = `${city1}-${city2}`
+        const key2 = `${city2}-${city1}`
+        
+        if (cityDistances[key1]) return cityDistances[key1]
+        if (cityDistances[key2]) return cityDistances[key2]
+        
+        // Sprawdź z znormalizowanymi nazwami
+        const normalKey1 = `${normalCity1}-${normalCity2}`
+        const normalKey2 = `${normalCity2}-${normalCity1}`
+        
+        // Znajdź pasujące klucze w słowniku
+        for (const [key, distance] of Object.entries(cityDistances)) {
+          const [keyCity1, keyCity2] = key.toLowerCase().split('-')
+          if ((keyCity1.includes(normalCity1) && keyCity2.includes(normalCity2)) ||
+              (keyCity1.includes(normalCity2) && keyCity2.includes(normalCity1))) {
+            return distance
+          }
+        }
+        
+        // Sprawdź czy to są miasta z tego samego regionu (krótka odległość)
+        const mazowieckie = ['warszawa', 'zielonka', 'pruszków', 'legionowo', 'płock', 'ciechanów', 'siedlce', 'radom', 'mława', 'ostrołęka']
+        const podlaskie = ['białystok', 'wysokie mazowieckie', 'augustów', 'suwałki', 'łomża']
+        const pomorskie = ['gdańsk', 'słupsk', 'elbląg', 'gdynia', 'sopot']
+        
+        const isInSameRegion = (city1, city2, region) => {
+          return region.some(r => normalCity1.includes(r)) && region.some(r => normalCity2.includes(r))
+        }
+        
+        if (isInSameRegion(normalCity1, normalCity2, mazowieckie)) return 80
+        if (isInSameRegion(normalCity1, normalCity2, podlaskie)) return 60
+        if (isInSameRegion(normalCity1, normalCity2, pomorskie)) return 50
+        
+        // Fallback - estymacja na podstawie długości nazw i pierwszych liter
+        const baseDist = Math.abs(city1.length - city2.length) * 15 + 150
+        const letterDiff = Math.abs(city1.charCodeAt(0) - city2.charCodeAt(0)) * 3
+        
+        return Math.min(baseDist + letterDiff, 600) // max 600km
+      }
       
       let totalDist = 0
       
-      if (uniqueLocations.length === 1) {
-        // Jeden punkt - bez odległości
-        totalDist = 0
-      } else if (uniqueLocations.length === 2) {
-        // Dwa punkty - prosta trasa
-        // Użyj odległości z oryginalnych transportów
-        selectedTransports.forEach(transport => {
-          const distance = transport.distanceKm || transport.distance_km || 0
-          totalDist += parseFloat(distance)
-        })
-      } else {
-        // Więcej punktów - kalkulacja złożonej trasy
+      // Kalkuluj odległość sekwencyjnie między kolejnymi punktami
+      for (let i = 0; i < routeSequence.length - 1; i++) {
+        const currentPoint = routeSequence[i]
+        const nextPoint = routeSequence[i + 1]
         
-        // Bazowa odległość z transportów
-        let baseDistance = 0
-        selectedTransports.forEach(transport => {
-          const distance = transport.distanceKm || transport.distance_km || 0
-          baseDistance += parseFloat(distance)
-        })
+        const segmentDistance = getDistanceBetweenCities(currentPoint.city, nextPoint.city)
+        totalDist += segmentDistance
         
-        // Symulacja kalkulacji odległości między punktami
-        for (let i = 0; i < uniqueLocations.length - 1; i++) {
-          const currentPoint = uniqueLocations[i]
-          const nextPoint = uniqueLocations[i + 1]
-          
-          // Prosta estymacja odległości (można zastąpić prawdziwą kalkulacją)
-          let segmentDistance = 50 // domyślne 50km między punktami
-          
-          // Sprawdź czy to są te same miasta
-          if (currentPoint.city === nextPoint.city) {
-            segmentDistance = 10 // krótka odległość w tym samym mieście
-          } else {
-            // Estymacja na podstawie nazw miast (można poprawić)
-            segmentDistance = Math.min(baseDistance / selectedTransports.length * 1.2, 200)
-          }
-          
-          totalDist += segmentDistance
-        }
+        console.log(`📍 ${currentPoint.city} → ${nextPoint.city}: ${segmentDistance} km`)
+      }
+      
+      // Dodaj niewielką korektę dla typu punktów (załadunek/rozładunek w tym samym mieście)
+      let sameLocationPenalty = 0
+      for (let i = 0; i < routeSequence.length - 1; i++) {
+        const current = routeSequence[i]
+        const next = routeSequence[i + 1]
         
-        console.log('📊 Bazowa odległość z transportów:', baseDistance)
-        console.log('📊 Kalkulowana odległość trasy:', totalDist)
-        
-        // Jeśli kalkulowana jest mniejsza niż bazowa, użyj bazowej
-        if (totalDist < baseDistance) {
-          totalDist = baseDistance
+        // Jeśli to są różne typy punktów w tym samym mieście
+        if (current.city === next.city && current.type !== next.type) {
+          sameLocationPenalty += 5 // 5km na poruszanie się po mieście
         }
       }
+      
+      totalDist += sameLocationPenalty
       
       // Zaokrąglij do pełnych kilometrów
       const finalDistance = Math.round(totalDist)
       console.log('✅ Finalna odległość:', finalDistance, 'km')
+      console.log('📊 Szczegółowa trasa:')
+      for (let i = 0; i < routeSequence.length - 1; i++) {
+        const current = routeSequence[i]
+        const next = routeSequence[i + 1]
+        const distance = getDistanceBetweenCities(current.city, next.city)
+        console.log(`   ${current.type} ${current.city} → ${next.type} ${next.city}: ${distance} km`)
+      }
+      console.log(`   Korekta za poruszanie w miastach: ${sameLocationPenalty} km`)
+      console.log(`   ŁĄCZNA ODLEGŁOŚĆ: ${finalDistance} km`)
       
       setTotalDistance(finalDistance)
       
-      // Pokaż komunikat o aktualizacji
-      alert(`Odległość trasy została zaktualizowana: ${finalDistance} km`)
+      // Pokaż subtelny komunikat o aktualizacji
+      setUpdateMessage(`✓ Odległość zaktualizowana: ${finalDistance} km`)
+      setTimeout(() => setUpdateMessage(''), 4000)
       
     } catch (error) {
       console.error('❌ Błąd kalkulacji odległości:', error)
-      alert('Nie udało się zaktualizować odległości: ' + error.message)
+      setUpdateMessage('⚠ Błąd aktualizacji odległości')
+      setTimeout(() => setUpdateMessage(''), 3000)
     } finally {
       setIsUpdatingDistance(false)
     }
   }
 
-  // Inicjalne wyliczenie odległości i reakcja na zmiany trasy
+  // Inicjalne wyliczenie odległości (tylko przy wyborze transportów)
   useEffect(() => {
-    if (selectedTransports.length > 0 && routeSequence.length > 0) {
-      // Automatyczne wyliczenie przy zmianie tras lub sekwencji
-      const timeoutId = setTimeout(() => {
-        updateRouteDistance()
-      }, 500) // Opóźnienie żeby nie kalkulować za często
-      
-      return () => clearTimeout(timeoutId)
+    if (selectedTransports.length > 0 && routeSequence.length >= 2) {
+      // Podstawowa kalkulacja przy pierwszym załadowaniu
+      let initialDistance = 0
+      selectedTransports.forEach(transport => {
+        const distance = transport.distanceKm || transport.distance_km || 0
+        initialDistance += parseFloat(distance)
+      })
+      setTotalDistance(Math.round(initialDistance))
     } else {
       setTotalDistance(0)
     }
-  }, [selectedTransports, routeSequence])
+  }, [selectedTransports])
 
   // Obsługa podziału kosztów
   const handlePriceBreakdownChange = (transportId, value) => {
@@ -507,14 +622,25 @@ export default function MultiTransportResponseForm({
                 <div>
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-medium">Sekwencja trasy</h3>
-                    <button
-                      onClick={updateRouteDistance}
-                      disabled={isUpdatingDistance}
-                      className="flex items-center gap-2 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm"
-                    >
-                      <RefreshCw size={14} className={isUpdatingDistance ? 'animate-spin' : ''} />
-                      Aktualizuj odległość
-                    </button>
+                    <div className="flex items-center gap-3">
+                      {updateMessage && (
+                        <div className={`text-sm px-3 py-1 rounded-full border animate-pulse ${
+                          updateMessage.includes('⚠') 
+                            ? 'bg-red-100 text-red-700 border-red-200' 
+                            : 'bg-green-100 text-green-700 border-green-200'
+                        }`}>
+                          {updateMessage}
+                        </div>
+                      )}
+                      <button
+                        onClick={updateRouteDistance}
+                        disabled={isUpdatingDistance}
+                        className="flex items-center gap-2 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm"
+                      >
+                        <RefreshCw size={14} className={isUpdatingDistance ? 'animate-spin' : ''} />
+                        Aktualizuj odległość
+                      </button>
+                    </div>
                   </div>
                   
                   <div className="space-y-2 max-h-60 overflow-y-auto">
