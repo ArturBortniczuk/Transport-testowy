@@ -211,7 +211,11 @@ export default function MultiTransportResponseForm({
 
   // Aktualizacja odległości trasy
   const updateRouteDistance = async () => {
+    console.log('🔄 Aktualizuję odległość trasy...')
+    console.log('Sekwencja trasy:', routeSequence)
+    
     if (routeSequence.length < 2) {
+      console.log('❌ Za mało punktów w trasie')
       setTotalDistance(0)
       return
     }
@@ -219,39 +223,104 @@ export default function MultiTransportResponseForm({
     setIsUpdatingDistance(true)
     
     try {
-      // Symulacja kalkulacji odległości - tutaj można dodać prawdziwą kalkulację
-      // Na przykład używając Google Maps API lub podobnego serwisu
+      // Grupuj punkty według typu i lokalizacji
+      const uniqueLocations = []
+      const processedLocations = new Set()
       
-      // Dla demonstracji - liczymy jako sumę odległości między kolejnymi punktami
-      let totalDist = 0
-      
-      // Dodaj podstawową odległość dla każdego transportu
-      selectedTransports.forEach(transport => {
-        const distance = transport.distanceKm || transport.distance_km || 50 // fallback 50km
-        totalDist += parseFloat(distance)
+      routeSequence.forEach(point => {
+        const locationKey = `${point.city}_${point.type}`
+        if (!processedLocations.has(locationKey)) {
+          uniqueLocations.push({
+            city: point.city,
+            type: point.type,
+            address: point.address
+          })
+          processedLocations.add(locationKey)
+        }
       })
       
-      // Dodaj 10% za łączenie tras (symulacja)
-      if (selectedTransports.length > 1) {
-        totalDist *= 1.1
+      console.log('🗺️ Unikalne lokalizacje:', uniqueLocations)
+      
+      let totalDist = 0
+      
+      if (uniqueLocations.length === 1) {
+        // Jeden punkt - bez odległości
+        totalDist = 0
+      } else if (uniqueLocations.length === 2) {
+        // Dwa punkty - prosta trasa
+        // Użyj odległości z oryginalnych transportów
+        selectedTransports.forEach(transport => {
+          const distance = transport.distanceKm || transport.distance_km || 0
+          totalDist += parseFloat(distance)
+        })
+      } else {
+        // Więcej punktów - kalkulacja złożonej trasy
+        
+        // Bazowa odległość z transportów
+        let baseDistance = 0
+        selectedTransports.forEach(transport => {
+          const distance = transport.distanceKm || transport.distance_km || 0
+          baseDistance += parseFloat(distance)
+        })
+        
+        // Symulacja kalkulacji odległości między punktami
+        for (let i = 0; i < uniqueLocations.length - 1; i++) {
+          const currentPoint = uniqueLocations[i]
+          const nextPoint = uniqueLocations[i + 1]
+          
+          // Prosta estymacja odległości (można zastąpić prawdziwą kalkulacją)
+          let segmentDistance = 50 // domyślne 50km między punktami
+          
+          // Sprawdź czy to są te same miasta
+          if (currentPoint.city === nextPoint.city) {
+            segmentDistance = 10 // krótka odległość w tym samym mieście
+          } else {
+            // Estymacja na podstawie nazw miast (można poprawić)
+            segmentDistance = Math.min(baseDistance / selectedTransports.length * 1.2, 200)
+          }
+          
+          totalDist += segmentDistance
+        }
+        
+        console.log('📊 Bazowa odległość z transportów:', baseDistance)
+        console.log('📊 Kalkulowana odległość trasy:', totalDist)
+        
+        // Jeśli kalkulowana jest mniejsza niż bazowa, użyj bazowej
+        if (totalDist < baseDistance) {
+          totalDist = baseDistance
+        }
       }
       
-      setTotalDistance(Math.round(totalDist))
+      // Zaokrąglij do pełnych kilometrów
+      const finalDistance = Math.round(totalDist)
+      console.log('✅ Finalna odległość:', finalDistance, 'km')
+      
+      setTotalDistance(finalDistance)
+      
+      // Pokaż komunikat o aktualizacji
+      alert(`Odległość trasy została zaktualizowana: ${finalDistance} km`)
       
     } catch (error) {
-      console.error('Błąd kalkulacji odległości:', error)
-      alert('Nie udało się zaktualizować odległości')
+      console.error('❌ Błąd kalkulacji odległości:', error)
+      alert('Nie udało się zaktualizować odległości: ' + error.message)
     } finally {
       setIsUpdatingDistance(false)
     }
   }
 
-  // Inicjalne wyliczenie odległości
+  // Inicjalne wyliczenie odległości i reakcja na zmiany trasy
   useEffect(() => {
-    if (selectedTransports.length > 0) {
-      updateRouteDistance()
+    if (selectedTransports.length > 0 && routeSequence.length > 0) {
+      // Automatyczne wyliczenie przy zmianie tras lub sekwencji
+      const timeoutId = setTimeout(() => {
+        updateRouteDistance()
+      }, 500) // Opóźnienie żeby nie kalkulować za często
+      
+      return () => clearTimeout(timeoutId)
+    } else {
+      setTotalDistance(0)
     }
-  }, [selectedTransports])
+  }, [selectedTransports, routeSequence])
 
   // Obsługa podziału kosztów
   const handlePriceBreakdownChange = (transportId, value) => {
@@ -305,7 +374,15 @@ export default function MultiTransportResponseForm({
 
   // Obsługa wysłania formularza
   const handleSubmit = () => {
-    if (!isFormValid()) return
+    console.log('📤 Wysyłanie formularza...')
+    
+    if (!isFormValid()) {
+      console.log('❌ Formularz nie jest prawidłowy')
+      alert('Proszę wypełnić wszystkie wymagane pola')
+      return
+    }
+
+    console.log('✅ Formularz prawidłowy, przygotowuję dane...')
 
     const responseData = {
       selectedTransports: selectedTransports.map(t => t.id),
@@ -321,7 +398,14 @@ export default function MultiTransportResponseForm({
       isMerged: selectedTransports.length > 1
     }
 
-    onSubmit(responseData)
+    console.log('📋 Dane do wysłania:', JSON.stringify(responseData, null, 2))
+    
+    try {
+      onSubmit(responseData)
+    } catch (error) {
+      console.error('❌ Błąd podczas wysyłania:', error)
+      alert('Wystąpił błąd podczas wysyłania: ' + error.message)
+    }
   }
 
   return (
