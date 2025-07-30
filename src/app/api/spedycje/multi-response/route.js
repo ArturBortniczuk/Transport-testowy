@@ -45,10 +45,15 @@ export async function POST(request) {
       .whereIn('id', transportIds)
       .where('status', 'new')
 
+    console.log('Znalezione transporty:', existingTransports.length, 'z', transportIds.length, 'oczekiwanych')
+
     if (existingTransports.length !== transportIds.length) {
+      const foundIds = existingTransports.map(t => t.id)
+      const missingIds = transportIds.filter(id => !foundIds.includes(id))
+      
       return NextResponse.json({
         success: false,
-        error: 'Niektóre transporty nie istnieją lub zostały już przetworzone'
+        error: `Transporty o ID: ${missingIds.join(', ')} nie istnieją lub zostały już przetworzone`
       }, { status: 400 })
     }
 
@@ -60,17 +65,17 @@ export async function POST(request) {
       
       // Przygotuj dane odpowiedzi
       const responseData = {
-        driver_name: driverInfo.name,
-        driver_phone: driverInfo.phone,
-        vehicle_number: driverInfo.vehicleNumber || null,
-        price: totalPrice,
-        transport_date: transportDate,
+        driverName: driverInfo.name,
+        driverPhone: driverInfo.phone,
+        vehicleNumber: driverInfo.vehicleNumber || null,
+        deliveryPrice: totalPrice,
+        distance: totalDistance || null,
         notes: notes || null,
-        cargo_description: cargoDescription || null,
-        total_weight: totalWeight || null,
-        total_distance: totalDistance || null,
-        route_sequence: JSON.stringify(routeSequence),
-        responded_at: currentTime
+        cargoDescription: cargoDescription || null,
+        totalWeight: totalWeight || null,
+        newDeliveryDate: transportDate !== existingTransports[0].delivery_date ? transportDate : null,
+        dateChanged: transportDate !== existingTransports[0].delivery_date,
+        routeSequence: routeSequence || []
       }
 
       // Zaktualizuj transport
@@ -79,6 +84,17 @@ export async function POST(request) {
         .update({
           status: 'responded',
           response_data: JSON.stringify(responseData),
+          driver_name: driverInfo.name,
+          driver_phone: driverInfo.phone,
+          vehicle_number: driverInfo.vehicleNumber || null,
+          transport_date: transportDate,
+          transport_price: totalPrice,
+          total_distance: totalDistance || null,
+          total_weight: totalWeight || null,
+          cargo_description: cargoDescription || null,
+          route_sequence: JSON.stringify(routeSequence || []),
+          is_merged: false,
+          responded_at: currentTime,
           updated_at: currentTime
         })
 
@@ -101,7 +117,7 @@ export async function POST(request) {
 
       // Przygotuj dane o połączonych transportach
       const mergedTransportsData = {
-        originalTransports: transportsDetails.map(transport => ({
+        originalTransports: transportsDetails.slice(1).map(transport => ({
           id: transport.id,
           orderNumber: transport.order_number,
           mpk: transport.mpk,
@@ -113,31 +129,33 @@ export async function POST(request) {
           documents: transport.documents,
           notes: transport.notes,
           goods_description: transport.goods_description,
-          clientName: transport.client_name || transport.responsible_person
+          clientName: transport.client_name || transport.responsible_person,
+          costAssigned: priceBreakdown ? priceBreakdown[transport.id] : 0,
+          distance: transport.distance_km || 0
         })),
-        totalDistance: totalDistance,
+        totalDistance: totalDistance || 0,
         mainTransportCost: priceBreakdown ? priceBreakdown[mainTransportId] : totalPrice,
         totalMergedCost: totalPrice,
         mergedAt: currentTime,
-        mergedBy: 'system' // Tu można dodać info o użytkowniku
+        mergedBy: 'system'
       }
 
       // Przygotuj dane odpowiedzi dla głównego transportu
       const mainResponseData = {
-        driver_name: driverInfo.name,
-        driver_phone: driverInfo.phone,
-        vehicle_number: driverInfo.vehicleNumber || null,
-        price: totalPrice,
-        transport_date: transportDate,
+        driverName: driverInfo.name,
+        driverPhone: driverInfo.phone,
+        vehicleNumber: driverInfo.vehicleNumber || null,
+        deliveryPrice: totalPrice,
+        distance: totalDistance || null,
         notes: notes || null,
-        cargo_description: cargoDescription || null,
-        total_weight: totalWeight || null,
-        total_distance: totalDistance || null,
-        route_sequence: JSON.stringify(routeSequence),
+        cargoDescription: cargoDescription || null,
+        totalWeight: totalWeight || null,
+        newDeliveryDate: transportDate !== mainTransport.delivery_date ? transportDate : null,
+        dateChanged: transportDate !== mainTransport.delivery_date,
         isMerged: true,
         costBreakdown: priceBreakdown || {},
         mergedTransportIds: transportIds,
-        responded_at: currentTime
+        routeSequence: routeSequence || []
       }
 
       // Rozpocznij transakcję
@@ -149,6 +167,18 @@ export async function POST(request) {
             status: 'responded',
             response_data: JSON.stringify(mainResponseData),
             merged_transports: JSON.stringify(mergedTransportsData),
+            driver_name: driverInfo.name,
+            driver_phone: driverInfo.phone,
+            vehicle_number: driverInfo.vehicleNumber || null,
+            transport_date: transportDate,
+            transport_price: totalPrice,
+            total_distance: totalDistance || null,
+            total_weight: totalWeight || null,
+            cargo_description: cargoDescription || null,
+            route_sequence: JSON.stringify(routeSequence || []),
+            cost_breakdown: JSON.stringify(priceBreakdown || {}),
+            is_merged: true,
+            responded_at: currentTime,
             updated_at: currentTime
           })
 
@@ -159,21 +189,21 @@ export async function POST(request) {
           const transportPrice = priceBreakdown ? priceBreakdown[transportId] : 0
           
           const otherResponseData = {
-            driver_name: driverInfo.name,
-            driver_phone: driverInfo.phone,
-            vehicle_number: driverInfo.vehicleNumber || null,
-            price: transportPrice,
-            transport_date: transportDate,
+            driverName: driverInfo.name,
+            driverPhone: driverInfo.phone,
+            vehicleNumber: driverInfo.vehicleNumber || null,
+            deliveryPrice: transportPrice,
+            distance: null,
             notes: `Transport połączony z #${mainTransportId}. ${notes || ''}`.trim(),
-            cargo_description: cargoDescription || null,
-            total_weight: null, // Waga jest dla całości w głównym transporcie
-            total_distance: null, // Odległość jest dla całości w głównym transporcie
-            route_sequence: JSON.stringify(routeSequence),
+            cargoDescription: cargoDescription || null,
+            totalWeight: null,
+            newDeliveryDate: transportDate,
+            dateChanged: true,
             isMerged: true,
             isSecondaryMerged: true,
             mainTransportId: mainTransportId,
             costBreakdown: priceBreakdown || {},
-            responded_at: currentTime
+            routeSequence: routeSequence || []
           }
 
           await trx('spedycje')
@@ -186,6 +216,19 @@ export async function POST(request) {
                 mainTransportId: mainTransportId,
                 mergedAt: currentTime
               }),
+              driver_name: driverInfo.name,
+              driver_phone: driverInfo.phone,
+              vehicle_number: driverInfo.vehicleNumber || null,
+              transport_date: transportDate,
+              transport_price: transportPrice,
+              total_distance: null,
+              total_weight: null,
+              cargo_description: cargoDescription || null,
+              route_sequence: JSON.stringify(routeSequence || []),
+              cost_breakdown: JSON.stringify(priceBreakdown || {}),
+              is_merged: true,
+              main_transport_id: mainTransportId,
+              responded_at: currentTime,
               updated_at: currentTime
             })
         }
