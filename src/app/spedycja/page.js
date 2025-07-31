@@ -88,7 +88,7 @@ export default function SpedycjaPage() {
       setError(null);
       
       // Pobierz dane z API z filtrem statusu
-      const status = showArchive ? 'completed' : 'new';
+      const status = showArchive ? 'completed' : 'new,responded';
       const response = await fetch(`/api/spedycje?status=${status}`);
       
       if (!response.ok) {
