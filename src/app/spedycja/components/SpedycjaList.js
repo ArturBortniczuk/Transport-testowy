@@ -29,7 +29,7 @@ export default function SpedycjaList({
     danger: "px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-2"
   }
 
-  // NOWA FUNKCJA: Funkcja obsługi odpowiedzi zbiorczej na wiele transportów
+  // FUNKCJA: Obsługa odpowiedzi zbiorczej na wiele transportów
   const handleMultiTransportResponse = async (responseData) => {
     try {
       console.log('📤 SpedycjaList: Otrzymałem dane odpowiedzi:', responseData)
@@ -87,6 +87,7 @@ export default function SpedycjaList({
     }
   }
 
+  // FUNKCJE POMOCNICZE
   const formatAddress = (address) => {
     if (!address) return ''
     return `${address.city}, ${address.postalCode}, ${address.street}`
@@ -169,6 +170,21 @@ export default function SpedycjaList({
     }
   }
 
+  // Funkcja do pobierania danych połączonych transportów
+  const getMergedTransportsData = (transport) => {
+    try {
+      if (!transport.response_data) return null;
+      
+      const responseData = JSON.parse(transport.response_data);
+      if (!responseData.isMerged) return null;
+      
+      return responseData;
+    } catch (error) {
+      console.error('Błąd parsowania danych połączonych transportów:', error);
+      return null;
+    }
+  }
+
   // Funkcja pomocnicza do sprawdzania czy można edytować zamówienie
   const canBeEdited = (zamowienie) => {
     // Nie można edytować jeśli jest zrealizowane/w archiwum
@@ -188,11 +204,31 @@ export default function SpedycjaList({
   // Funkcja do pobierania statusu zamówienia
   const getStatusLabel = (zamowienie) => {
     if (zamowienie.status === 'completed') {
-      return { text: 'Zrealizowane', class: 'bg-green-100 text-green-800' };
+      return { 
+        text: 'Zrealizowane', 
+        class: 'bg-green-100 text-green-800',
+        icon: <Clipboard size={16} className="mr-1" />
+      };
     } else if (zamowienie.response || zamowienie.response_data) {
-      return { text: 'Odpowiedziano', class: 'bg-blue-100 text-blue-800' };
+      if (isMergedTransport(zamowienie)) {
+        return { 
+          text: 'Transport połączony', 
+          class: 'bg-purple-100 text-purple-800',
+          icon: <LinkIcon size={16} className="mr-1" />
+        };
+      } else {
+        return { 
+          text: 'Odpowiedziano', 
+          class: 'bg-blue-100 text-blue-800',
+          icon: <Truck size={16} className="mr-1" />
+        };
+      }
     } else {
-      return { text: 'Nowe', class: 'bg-yellow-100 text-yellow-800' };
+      return { 
+        text: 'Nowe', 
+        class: 'bg-yellow-100 text-yellow-800',
+        icon: <Package size={16} className="mr-1" />
+      };
     }
   }
 
@@ -288,6 +324,35 @@ export default function SpedycjaList({
     return [];
   }
 
+  // Obsługa rozłączania transportów
+  const handleUnmergeTransport = async (transportId) => {
+    if (!confirm('Czy na pewno chcesz rozłączyć ten transport? Wszystkie połączone transporty zostaną przywrócone jako osobne zlecenia.')) {
+      return;
+    }
+    
+    try {
+      const response = await fetch('/api/spedycje/unmerge', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ transportId })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        showOperationMessage(data.message || 'Transport został pomyślnie rozłączony', 'success');
+        fetchSpedycje();
+      } else {
+        throw new Error(data.error || 'Błąd rozłączania transportu');
+      }
+    } catch (error) {
+      console.error('Błąd rozłączania transportu:', error);
+      showOperationMessage('Wystąpił błąd podczas rozłączania transportu: ' + error.message, 'error');
+    }
+  };
+
   // Funkcja do renderowania informacji o połączonych transportach
   const renderMergedTransportInfo = (zamowienie) => {
     const routeSequence = createRouteSequence(zamowienie);
@@ -298,10 +363,21 @@ export default function SpedycjaList({
 
     return (
       <div className="space-y-4">
-        <h4 className="font-medium text-purple-700 flex items-center gap-2">
-          <LinkIcon size={18} />
-          Trasa połączonego transportu
-        </h4>
+        <div className="flex items-center justify-between">
+          <h4 className="font-medium text-purple-700 flex items-center gap-2">
+            <LinkIcon size={18} />
+            Trasa połączonego transportu
+          </h4>
+          {isAdmin && (
+            <button
+              onClick={() => handleUnmergeTransport(zamowienie.id)}
+              className="text-red-600 hover:text-red-800 text-sm flex items-center gap-1"
+            >
+              <Unlink size={14} />
+              Rozłącz
+            </button>
+          )}
+        </div>
         
         <div className="space-y-2">
           {routeSequence.map((point, index) => (
@@ -338,6 +414,71 @@ export default function SpedycjaList({
     );
   }
 
+  // Renderuje info o odpowiedzialnych budowach
+  const renderResponsibleConstructions = (transport) => {
+    if (!transport.responsibleConstructions || !transport.responsibleConstructions.length) return null;
+    
+    return (
+      <div className="mt-2">
+        <div className="font-medium text-sm text-gray-700">Budowy:</div>
+        <div className="flex flex-wrap gap-2 mt-1">
+          {transport.responsibleConstructions.map(construction => (
+            <div key={construction.id} className="bg-green-50 text-green-700 px-2 py-1 rounded-md text-xs flex items-center">
+              <Building size={12} className="mr-1" />
+              {construction.name}
+              <span className="ml-1 text-green-600">({construction.mpk})</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  
+  // Renderuje info o towarze
+  const renderGoodsInfo = (transport) => {
+    if (!transport.goodsDescription) return null;
+    
+    return (
+      <div className="mt-3 bg-blue-50 p-3 rounded-lg border border-blue-200">
+        <div className="flex items-center text-blue-700 font-medium mb-2">
+          <ShoppingBag size={14} className="mr-1" />
+          Opis towaru
+        </div>
+        {transport.goodsDescription.description && (
+          <p className="text-sm text-gray-700 mb-1">{transport.goodsDescription.description}</p>
+        )}
+        {transport.goodsDescription.weight && (
+          <p className="text-sm flex items-center text-gray-700">
+            <Weight size={12} className="mr-1" />
+            Waga: {transport.goodsDescription.weight}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // Generuje link do Google Maps
+  const generateGoogleMapsLink = (zamowienie) => {
+    const origin = getLoadingCity(zamowienie);
+    const destination = getDeliveryCity(zamowienie);
+    
+    if (!origin || !destination) return '#';
+    
+    const waypoints = [];
+    const routeSequence = createRouteSequence(zamowienie);
+    
+    if (routeSequence.length > 2) {
+      // Dla połączonych transportów - dodaj punkty pośrednie
+      const intermediate = routeSequence.slice(1, -1); // Pomijamy pierwszy i ostatni punkt
+      waypoints.push(...intermediate.map(point => point.address));
+    }
+    
+    const waypointsParam = waypoints.length > 0 
+      ? `&waypoints=${encodeURIComponent(waypoints.join('|'))}` : '';
+    
+    return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}${waypointsParam}&travelmode=driving`;
+  }
+
   // Filtruj zamówienia na podstawie trybu archiwum
   const filteredSpedycje = zamowienia.filter(zamowienie => {
     if (showArchive) {
@@ -354,7 +495,7 @@ export default function SpedycjaList({
           {showArchive ? 'Archiwum zapytań spedycyjnych' : 'Nowe zapytania spedycyjne'}
         </h1>
         
-        {/* Nowy przycisk odpowiedzi zbiorczej - tylko dla nowych zapytań */}
+        {/* Przycisk odpowiedzi zbiorczej - tylko dla nowych zapytań */}
         {!showArchive && filteredSpedycje.length > 0 && (
           <button
             onClick={() => setShowMultiResponseForm(true)}
@@ -424,6 +565,7 @@ export default function SpedycjaList({
                             {formatDate(displayDate)}
                           </span>
                           <span className={`px-2 py-1 rounded-full text-xs ${statusInfo.class}`}>
+                            {statusInfo.icon}
                             {statusInfo.text}
                           </span>
                         </div>
@@ -473,6 +615,7 @@ export default function SpedycjaList({
                         <ChevronDown size={20} />
                       </button>
                     )}
+                    
                     {/* Przycisk kopiowania - dla wszystkich użytkowników */}
                     <button 
                       type="button"
@@ -485,6 +628,7 @@ export default function SpedycjaList({
                       <Copy size={16} />
                       Kopiuj
                     </button>
+                    
                     {/* Przycisk edycji - widoczny dla twórcy lub admina (ale nie dla połączonych) */}
                     {canEdit && (
                       <button 
@@ -614,7 +758,7 @@ export default function SpedycjaList({
                                   <MapPin size={18} className="text-green-600" />
                                   Załadunek
                                 </h4>
-                                <div className="text-sm space-y-1">
+                                <div className="text-sm space-y-2">
                                   <div><strong>Lokalizacja:</strong> {zamowienie.location}</div>
                                   {zamowienie.location === 'Odbiory własne' && zamowienie.producerAddress && (
                                     <div><strong>Adres:</strong> {formatAddress(zamowienie.producerAddress)}</div>
@@ -630,7 +774,7 @@ export default function SpedycjaList({
                                   <MapPin size={18} className="text-red-600" />
                                   Rozładunek
                                 </h4>
-                                <div className="text-sm space-y-1">
+                                <div className="text-sm space-y-2">
                                   <div><strong>Klient:</strong> {zamowienie.clientName}</div>
                                   <div><strong>Adres:</strong> {formatAddress(zamowienie.delivery)}</div>
                                   {zamowienie.unloadingContact && (
@@ -671,6 +815,9 @@ export default function SpedycjaList({
                               )}
                             </div>
 
+                            {/* Budowy */}
+                            {renderResponsibleConstructions(zamowienie)}
+
                             {/* Dokumenty i uwagi */}
                             {(zamowienie.documents || zamowienie.notes) && (
                               <div className="space-y-3">
@@ -701,31 +848,7 @@ export default function SpedycjaList({
                             )}
 
                             {/* Opis towarów */}
-                            {zamowienie.goodsDescription && (
-                              <div>
-                                <h5 className="font-medium text-gray-700 mb-2 flex items-center gap-2">
-                                  <Package size={16} />
-                                  Opis towarów
-                                </h5>
-                                <div className="text-sm bg-green-50 p-3 rounded-lg space-y-2">
-                                  {zamowienie.goodsDescription.type && (
-                                    <div><strong>Typ:</strong> {zamowienie.goodsDescription.type}</div>
-                                  )}
-                                  {zamowienie.goodsDescription.quantity && (
-                                    <div><strong>Ilość:</strong> {zamowienie.goodsDescription.quantity}</div>
-                                  )}
-                                  {zamowienie.goodsDescription.weight && (
-                                    <div><strong>Waga:</strong> {zamowienie.goodsDescription.weight}</div>
-                                  )}
-                                  {zamowienie.goodsDescription.dimensions && (
-                                    <div><strong>Wymiary:</strong> {zamowienie.goodsDescription.dimensions}</div>
-                                  )}
-                                  {zamowienie.goodsDescription.description && (
-                                    <div><strong>Opis:</strong> {zamowienie.goodsDescription.description}</div>
-                                  )}
-                                </div>
-                              </div>
-                            )}
+                            {renderGoodsInfo(zamowienie)}
 
                             {/* Informacje o odpowiedzi */}
                             {(zamowienie.response || zamowienie.response_data) && (
@@ -833,6 +956,15 @@ export default function SpedycjaList({
                                   Stwórz zlecenie transportowe
                                 </button>
                               )}
+                              <a
+                                href={generateGoogleMapsLink(zamowienie)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors flex items-center gap-2"
+                              >
+                                <MapPin size={16} />
+                                Google Maps
+                              </a>
                             </div>
                           </div>
                         );
@@ -846,7 +978,7 @@ export default function SpedycjaList({
         )}
       </div>
 
-      {/* NOWY MODAL odpowiedzi zbiorczej */}
+      {/* MODAL odpowiedzi zbiorczej */}
       {showMultiResponseForm && (
         <MultiTransportResponseForm
           availableTransports={filteredSpedycje}
