@@ -594,7 +594,14 @@ export async function GET(request) {
     
     // Filtrujemy po statusie jeśli podany
     if (status) {
-      query = query.where('status', status);
+      if (status.includes(',')) {
+        // Obsługa wielu statusów oddzielonych przecinkiem
+        const statusArray = status.split(',').map(s => s.trim());
+        query = query.whereIn('status', statusArray);
+      } else {
+        // Pojedynczy status
+        query = query.where('status', status);
+      }
     }
     
     // Sortujemy od najnowszych
