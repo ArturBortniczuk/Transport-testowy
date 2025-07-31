@@ -220,167 +220,58 @@ export default function MultiTransportResponseForm({
       setTotalDistance(0)
       return
     }
-
+  
     setIsUpdatingDistance(true)
     
     try {
-      // Mapa odległości między polskimi miastami (w km)
-      const cityDistances = {
-        // Z Białegostoku
-        'Białystok-Warszawa': 200,
-        'Białystok-Lipno': 300,
-        'Białystok-Zielonka': 200,
-        'Białystok-Bydgoszcz': 280,
-        'Białystok-Wrocław': 520,
-        'Białystok-Kraków': 400,
-        'Białystok-Gdańsk': 280,
-        'Białystok-Poznań': 350,
-        'Białystok-Lublin': 180,
-        'Białystok-Olsztyn': 120,
-        
-        // Z Warszawy/Zielonki
-        'Warszawa-Lipno': 120,
-        'Warszawa-Bydgoszcz': 180,
-        'Warszawa-Wrocław': 350,
-        'Warszawa-Kraków': 300,
-        'Warszawa-Gdańsk': 350,
-        'Warszawa-Poznań': 280,
-        'Warszawa-Lublin': 170,
-        'Zielonka-Lipno': 100,
-        'Zielonka-Bydgoszcz': 160,
-        'Zielonka-Wrocław': 330,
-        'Zielonka-Kraków': 280,
-        'Zielonka-Gdańsk': 330,
-        'Zielonka-Poznań': 260,
-        'Zielonka-Lublin': 150,
-        
-        // Z Lipna
-        'Lipno-Bydgoszcz': 90,
-        'Lipno-Wrocław': 280,
-        'Lipno-Kraków': 350,
-        'Lipno-Gdańsk': 200,
-        'Lipno-Poznań': 180,
-        'Lipno-Toruń': 70,
-        'Lipno-Płock': 80,
-        
-        // Z Bydgoszczy
-        'Bydgoszcz-Wrocław': 200,
-        'Bydgoszcz-Kraków': 400,
-        'Bydgoszcz-Gdańsk': 160,
-        'Bydgoszcz-Poznań': 120,
-        'Bydgoszcz-Toruń': 50,
-        
-        // Z Wrocławia
-        'Wrocław-Kraków': 250,
-        'Wrocław-Poznań': 180,
-        'Wrocław-Opole': 80,
-        'Wrocław-Kielce': 250,
-        
-        // Z Krakowa
-        'Kraków-Katowice': 80,
-        'Kraków-Kielce': 100,
-        'Kraków-Tarnów': 80,
-        'Kraków-Rzeszów': 160,
-        
-        // Z Gdańska
-        'Gdańsk-Olsztyn': 150,
-        'Gdańsk-Słupsk': 120,
-        'Gdańsk-Elbląg': 60,
-        
-        // Z Poznania
-        'Poznań-Konin': 90,
-        'Poznań-Kalisz': 100,
-        'Poznań-Piła': 90,
-        
-        // Inne połączenia
-        'Katowice-Opole': 60,
-        'Lublin-Kielce': 120,
-        'Olsztyn-Elbląg': 80,
-        'Toruń-Płock': 120,
-        
-        // Dodatkowe miasta z Mazowsza
-        'Wysokie Mazowieckie-Białystok': 50,
-        'Wysokie Mazowieckie-Warszawa': 150,
-        'Ostrołęka-Białystok': 90,
-        'Ostrołęka-Warszawa': 120,
-        'Mława-Warszawa': 120,
-        'Płock-Warszawa': 110,
-        'Ciechanów-Warszawa': 80,
-        'Siedlce-Warszawa': 90,
-        'Radom-Warszawa': 100,
-        'Pruszków-Warszawa': 20,
-        'Legionowo-Warszawa': 25
-      }
-      
-      // Funkcja do obliczania odległości między dwoma miastami
-      const getDistanceBetweenCities = (city1, city2) => {
-        if (city1 === city2) return 0
-        
-        // Normalizuj nazwy miast (usuń białe znaki, zmień na małe litery)
-        const normalizeCity = (city) => {
-          return city.toLowerCase().trim()
-            .replace(/ą/g, 'a').replace(/ć/g, 'c').replace(/ę/g, 'e')
-            .replace(/ł/g, 'l').replace(/ń/g, 'n').replace(/ó/g, 'o')
-            .replace(/ś/g, 's').replace(/ź/g, 'z').replace(/ż/g, 'z')
-        }
-        
-        const normalCity1 = normalizeCity(city1)
-        const normalCity2 = normalizeCity(city2)
-        
-        // Sprawdź bezpośrednie połączenie
-        const key1 = `${city1}-${city2}`
-        const key2 = `${city2}-${city1}`
-        
-        if (cityDistances[key1]) return cityDistances[key1]
-        if (cityDistances[key2]) return cityDistances[key2]
-        
-        // Sprawdź z znormalizowanymi nazwami
-        const normalKey1 = `${normalCity1}-${normalCity2}`
-        const normalKey2 = `${normalCity2}-${normalCity1}`
-        
-        // Znajdź pasujące klucze w słowniku
-        for (const [key, distance] of Object.entries(cityDistances)) {
-          const [keyCity1, keyCity2] = key.toLowerCase().split('-')
-          if ((keyCity1.includes(normalCity1) && keyCity2.includes(normalCity2)) ||
-              (keyCity1.includes(normalCity2) && keyCity2.includes(normalCity1))) {
-            return distance
-          }
-        }
-        
-        // Sprawdź czy to są miasta z tego samego regionu (krótka odległość)
-        const mazowieckie = ['warszawa', 'zielonka', 'pruszków', 'legionowo', 'płock', 'ciechanów', 'siedlce', 'radom', 'mława', 'ostrołęka']
-        const podlaskie = ['białystok', 'wysokie mazowieckie', 'augustów', 'suwałki', 'łomża']
-        const pomorskie = ['gdańsk', 'słupsk', 'elbląg', 'gdynia', 'sopot']
-        
-        const isInSameRegion = (city1, city2, region) => {
-          return region.some(r => normalCity1.includes(r)) && region.some(r => normalCity2.includes(r))
-        }
-        
-        if (isInSameRegion(normalCity1, normalCity2, mazowieckie)) return 80
-        if (isInSameRegion(normalCity1, normalCity2, podlaskie)) return 60
-        if (isInSameRegion(normalCity1, normalCity2, pomorskie)) return 50
-        
-        // Fallback - estymacja na podstawie długości nazw i pierwszych liter
-        const baseDist = Math.abs(city1.length - city2.length) * 15 + 150
-        const letterDiff = Math.abs(city1.charCodeAt(0) - city2.charCodeAt(0)) * 3
-        
-        return Math.min(baseDist + letterDiff, 600) // max 600km
-      }
-      
       let totalDist = 0
       
-      // Kalkuluj odległość sekwencyjnie między kolejnymi punktami
+      // Oblicz odległość sekwencyjnie między kolejnymi punktami używając Google Maps API
       for (let i = 0; i < routeSequence.length - 1; i++) {
         const currentPoint = routeSequence[i]
         const nextPoint = routeSequence[i + 1]
         
-        const segmentDistance = getDistanceBetweenCities(currentPoint.city, nextPoint.city)
-        totalDist += segmentDistance
+        console.log(`📍 Obliczam: ${currentPoint.city} → ${nextPoint.city}`)
         
-        console.log(`📍 ${currentPoint.city} → ${nextPoint.city}: ${segmentDistance} km`)
+        try {
+          // Wywołaj API Google Maps Distance Matrix
+          const response = await fetch(`/api/distance?origins=${encodeURIComponent(currentPoint.city + ', Poland')}&destinations=${encodeURIComponent(nextPoint.city + ', Poland')}`)
+          
+          if (!response.ok) {
+            throw new Error(`API Error: ${response.status}`)
+          }
+          
+          const data = await response.json()
+          
+          if (data.status === 'OK' && 
+              data.rows && 
+              data.rows[0] && 
+              data.rows[0].elements && 
+              data.rows[0].elements[0] && 
+              data.rows[0].elements[0].status === 'OK') {
+            
+            const distanceKm = Math.round(data.rows[0].elements[0].distance.value / 1000)
+            totalDist += distanceKm
+            
+            console.log(`   ✅ ${currentPoint.city} → ${nextPoint.city}: ${distanceKm} km`)
+            
+          } else {
+            console.warn(`⚠ Nie udało się obliczyć odległości dla ${currentPoint.city} → ${nextPoint.city}, używam fallback`)
+            // Fallback - szacunkowa odległość 200km
+            totalDist += 200
+          }
+          
+        } catch (error) {
+          console.error(`❌ Błąd dla segmentu ${currentPoint.city} → ${nextPoint.city}:`, error)
+          // Fallback - szacunkowa odległość 200km
+          totalDist += 200
+        }
+        
+        // Dodaj małą przerwę żeby nie przeciążyć API
+        await new Promise(resolve => setTimeout(resolve, 100))
       }
       
-      // Dodaj niewielką korektę dla typu punktów (załadunek/rozładunek w tym samym mieście)
+      // Dodaj niewielką korektę dla poruszania się w tym samym mieście
       let sameLocationPenalty = 0
       for (let i = 0; i < routeSequence.length - 1; i++) {
         const current = routeSequence[i]
@@ -396,32 +287,24 @@ export default function MultiTransportResponseForm({
       
       // Zaokrąglij do pełnych kilometrów
       const finalDistance = Math.round(totalDist)
-      console.log('✅ Finalna odległość:', finalDistance, 'km')
-      console.log('📊 Szczegółowa trasa:')
-      for (let i = 0; i < routeSequence.length - 1; i++) {
-        const current = routeSequence[i]
-        const next = routeSequence[i + 1]
-        const distance = getDistanceBetweenCities(current.city, next.city)
-        console.log(`   ${current.type} ${current.city} → ${next.type} ${next.city}: ${distance} km`)
-      }
+      console.log('✅ Finalna odległość z Google Maps:', finalDistance, 'km')
       console.log(`   Korekta za poruszanie w miastach: ${sameLocationPenalty} km`)
       console.log(`   ŁĄCZNA ODLEGŁOŚĆ: ${finalDistance} km`)
       
       setTotalDistance(finalDistance)
       
-      // Pokaż subtelny komunikat o aktualizacji
-      setUpdateMessage(`✓ Odległość zaktualizowana: ${finalDistance} km`)
+      // Pokaż komunikat o aktualizacji
+      setUpdateMessage(`✓ Odległość zaktualizowana z Google Maps: ${finalDistance} km`)
       setTimeout(() => setUpdateMessage(''), 4000)
       
     } catch (error) {
       console.error('❌ Błąd kalkulacji odległości:', error)
-      setUpdateMessage('⚠ Błąd aktualizacji odległości')
+      setUpdateMessage('⚠ Błąd aktualizacji odległości - sprawdź połączenie')
       setTimeout(() => setUpdateMessage(''), 3000)
     } finally {
       setIsUpdatingDistance(false)
     }
   }
-
   // Inicjalne wyliczenie odległości (tylko przy wyborze transportów)
   useEffect(() => {
     if (selectedTransports.length > 0 && routeSequence.length >= 2) {
@@ -694,8 +577,24 @@ export default function MultiTransportResponseForm({
                   
                   {totalDistance > 0 && (
                     <div className="mt-3 p-3 bg-blue-50 rounded-lg">
-                      <div className="text-sm text-blue-800">
-                        <strong>Łączna odległość: {totalDistance.toFixed(1)} km</strong>
+                      <div className="flex justify-between items-center">
+                        <div className="text-sm text-blue-800">
+                          <strong>Łączna odległość: {totalDistance.toFixed(1)} km</strong>
+                          {updateMessage && (
+                            <div className="text-xs text-green-600 mt-1">{updateMessage}</div>
+                          )}
+                        </div>
+                        <button
+                          onClick={updateRouteDistance}
+                          disabled={isUpdatingDistance}
+                          className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                            isUpdatingDistance 
+                              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                              : 'bg-blue-600 text-white hover:bg-blue-700'
+                          }`}
+                        >
+                          {isUpdatingDistance ? '🔄 Obliczam...' : '📍 Aktualizuj z Google Maps'}
+                        </button>
                       </div>
                     </div>
                   )}
