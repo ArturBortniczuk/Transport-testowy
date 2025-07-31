@@ -1,7 +1,7 @@
 // src/app/spedycja/components/MultiTransportResponseForm.js
 'use client'
 import { useState, useEffect } from 'react'
-import { X, Check, Package, MapPin, ArrowUp, ArrowDown, Truck, Calculator, Calendar, User, Phone, Hash, FileText, Weight, RefreshCw, DollarSign, Zap } from 'lucide-react'
+import { X, Check, Package, MapPin, ArrowUp, ArrowDown, Truck, Calculator, Calendar, User, Phone, Hash, FileText, Weight, RefreshCw, DollarSign, AlertTriangle, CheckCircle2, Route, Building, Clock } from 'lucide-react'
 
 export default function MultiTransportResponseForm({ 
   availableTransports = [], 
@@ -26,95 +26,18 @@ export default function MultiTransportResponseForm({
   const [totalDistance, setTotalDistance] = useState(0)
   const [isUpdatingDistance, setIsUpdatingDistance] = useState(false)
   const [updateMessage, setUpdateMessage] = useState('')
+  const [errors, setErrors] = useState({})
 
-  // Obsługa wyboru transportów
-  const handleTransportToggle = (transport) => {
-    const isSelected = selectedTransports.find(t => t.id === transport.id)
-    
-    if (isSelected) {
-      // Usuń transport
-      const newSelected = selectedTransports.filter(t => t.id !== transport.id)
-      setSelectedTransports(newSelected)
-      
-      // Usuń z podziału kosztów
-      const newBreakdown = { ...priceBreakdown }
-      delete newBreakdown[transport.id]
-      setPriceBreakdown(newBreakdown)
-      
-      // Usuń z opcji transportu
-      const newOptions = { ...transportOptions }
-      delete newOptions[transport.id]
-      setTransportOptions(newOptions)
-    } else {
-      // Dodaj transport
-      setSelectedTransports([...selectedTransports, transport])
-      
-      // Domyślne opcje - oba punkty
-      setTransportOptions(prev => ({
-        ...prev,
-        [transport.id]: { loading: true, unloading: true }
-      }))
-    }
-  }
-
-  // Obsługa opcji transportu (załadunek/rozładunek)
-  const handleTransportOptionToggle = (transportId, option) => {
-    setTransportOptions(prev => ({
-      ...prev,
-      [transportId]: {
-        ...prev[transportId],
-        [option]: !prev[transportId]?.[option]
-      }
-    }))
-  }
-
-  // Aktualizuj sekwencję trasy gdy zmienią się wybrane transporty lub opcje
+  // Automatyczne generowanie sekwencji trasy po wyborze transportów
   useEffect(() => {
-    if (selectedTransports.length === 0) {
+    if (selectedTransports.length > 0) {
+      generateRouteSequence()
+    } else {
       setRouteSequence([])
-      return
     }
-
-    const newSequence = []
-
-    selectedTransports.forEach(transport => {
-      const options = transportOptions[transport.id] || { loading: true, unloading: true }
-      
-      // Punkt załadunku (jeśli wybrany)
-      if (options.loading) {
-        const loadingPoint = {
-          id: `loading_${transport.id}`,
-          transportId: transport.id,
-          type: 'loading',
-          city: getLoadingCity(transport),
-          company: getLoadingCompany(transport),
-          mpk: transport.mpk,
-          contact: transport.loading_contact,
-          address: getLoadingAddress(transport)
-        }
-        newSequence.push(loadingPoint)
-      }
-
-      // Punkt rozładunku (jeśli wybrany)
-      if (options.unloading) {
-        const unloadingPoint = {
-          id: `unloading_${transport.id}`,
-          transportId: transport.id,
-          type: 'unloading',
-          city: getUnloadingCity(transport),
-          company: transport.clientName || 'Nie podano',
-          mpk: transport.mpk,
-          contact: transport.unloading_contact,
-          address: getUnloadingAddress(transport)
-        }
-        newSequence.push(unloadingPoint)
-      }
-    })
-
-    setRouteSequence(newSequence)
   }, [selectedTransports, transportOptions])
 
-  // Pomocnicze funkcje do pobierania danych transportu
+  // Funkcje pomocnicze do pobierania danych z transportów
   const getLoadingCity = (transport) => {
     if (transport.location === 'Magazyn Białystok') return 'Białystok'
     if (transport.location === 'Magazyn Zielonka') return 'Zielonka'
@@ -128,7 +51,7 @@ export default function MultiTransportResponseForm({
         return 'Nie podano'
       }
     }
-    return transport.location || 'Nie podano'
+    return 'Nie podano'
   }
 
   const getLoadingCompany = (transport) => {
@@ -182,6 +105,20 @@ export default function MultiTransportResponseForm({
     return transport.delivery?.city || 'Nie podano'
   }
 
+  const getUnloadingCompany = (transport) => {
+    if (transport.delivery_data) {
+      try {
+        const deliveryData = typeof transport.delivery_data === 'string' 
+          ? JSON.parse(transport.delivery_data) 
+          : transport.delivery_data
+        return deliveryData.company || transport.clientName || 'Nie podano'
+      } catch (e) {
+        return transport.clientName || 'Nie podano'
+      }
+    }
+    return transport.clientName || 'Nie podano'
+  }
+
   const getUnloadingAddress = (transport) => {
     if (transport.delivery_data) {
       try {
@@ -199,143 +136,147 @@ export default function MultiTransportResponseForm({
     return 'Nie podano'
   }
 
+  // Obsługa wyboru transportów
+  const handleTransportToggle = (transport) => {
+    const isSelected = selectedTransports.find(t => t.id === transport.id)
+    
+    if (isSelected) {
+      // Usuń transport
+      const newSelected = selectedTransports.filter(t => t.id !== transport.id)
+      setSelectedTransports(newSelected)
+      
+      // Usuń z podziału kosztów
+      const newBreakdown = { ...priceBreakdown }
+      delete newBreakdown[transport.id]
+      setPriceBreakdown(newBreakdown)
+      
+      // Usuń z opcji transportu
+      const newOptions = { ...transportOptions }
+      delete newOptions[transport.id]
+      setTransportOptions(newOptions)
+    } else {
+      // Dodaj transport
+      setSelectedTransports([...selectedTransports, transport])
+      
+      // Domyślne opcje - oba punkty
+      setTransportOptions(prev => ({
+        ...prev,
+        [transport.id]: { loading: true, unloading: true }
+      }))
+    }
+    
+    // Wyczyść błędy przy zmianie wyboru
+    setErrors(prev => ({ ...prev, transports: null }))
+  }
+
+  // Obsługa opcji transportu (załadunek/rozładunek)
+  const handleTransportOptionToggle = (transportId, option) => {
+    setTransportOptions(prev => ({
+      ...prev,
+      [transportId]: {
+        ...prev[transportId],
+        [option]: !prev[transportId]?.[option]
+      }
+    }))
+  }
+
+  // Generowanie sekwencji trasy
+  const generateRouteSequence = () => {
+    const sequence = []
+    
+    selectedTransports.forEach(transport => {
+      const options = transportOptions[transport.id] || { loading: true, unloading: true }
+      
+      // Punkt załadunku
+      if (options.loading) {
+        sequence.push({
+          id: `${transport.id}-loading`,
+          transportId: transport.id,
+          type: 'loading',
+          city: getLoadingCity(transport),
+          company: getLoadingCompany(transport),
+          address: getLoadingAddress(transport),
+          mpk: transport.mpk || '',
+          orderNumber: transport.orderNumber || `#${transport.id}`
+        })
+      }
+      
+      // Punkt rozładunku
+      if (options.unloading) {
+        sequence.push({
+          id: `${transport.id}-unloading`,
+          transportId: transport.id,
+          type: 'unloading',
+          city: getUnloadingCity(transport),
+          company: getUnloadingCompany(transport),
+          address: getUnloadingAddress(transport),
+          mpk: transport.mpk || '',
+          orderNumber: transport.orderNumber || `#${transport.id}`
+        })
+      }
+    })
+    
+    setRouteSequence(sequence)
+  }
+
   // Zmiana kolejności w sekwencji trasy
   const moveRoutePoint = (index, direction) => {
     const newSequence = [...routeSequence]
     const targetIndex = direction === 'up' ? index - 1 : index + 1
     
     if (targetIndex >= 0 && targetIndex < newSequence.length) {
-      [newSequence[index], newSequence[targetIndex]] = [newSequence[targetIndex], newSequence[index]]
+      const temp = newSequence[index]
+      newSequence[index] = newSequence[targetIndex]
+      newSequence[targetIndex] = temp
       setRouteSequence(newSequence)
     }
   }
 
-  // Aktualizacja odległości trasy
+  // Aktualizacja odległości z Google Maps
   const updateRouteDistance = async () => {
-    console.log('🔄 Aktualizuję odległość trasy...')
-    console.log('Sekwencja trasy:', routeSequence)
-    
     if (routeSequence.length < 2) {
-      console.log('❌ Za mało punktów w trasie')
-      setTotalDistance(0)
+      setUpdateMessage('⚠ Potrzeba co najmniej 2 punktów do obliczenia trasy')
+      setTimeout(() => setUpdateMessage(''), 3000)
       return
     }
-  
+
     setIsUpdatingDistance(true)
-    
+    setUpdateMessage('🔄 Obliczam odległość...')
+
     try {
-      let totalDist = 0
-      
-      // Oblicz odległość sekwencyjnie między kolejnymi punktami używając Google Maps API
-      for (let i = 0; i < routeSequence.length - 1; i++) {
-        const currentPoint = routeSequence[i]
-        const nextPoint = routeSequence[i + 1]
-        
-        console.log(`📍 Obliczam: ${currentPoint.city} → ${nextPoint.city}`)
-        
-        try {
-          // Wywołaj API Google Maps Distance Matrix
-          const response = await fetch(`/api/distance?origins=${encodeURIComponent(currentPoint.city + ', Poland')}&destinations=${encodeURIComponent(nextPoint.city + ', Poland')}`)
-          
-          if (!response.ok) {
-            throw new Error(`API Error: ${response.status}`)
-          }
-          
-          const data = await response.json()
-          
-          if (data.status === 'OK' && 
-              data.rows && 
-              data.rows[0] && 
-              data.rows[0].elements && 
-              data.rows[0].elements[0] && 
-              data.rows[0].elements[0].status === 'OK') {
-            
-            const distanceKm = Math.round(data.rows[0].elements[0].distance.value / 1000)
-            totalDist += distanceKm
-            
-            console.log(`   ✅ ${currentPoint.city} → ${nextPoint.city}: ${distanceKm} km`)
-            
-          } else {
-            console.warn(`⚠ Nie udało się obliczyć odległości dla ${currentPoint.city} → ${nextPoint.city}, używam fallback`)
-            // Fallback - szacunkowa odległość 200km
-            totalDist += 200
-          }
-          
-        } catch (error) {
-          console.error(`❌ Błąd dla segmentu ${currentPoint.city} → ${nextPoint.city}:`, error)
-          // Fallback - szacunkowa odległość 200km
-          totalDist += 200
-        }
-        
-        // Dodaj małą przerwę żeby nie przeciążyć API
-        await new Promise(resolve => setTimeout(resolve, 100))
+      const waypoints = routeSequence.map(point => point.address)
+      const response = await fetch('/api/calculate-route-distance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ waypoints })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setTotalDistance(result.totalDistance)
+        setUpdateMessage(`✅ Zaktualizowano: ${result.totalDistance} km`)
+        setTimeout(() => setUpdateMessage(''), 5000)
+      } else {
+        throw new Error(result.error || 'Błąd obliczania odległości')
       }
-      
-      // Dodaj niewielką korektę dla poruszania się w tym samym mieście
-      let sameLocationPenalty = 0
-      for (let i = 0; i < routeSequence.length - 1; i++) {
-        const current = routeSequence[i]
-        const next = routeSequence[i + 1]
-        
-        // Jeśli to są różne typy punktów w tym samym mieście
-        if (current.city === next.city && current.type !== next.type) {
-          sameLocationPenalty += 5 // 5km na poruszanie się po mieście
-        }
-      }
-      
-      totalDist += sameLocationPenalty
-      
-      // Zaokrąglij do pełnych kilometrów
-      const finalDistance = Math.round(totalDist)
-      console.log('✅ Finalna odległość z Google Maps:', finalDistance, 'km')
-      console.log(`   Korekta za poruszanie w miastach: ${sameLocationPenalty} km`)
-      console.log(`   ŁĄCZNA ODLEGŁOŚĆ: ${finalDistance} km`)
-      
-      setTotalDistance(finalDistance)
-      
-      // Pokaż komunikat o aktualizacji
-      setUpdateMessage(`✓ Odległość zaktualizowana z Google Maps: ${finalDistance} km`)
-      setTimeout(() => setUpdateMessage(''), 4000)
-      
     } catch (error) {
-      console.error('❌ Błąd kalkulacji odległości:', error)
-      setUpdateMessage('⚠ Błąd aktualizacji odległości - sprawdź połączenie')
-      setTimeout(() => setUpdateMessage(''), 3000)
+      console.error('Błąd aktualizacji odległości:', error)
+      setUpdateMessage('⚠ Błąd obliczania odległości')
+      setTimeout(() => setUpdateMessage(''), 5000)
     } finally {
       setIsUpdatingDistance(false)
     }
   }
-  // Inicjalne wyliczenie odległości (tylko przy wyborze transportów)
-  useEffect(() => {
-    if (selectedTransports.length > 0 && routeSequence.length >= 2) {
-      // Podstawowa kalkulacja przy pierwszym załadowaniu
-      let initialDistance = 0
-      selectedTransports.forEach(transport => {
-        const distance = transport.distanceKm || transport.distance_km || 0
-        initialDistance += parseFloat(distance)
-      })
-      setTotalDistance(Math.round(initialDistance))
-    } else {
-      setTotalDistance(0)
-    }
-  }, [selectedTransports])
 
-  // Obsługa podziału kosztów
-  const handlePriceBreakdownChange = (transportId, value) => {
-    setPriceBreakdown(prev => ({
-      ...prev,
-      [transportId]: parseFloat(value) || 0
-    }))
-  }
-
-  // Podział kosztów po równo
-  const divideCostsEvenly = () => {
+  // Równy podział kosztów
+  const distributeEvenly = () => {
     const total = parseFloat(totalPrice) || 0
     const count = selectedTransports.length
     
     if (count === 0) return
     
-    const evenAmount = Math.round((total / count) * 100) / 100 // Zaokrąglij do 2 miejsc
+    const evenAmount = Math.round((total / count) * 100) / 100
     const newBreakdown = {}
     
     selectedTransports.forEach((transport, index) => {
@@ -349,34 +290,56 @@ export default function MultiTransportResponseForm({
     })
     
     setPriceBreakdown(newBreakdown)
+    setErrors(prev => ({ ...prev, priceBreakdown: null }))
   }
 
   // Sprawdzenie czy suma podziału kosztów jest prawidłowa
   const isBreakdownValid = () => {
+    if (selectedTransports.length <= 1) return true
+    
     const total = parseFloat(totalPrice) || 0
     const sum = Object.values(priceBreakdown).reduce((acc, val) => acc + (parseFloat(val) || 0), 0)
     return Math.abs(total - sum) < 0.01 // Tolerancja dla zaokrągleń
   }
 
   // Walidacja formularza
-  const isFormValid = () => {
-    return (
-      selectedTransports.length > 0 &&
-      driverInfo.name.trim() &&
-      driverInfo.phone.trim() &&
-      totalPrice &&
-      transportDate &&
-      (selectedTransports.length === 1 || isBreakdownValid())
-    )
+  const validateForm = () => {
+    const newErrors = {}
+    
+    if (selectedTransports.length === 0) {
+      newErrors.transports = 'Wybierz co najmniej jeden transport'
+    }
+    
+    if (!driverInfo.name.trim()) {
+      newErrors.driverName = 'Podaj imię i nazwisko kierowcy'
+    }
+    
+    if (!driverInfo.phone.trim()) {
+      newErrors.driverPhone = 'Podaj numer telefonu kierowcy'
+    }
+    
+    if (!totalPrice || parseFloat(totalPrice) <= 0) {
+      newErrors.totalPrice = 'Podaj prawidłową cenę całkowitą'
+    }
+    
+    if (!transportDate) {
+      newErrors.transportDate = 'Wybierz datę transportu'
+    }
+    
+    if (selectedTransports.length > 1 && !isBreakdownValid()) {
+      newErrors.priceBreakdown = 'Suma podziału kosztów musi równać się cenie całkowitej'
+    }
+    
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
   }
 
   // Obsługa wysłania formularza
   const handleSubmit = () => {
     console.log('📤 Wysyłanie formularza...')
     
-    if (!isFormValid()) {
-      console.log('❌ Formularz nie jest prawidłowy')
-      alert('Proszę wypełnić wszystkie wymagane pola')
+    if (!validateForm()) {
+      console.log('❌ Formularz zawiera błędy')
       return
     }
 
@@ -402,115 +365,160 @@ export default function MultiTransportResponseForm({
       onSubmit(responseData)
     } catch (error) {
       console.error('❌ Błąd podczas wysyłania:', error)
-      alert('Wystąpił błąd podczas wysyłania: ' + error.message)
+      setErrors({ submit: 'Wystąpił błąd podczas wysyłania: ' + error.message })
     }
   }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg max-w-7xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Nagłówek */}
-        <div className="flex items-center justify-between p-6 border-b">
-          <h2 className="text-xl font-semibold">Odpowiedź na zapytania spedycyjne</h2>
+      <div className="bg-white rounded-xl shadow-2xl max-w-7xl w-full max-h-[95vh] overflow-hidden flex flex-col">
+        
+        {/* NAGŁÓWEK */}
+        <div className="bg-gradient-to-r from-green-600 to-green-700 text-white p-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="bg-white bg-opacity-20 p-2 rounded-lg">
+              <Truck size={24} />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold">Odpowiedź na zapytania spedycyjne</h2>
+              <p className="text-green-100 text-sm">Wybierz transporty i przygotuj kompleksową odpowiedź</p>
+            </div>
+          </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
           >
-            <X size={20} />
+            <X size={24} />
           </button>
         </div>
 
-        {/* Główna zawartość */}
-        <div className="flex-1 overflow-auto p-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* GŁÓWNA ZAWARTOŚĆ */}
+        <div className="flex-1 overflow-auto">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 p-6">
             
-            {/* Lewa kolumna - Wybór transportów */}
+            {/* LEWA KOLUMNA - Wybór transportów */}
             <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-medium mb-4">Wybierz transporty do połączenia</h3>
-                <div className="space-y-3 max-h-60 overflow-y-auto">
-                  {availableTransports.map(transport => (
-                    <div
-                      key={transport.id}
-                      className={`p-4 border rounded-lg transition-colors ${
-                        selectedTransports.find(t => t.id === transport.id)
-                          ? 'bg-blue-50 border-blue-300'
-                          : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <input
-                          type="checkbox"
-                          checked={selectedTransports.find(t => t.id === transport.id) !== undefined}
-                          onChange={() => handleTransportToggle(transport)}
-                          className="mt-1"
-                        />
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Package size={16} className="text-blue-600" />
-                            <span className="font-medium">
-                              {transport.orderNumber || `Transport #${transport.id}`}
-                            </span>
-                            {transport.mpk && (
-                              <span className="text-sm text-gray-600">({transport.mpk})</span>
-                            )}
-                          </div>
-                          <div className="text-sm text-gray-600">
-                            <div className="flex items-center gap-2">
-                              <MapPin size={14} className="text-green-600" />
-                              <span>{getLoadingCity(transport)} → {getUnloadingCity(transport)}</span>
+              
+              {/* Lista dostępnych transportów */}
+              <div className="bg-gray-50 rounded-xl p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <Package size={20} />
+                    Dostępne transporty
+                  </h3>
+                  <span className="bg-blue-100 text-blue-800 text-sm font-medium px-3 py-1 rounded-full">
+                    {availableTransports.length} dostępnych
+                  </span>
+                </div>
+                
+                {errors.transports && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2">
+                    <AlertTriangle size={16} />
+                    {errors.transports}
+                  </div>
+                )}
+
+                <div className="space-y-3 max-h-80 overflow-y-auto">
+                  {availableTransports.map(transport => {
+                    const isSelected = selectedTransports.find(t => t.id === transport.id)
+                    return (
+                      <div
+                        key={transport.id}
+                        className={`p-4 border-2 rounded-xl transition-all cursor-pointer hover:shadow-md ${
+                          isSelected
+                            ? 'border-green-500 bg-green-50 shadow-sm'
+                            : 'border-gray-200 bg-white hover:border-gray-300'
+                        }`}
+                        onClick={() => handleTransportToggle(transport)}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start gap-3">
+                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center mt-0.5 ${
+                              isSelected ? 'border-green-500 bg-green-500' : 'border-gray-300'
+                            }`}>
+                              {isSelected && <Check size={12} className="text-white" />}
                             </div>
-                            {(transport.distanceKm || transport.distance_km) && (
-                              <div className="mt-1 text-xs">
-                                Odległość: {transport.distanceKm || transport.distance_km} km
+                            
+                            <div className="flex-1">
+                              <div className="font-medium text-gray-900 mb-1">
+                                {getLoadingCity(transport)} → {getUnloadingCity(transport)}
                               </div>
-                            )}
-                          </div>
-                          
-                          {/* Opcje wyboru punktów dla wybranego transportu */}
-                          {selectedTransports.find(t => t.id === transport.id) && (
-                            <div className="mt-3 p-2 bg-blue-50 rounded border">
-                              <div className="text-xs font-medium text-blue-800 mb-2">Które punkty dodać do trasy:</div>
-                              <div className="flex gap-4">
-                                <label className="flex items-center text-xs">
-                                  <input
-                                    type="checkbox"
-                                    checked={transportOptions[transport.id]?.loading || false}
-                                    onChange={() => handleTransportOptionToggle(transport.id, 'loading')}
-                                    className="mr-1"
-                                  />
-                                  <span className="text-green-600">⬆ Załadunek</span>
-                                </label>
-                                <label className="flex items-center text-xs">
-                                  <input
-                                    type="checkbox"
-                                    checked={transportOptions[transport.id]?.unloading || false}
-                                    onChange={() => handleTransportOptionToggle(transport.id, 'unloading')}
-                                    className="mr-1"
-                                  />
-                                  <span className="text-red-600">⬇ Rozładunek</span>
-                                </label>
+                              <div className="text-sm text-gray-600 space-y-1">
+                                <div className="flex items-center gap-4">
+                                  <span className="flex items-center gap-1">
+                                    <Building size={14} />
+                                    {transport.clientName}
+                                  </span>
+                                  {transport.mpk && (
+                                    <span className="flex items-center gap-1">
+                                      <Hash size={14} />
+                                      {transport.mpk}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Calendar size={14} />
+                                  {new Date(transport.deliveryDate).toLocaleDateString('pl-PL')}
+                                </div>
                               </div>
                             </div>
-                          )}
+                          </div>
                         </div>
+
+                        {/* Opcje załadunku/rozładunku */}
+                        {isSelected && (
+                          <div className="mt-4 pt-3 border-t border-green-200">
+                            <div className="text-xs text-gray-600 mb-2">Wybierz punkty do uwzględnienia:</div>
+                            <div className="flex gap-4">
+                              <label className="flex items-center text-sm cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={transportOptions[transport.id]?.loading || false}
+                                  onChange={(e) => {
+                                    e.stopPropagation()
+                                    handleTransportOptionToggle(transport.id, 'loading')
+                                  }}
+                                  className="mr-2 w-4 h-4 text-green-600 rounded"
+                                />
+                                <span className="text-green-700 font-medium">📦 Załadunek</span>
+                              </label>
+                              <label className="flex items-center text-sm cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={transportOptions[transport.id]?.unloading || false}
+                                  onChange={(e) => {
+                                    e.stopPropagation()
+                                    handleTransportOptionToggle(transport.id, 'unloading')
+                                  }}
+                                  className="mr-2 w-4 h-4 text-red-600 rounded"
+                                />
+                                <span className="text-red-700 font-medium">🚛 Rozładunek</span>
+                              </label>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
 
               {/* Podgląd trasy */}
               {routeSequence.length > 0 && (
-                <div>
+                <div className="bg-blue-50 rounded-xl p-6">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-medium">Sekwencja trasy</h3>
+                    <h3 className="text-lg font-semibold text-blue-900 flex items-center gap-2">
+                      <Route size={20} />
+                      Sekwencja trasy
+                    </h3>
                     <div className="flex items-center gap-3">
                       {updateMessage && (
                         <div className={`text-sm px-3 py-1 rounded-full border animate-pulse ${
                           updateMessage.includes('⚠') 
                             ? 'bg-red-100 text-red-700 border-red-200' 
-                            : 'bg-green-100 text-green-700 border-green-200'
+                            : updateMessage.includes('✅')
+                            ? 'bg-green-100 text-green-700 border-green-200'
+                            : 'bg-blue-100 text-blue-700 border-blue-200'
                         }`}>
                           {updateMessage}
                         </div>
@@ -518,7 +526,7 @@ export default function MultiTransportResponseForm({
                       <button
                         onClick={updateRouteDistance}
                         disabled={isUpdatingDistance}
-                        className="flex items-center gap-2 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm"
+                        className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
                       >
                         <RefreshCw size={14} className={isUpdatingDistance ? 'animate-spin' : ''} />
                         Aktualizuj odległość
@@ -526,47 +534,42 @@ export default function MultiTransportResponseForm({
                     </div>
                   </div>
                   
-                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
                     {routeSequence.map((point, index) => (
                       <div
                         key={point.id}
-                        className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg"
+                        className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm border border-blue-200"
                       >
-                        <div className={`w-3 h-3 rounded-full ${
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${
                           point.type === 'loading' ? 'bg-green-500' : 'bg-red-500'
-                        }`}></div>
+                        }`}>
+                          {index + 1}
+                        </div>
                         
                         <div className="flex-1">
                           <div className="font-medium text-sm">
-                            {point.type === 'loading' ? 'Załadunek' : 'Rozładunek'} - {point.city}
+                            {point.type === 'loading' ? '📦 Załadunek' : '🚛 Rozładunek'} - {point.company}
                           </div>
                           <div className="text-xs text-gray-600">
-                            {point.company}
-                            {point.mpk && ` (${point.mpk})`}
+                            {point.address}
                           </div>
+                          {point.mpk && (
+                            <div className="text-xs text-blue-600 font-medium">MPK: {point.mpk}</div>
+                          )}
                         </div>
-
-                        {/* Strzałki do zmiany kolejności */}
+                        
                         <div className="flex flex-col gap-1">
                           <button
                             onClick={() => moveRoutePoint(index, 'up')}
                             disabled={index === 0}
-                            className={`p-1 rounded ${
-                              index === 0 
-                                ? 'text-gray-300 cursor-not-allowed' 
-                                : 'text-gray-600 hover:bg-gray-200'
-                            }`}
+                            className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30"
                           >
                             <ArrowUp size={14} />
                           </button>
                           <button
                             onClick={() => moveRoutePoint(index, 'down')}
                             disabled={index === routeSequence.length - 1}
-                            className={`p-1 rounded ${
-                              index === routeSequence.length - 1
-                                ? 'text-gray-300 cursor-not-allowed'
-                                : 'text-gray-600 hover:bg-gray-200'
-                            }`}
+                            className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30"
                           >
                             <ArrowDown size={14} />
                           </button>
@@ -576,25 +579,10 @@ export default function MultiTransportResponseForm({
                   </div>
                   
                   {totalDistance > 0 && (
-                    <div className="mt-3 p-3 bg-blue-50 rounded-lg">
-                      <div className="flex justify-between items-center">
-                        <div className="text-sm text-blue-800">
-                          <strong>Łączna odległość: {totalDistance.toFixed(1)} km</strong>
-                          {updateMessage && (
-                            <div className="text-xs text-green-600 mt-1">{updateMessage}</div>
-                          )}
-                        </div>
-                        <button
-                          onClick={updateRouteDistance}
-                          disabled={isUpdatingDistance}
-                          className={`px-3 py-1 text-xs rounded-md transition-colors ${
-                            isUpdatingDistance 
-                              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                              : 'bg-blue-600 text-white hover:bg-blue-700'
-                          }`}
-                        >
-                          {isUpdatingDistance ? '🔄 Obliczam...' : '📍 Aktualizuj z Google Maps'}
-                        </button>
+                    <div className="mt-4 p-3 bg-blue-100 rounded-lg">
+                      <div className="flex items-center gap-2 text-blue-800 font-medium">
+                        <MapPin size={16} />
+                        Całkowita odległość: <span className="font-bold">{totalDistance} km</span>
                       </div>
                     </div>
                   )}
@@ -602,208 +590,289 @@ export default function MultiTransportResponseForm({
               )}
             </div>
 
-            {/* Prawa kolumna - Dane odpowiedzi */}
+            {/* PRAWA KOLUMNA - Dane odpowiedzi */}
             <div className="space-y-6">
               
-              {/* Dane kierowcy - bez wyboru z listy */}
-              <div>
-                <h3 className="text-lg font-medium mb-4">Dane kierowcy i pojazdu</h3>
+              {/* Dane kierowcy */}
+              <div className="bg-purple-50 rounded-xl p-6">
+                <h3 className="text-lg font-semibold text-purple-900 mb-4 flex items-center gap-2">
+                  <User size={20} />
+                  Dane kierowcy i pojazdu
+                </h3>
                 
-                <div className="grid grid-cols-1 gap-4">
+                <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      <User size={16} className="inline mr-2" />
                       Imię i nazwisko kierowcy *
                     </label>
                     <input
                       type="text"
                       value={driverInfo.name}
-                      onChange={(e) => setDriverInfo(prev => ({ ...prev, name: e.target.value }))}
-                      className="w-full p-3 border border-gray-300 rounded-lg"
+                      onChange={(e) => {
+                        setDriverInfo(prev => ({ ...prev, name: e.target.value }))
+                        setErrors(prev => ({ ...prev, driverName: null }))
+                      }}
+                      className={`w-full p-3 border rounded-lg transition-colors ${
+                        errors.driverName ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-purple-500'
+                      }`}
                       placeholder="Jan Kowalski"
                     />
+                    {errors.driverName && (
+                      <p className="text-red-600 text-sm mt-1">{errors.driverName}</p>
+                    )}
                   </div>
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      <Phone size={16} className="inline mr-2" />
                       Telefon *
                     </label>
                     <input
                       type="tel"
                       value={driverInfo.phone}
-                      onChange={(e) => setDriverInfo(prev => ({ ...prev, phone: e.target.value }))}
-                      className="w-full p-3 border border-gray-300 rounded-lg"
+                      onChange={(e) => {
+                        setDriverInfo(prev => ({ ...prev, phone: e.target.value }))
+                        setErrors(prev => ({ ...prev, driverPhone: null }))
+                      }}
+                      className={`w-full p-3 border rounded-lg transition-colors ${
+                        errors.driverPhone ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-purple-500'
+                      }`}
                       placeholder="+48 123 456 789"
                     />
+                    {errors.driverPhone && (
+                      <p className="text-red-600 text-sm mt-1">{errors.driverPhone}</p>
+                    )}
                   </div>
-
+                  
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      <Hash size={16} className="inline mr-2" />
                       Numer pojazdu
                     </label>
                     <input
                       type="text"
                       value={driverInfo.vehicleNumber}
                       onChange={(e) => setDriverInfo(prev => ({ ...prev, vehicleNumber: e.target.value }))}
-                      className="w-full p-3 border border-gray-300 rounded-lg"
-                      placeholder="WB 12345"
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:border-purple-500 transition-colors"
+                      placeholder="ABC 12345"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Cena i podział kosztów */}
-              <div>
-                <h3 className="text-lg font-medium mb-4">Cena transportu</h3>
+              {/* Dane finansowe */}
+              <div className="bg-yellow-50 rounded-xl p-6">
+                <h3 className="text-lg font-semibold text-yellow-900 mb-4 flex items-center gap-2">
+                  <DollarSign size={20} />
+                  Dane finansowe
+                </h3>
                 
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    <Calculator size={16} className="inline mr-2" />
-                    Łączna cena transportu (PLN) *
-                  </label>
-                  <input
-                    type="number"
-                    value={totalPrice}
-                    onChange={(e) => setTotalPrice(e.target.value)}
-                    className="w-full p-3 border border-gray-300 rounded-lg"
-                    placeholder="1000"
-                  />
-                </div>
-
-                {/* Podział kosztów dla połączonych transportów */}
-                {selectedTransports.length > 1 && (
+                <div className="space-y-4">
                   <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-sm font-medium text-gray-700">
-                        Podział kosztów między transporty *
-                      </label>
-                      <button
-                        onClick={divideCostsEvenly}
-                        className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition-colors"
-                      >
-                        <Zap size={14} />
-                        Podziel po równo
-                      </button>
-                    </div>
-                    <div className="space-y-2">
-                      {selectedTransports.map(transport => (
-                        <div key={transport.id} className="flex items-center gap-3">
-                          <span className="text-sm w-40 truncate">
-                            {transport.orderNumber || `Transport #${transport.id}`}
-                          </span>
-                          <input
-                            type="number"
-                            value={priceBreakdown[transport.id] || ''}
-                            onChange={(e) => handlePriceBreakdownChange(transport.id, e.target.value)}
-                            className="flex-1 p-2 border border-gray-300 rounded"
-                            placeholder="0"
-                          />
-                          <span className="text-sm text-gray-600">PLN</span>
-                        </div>
-                      ))}
-                    </div>
-                    
-                    {/* Sprawdzenie sumy */}
-                    {totalPrice && (
-                      <div className={`mt-2 text-sm ${
-                        isBreakdownValid() ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        Suma podziału: {Object.values(priceBreakdown).reduce((acc, val) => acc + (parseFloat(val) || 0), 0).toFixed(2)} PLN
-                        {isBreakdownValid() ? ' ✓' : ` (powinno być ${totalPrice} PLN)`}
-                      </div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Cena całkowita (PLN) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={totalPrice}
+                      onChange={(e) => {
+                        setTotalPrice(e.target.value)
+                        setErrors(prev => ({ ...prev, totalPrice: null }))
+                      }}
+                      className={`w-full p-3 border rounded-lg transition-colors ${
+                        errors.totalPrice ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-yellow-500'
+                      }`}
+                      placeholder="1500.00"
+                    />
+                    {errors.totalPrice && (
+                      <p className="text-red-600 text-sm mt-1">{errors.totalPrice}</p>
                     )}
                   </div>
-                )}
+
+                  {/* Podział kosztów dla wielu transportów */}
+                  {selectedTransports.length > 1 && (
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <label className="text-sm font-medium text-gray-700">
+                          Podział kosztów między transporty
+                        </label>
+                        <button
+                          onClick={distributeEvenly}
+                          className="px-3 py-1 bg-yellow-500 text-white text-sm rounded-lg hover:bg-yellow-600 transition-colors"
+                        >
+                          <Calculator size={14} className="inline mr-1" />
+                          Równo
+                        </button>
+                      </div>
+                      
+                      {errors.priceBreakdown && (
+                        <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2">
+                          <AlertTriangle size={16} />
+                          {errors.priceBreakdown}
+                        </div>
+                      )}
+                      
+                      <div className="space-y-2 max-h-40 overflow-y-auto">
+                        {selectedTransports.map(transport => (
+                          <div key={transport.id} className="flex items-center gap-3 p-3 bg-white rounded-lg border">
+                            <div className="flex-1">
+                              <div className="text-sm font-medium">
+                                {getLoadingCity(transport)} → {getUnloadingCity(transport)}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {transport.clientName}
+                              </div>
+                            </div>
+                            <div className="w-32">
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={priceBreakdown[transport.id] || ''}
+                                onChange={(e) => {
+                                  setPriceBreakdown(prev => ({
+                                    ...prev,
+                                    [transport.id]: e.target.value
+                                  }))
+                                  setErrors(prev => ({ ...prev, priceBreakdown: null }))
+                                }}
+                                className="w-full p-2 border border-gray-300 rounded text-sm"
+                                placeholder="0.00"
+                              />
+                            </div>
+                            <span className="text-sm text-gray-600">PLN</span>
+                          </div>
+                        ))}
+                      </div>
+                      
+                      <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+                        <div className="flex justify-between items-center text-sm">
+                          <span>Suma podziału:</span>
+                          <span className={`font-bold ${
+                            isBreakdownValid() ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            {Object.values(priceBreakdown).reduce((sum, val) => sum + (parseFloat(val) || 0), 0).toFixed(2)} PLN
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Data transportu */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Calendar size={16} className="inline mr-2" />
-                  Data transportu *
-                </label>
-                <input
-                  type="date"
-                  value={transportDate}
-                  onChange={(e) => setTransportDate(e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg"
-                />
-              </div>
-
-              {/* Opis towaru */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Package size={16} className="inline mr-2" />
-                  Opis towaru
-                </label>
-                <textarea
-                  value={cargoDescription}
-                  onChange={(e) => setCargoDescription(e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg h-20 resize-none"
-                  placeholder="Opis przewożonego towaru..."
-                />
-              </div>
-
-              {/* Waga */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Weight size={16} className="inline mr-2" />
-                  Łączna waga (kg)
-                </label>
-                <input
-                  type="number"
-                  value={totalWeight}
-                  onChange={(e) => setTotalWeight(e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg"
-                  placeholder="1000"
-                />
-              </div>
-
-              {/* Uwagi */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <FileText size={16} className="inline mr-2" />
-                  Uwagi
-                </label>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg h-20 resize-none"
-                  placeholder="Dodatkowe informacje..."
-                />
+              {/* Dodatkowe informacje */}
+              <div className="bg-gray-50 rounded-xl p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <FileText size={20} />
+                  Dodatkowe informacje
+                </h3>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Data transportu *
+                    </label>
+                    <input
+                      type="date"
+                      value={transportDate}
+                      onChange={(e) => {
+                        setTransportDate(e.target.value)
+                        setErrors(prev => ({ ...prev, transportDate: null }))
+                      }}
+                      className={`w-full p-3 border rounded-lg transition-colors ${
+                        errors.transportDate ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-gray-500'
+                      }`}
+                    />
+                    {errors.transportDate && (
+                      <p className="text-red-600 text-sm mt-1">{errors.transportDate}</p>
+                    )}
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Całkowita waga (kg)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={totalWeight}
+                      onChange={(e) => setTotalWeight(e.target.value)}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:border-gray-500 transition-colors"
+                      placeholder="1500.5"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Opis ładunku
+                    </label>
+                    <textarea
+                      value={cargoDescription}
+                      onChange={(e) => setCargoDescription(e.target.value)}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:border-gray-500 transition-colors"
+                      rows="3"
+                      placeholder="Szczegółowy opis przewożonego ładunku..."
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Uwagi dodatkowe
+                    </label>
+                    <textarea
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:border-gray-500 transition-colors"
+                      rows="3"
+                      placeholder="Dodatkowe uwagi do transportu..."
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Stopka */}
-        <div className="border-t p-6 flex items-center justify-between">
-          <div className="text-sm text-gray-600">
+        {/* STOPKA Z PRZYCISKAMI */}
+        <div className="bg-gray-50 border-t p-6 flex items-center justify-between">
+          <div className="flex items-center gap-4">
             {selectedTransports.length > 0 && (
-              <span>Wybrano {selectedTransports.length} transport{selectedTransports.length > 1 ? 'ów' : ''}</span>
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <CheckCircle2 size={16} className="text-green-600" />
+                Wybrano <span className="font-bold text-green-600">{selectedTransports.length}</span> 
+                transport{selectedTransports.length > 1 ? (selectedTransports.length > 4 ? 'ów' : 'y') : ''}
+              </div>
+            )}
+            
+            {errors.submit && (
+              <div className="text-red-600 text-sm flex items-center gap-2">
+                <AlertTriangle size={16} />
+                {errors.submit}
+              </div>
             )}
           </div>
           
           <div className="flex gap-3">
             <button
               onClick={onClose}
-              className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              className="px-6 py-3 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
             >
               Anuluj
             </button>
             <button
               onClick={handleSubmit}
-              disabled={!isFormValid()}
-              className={`px-6 py-2 rounded-lg transition-colors flex items-center gap-2 ${
-                isFormValid()
-                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+              disabled={selectedTransports.length === 0}
+              className={`px-8 py-3 rounded-lg transition-colors flex items-center gap-2 font-medium ${
+                selectedTransports.length > 0
+                  ? 'bg-green-600 text-white hover:bg-green-700 shadow-lg hover:shadow-xl'
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
               }`}
             >
-              <Check size={16} />
+              <Check size={18} />
               Wyślij odpowiedź
+              {selectedTransports.length > 0 && (
+                <span className="bg-green-500 text-white px-2 py-1 rounded-full text-xs ml-1">
+                  {selectedTransports.length}
+                </span>
+              )}
             </button>
           </div>
         </div>
