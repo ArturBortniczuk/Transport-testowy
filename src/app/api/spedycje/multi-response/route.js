@@ -19,7 +19,10 @@ export async function POST(request) {
       cargoDescription,
       totalWeight,
       totalDistance,
-      isMerged
+      isMerged,
+      // NOWE POLA
+      vehicleType,
+      transportType
     } = requestData
 
     // Walidacja danych
@@ -41,6 +44,23 @@ export async function POST(request) {
       return NextResponse.json({
         success: false,
         error: 'Wymagane pola nie zostały wypełnione'
+      }, { status: 400 })
+    }
+
+    // Walidacja nowych pól
+    if (!vehicleType) {
+      console.log('❌ Błąd: Brak rodzaju pojazdu')
+      return NextResponse.json({
+        success: false,
+        error: 'Rodzaj pojazdu jest wymagany'
+      }, { status: 400 })
+    }
+
+    if (!transportType) {
+      console.log('❌ Błąd: Brak rodzaju transportu')
+      return NextResponse.json({
+        success: false,
+        error: 'Rodzaj transportu jest wymagany'
       }, { status: 400 })
     }
 
@@ -71,7 +91,8 @@ export async function POST(request) {
       
       return NextResponse.json({
         success: false,
-        error: `Niektóre transporty zostały już przetworzone. Transporty o ID: ${nonNewTransports.map(t => `${t.id} (status: ${t.status})`).join(', ')}`
+        error: `Niektóre transporty zostały już przetworzone.
+Transporty o ID: ${nonNewTransports.map(t => `${t.id} (status: ${t.status})`).join(', ')}`
       }, { status: 400 })
     }
 
@@ -97,76 +118,41 @@ export async function POST(request) {
         totalWeight: totalWeight || null,
         newDeliveryDate: transportDate !== transport.delivery_date ? transportDate : null,
         dateChanged: transportDate !== transport.delivery_date,
+        isMerged: false,
+        // NOWE POLA
+        vehicleType: vehicleType,
+        transportType: transportType,
         routeSequence: routeSequence || []
       }
 
-      // Zaktualizuj transport
+      // Zaktualizuj transport w bazie
       const updateResult = await db('spedycje')
         .where('id', transportId)
         .update({
           status: 'responded',
           response_data: JSON.stringify(responseData),
-          driver_name: driverInfo.name,
-          driver_phone: driverInfo.phone,
-          vehicle_number: driverInfo.vehicleNumber || null,
-          transport_date: transportDate,
-          transport_price: parseFloat(totalPrice),
-          total_distance: totalDistance || null,
-          total_weight: totalWeight || null,
-          cargo_description: cargoDescription || null,
-          route_sequence: JSON.stringify(routeSequence || []),
-          is_merged: false,
           responded_at: currentTime,
           updated_at: currentTime
         })
 
-      console.log('✅ Transport zaktualizowany, affected rows:', updateResult)
+      console.log('✅ Transport zaktualizowany:', updateResult)
 
       return NextResponse.json({
         success: true,
-        message: 'Odpowiedź została zapisana'
+        message: 'Odpowiedź została zapisana',
+        transportId: transportId
       })
     }
 
-    // Jeśli jest to łączenie transportów (więcej niż 1)
-    else {
-      console.log('🔗 Zapisuję odpowiedź dla połączonych transportów:', transportIds.length)
+    // OBSŁUGA WIELU TRANSPORTÓW (MERGER)
+    console.log('🔄 Przetwarzanie połączonych transportów...')
+    
+    // Użyj transakcji do zapewnienia spójności danych
+    await db.transaction(async (trx) => {
+      const mainTransportId = transportIds[0] // Pierwszy transport jako główny
+      const mainTransport = allTransports.find(t => t.id === parseInt(mainTransportId))
       
-      // Pobierz szczegółowe dane wszystkich transportów
-      const transportsDetails = await db('spedycje')
-        .whereIn('id', transportIds)
-        .select('*')
-
-      console.log('📊 Szczegółowe dane transportów:', transportsDetails.length)
-
-      // Przygotuj dane dla głównego transportu (pierwszy z listy)
-      const mainTransportId = parseInt(transportIds[0])
-      const mainTransport = transportsDetails.find(t => t.id === mainTransportId)
-
-      // Przygotuj dane o połączonych transportach
-      const mergedTransportsData = {
-        originalTransports: transportsDetails.slice(1).map(transport => ({
-          id: transport.id,
-          orderNumber: transport.order_number,
-          mpk: transport.mpk,
-          location: transport.location,
-          location_data: transport.location_data,
-          delivery_data: transport.delivery_data,
-          loading_contact: transport.loading_contact,
-          unloading_contact: transport.unloading_contact,
-          documents: transport.documents,
-          notes: transport.notes,
-          goods_description: transport.goods_description,
-          clientName: transport.client_name || transport.responsible_person,
-          costAssigned: priceBreakdown ? (priceBreakdown[transport.id] || 0) : 0,
-          distance: transport.distance_km || 0
-        })),
-        totalDistance: totalDistance || 0,
-        mainTransportCost: priceBreakdown ? (priceBreakdown[mainTransportId] || 0) : parseFloat(totalPrice),
-        totalMergedCost: parseFloat(totalPrice),
-        mergedAt: currentTime,
-        mergedBy: 'system'
-      }
+      console.log('🎯 Główny transport:', mainTransportId)
 
       // Przygotuj dane odpowiedzi dla głównego transportu
       const mainResponseData = {
@@ -181,102 +167,88 @@ export async function POST(request) {
         newDeliveryDate: transportDate !== mainTransport.delivery_date ? transportDate : null,
         dateChanged: transportDate !== mainTransport.delivery_date,
         isMerged: true,
-        costBreakdown: priceBreakdown || {},
+        isMainMerged: true,
         mergedTransportIds: transportIds,
-        routeSequence: routeSequence || []
+        costBreakdown: priceBreakdown || {},
+        routeSequence: routeSequence || [],
+        // NOWE POLA
+        vehicleType: vehicleType,
+        transportType: transportType
       }
 
-      // Rozpocznij transakcję
-      await db.transaction(async (trx) => {
-        console.log('🔄 Rozpoczynam transakcję...')
-        
-        // Zaktualizuj główny transport
-        const mainUpdateResult = await trx('spedycje')
-          .where('id', mainTransportId)
+      // Zaktualizuj główny transport
+      const mainUpdateResult = await trx('spedycje')
+        .where('id', mainTransportId)
+        .update({
+          status: 'responded',
+          response_data: JSON.stringify(mainResponseData),
+          merged_transports: JSON.stringify({
+            isMain: true,
+            mergedTransportIds: transportIds,
+            mergedAt: currentTime
+          }),
+          responded_at: currentTime,
+          updated_at: currentTime
+        })
+
+      console.log('✅ Główny transport zaktualizowany:', mainUpdateResult)
+
+      // Zaktualizuj pozostałe transporty jako drugorzędne
+      const secondaryTransportIds = transportIds.slice(1)
+      
+      await Promise.all(secondaryTransportIds.map(async (transportId) => {
+        const transport = allTransports.find(t => t.id === parseInt(transportId))
+        const transportPrice = priceBreakdown ? 
+          parseFloat(priceBreakdown[transportId] || 0) : 
+          (priceBreakdown[transportId] || 0) : 0
+          
+        const otherResponseData = {
+          driverName: driverInfo.name,
+          driverPhone: driverInfo.phone,
+          vehicleNumber: driverInfo.vehicleNumber || null,
+          deliveryPrice: parseFloat(transportPrice),
+          distance: null,
+          notes: `Transport połączony z #${mainTransportId}. ${notes || ''}`.trim(),
+          cargoDescription: cargoDescription || null,
+          totalWeight: null,
+          newDeliveryDate: transportDate,
+          dateChanged: true,
+          isMerged: true,
+          isSecondaryMerged: true,
+          mainTransportId: mainTransportId,
+          costBreakdown: priceBreakdown || {},
+          routeSequence: routeSequence || [],
+          // NOWE POLA - kopiujemy z głównego transportu
+          vehicleType: vehicleType,
+          transportType: transportType
+        }
+
+        const otherUpdateResult = await trx('spedycje')
+          .where('id', transportId)
           .update({
             status: 'responded',
-            response_data: JSON.stringify(mainResponseData),
-            merged_transports: JSON.stringify(mergedTransportsData),
-            driver_name: driverInfo.name,
-            driver_phone: driverInfo.phone,
-            vehicle_number: driverInfo.vehicleNumber || null,
-            transport_date: transportDate,
-            transport_price: parseFloat(totalPrice),
-            total_distance: totalDistance || null,
-            total_weight: totalWeight || null,
-            cargo_description: cargoDescription || null,
-            route_sequence: JSON.stringify(routeSequence || []),
-            cost_breakdown: JSON.stringify(priceBreakdown || {}),
-            is_merged: true,
+            response_data: JSON.stringify(otherResponseData),
+            merged_transports: JSON.stringify({
+              isSecondary: true,
+              mainTransportId: mainTransportId,
+              mergedAt: currentTime
+            }),
             responded_at: currentTime,
             updated_at: currentTime
           })
 
-        console.log('✅ Główny transport zaktualizowany:', mainUpdateResult)
-
-        // Zaktualizuj pozostałe transporty jako połączone
-        const otherTransportIds = transportIds.slice(1).map(id => parseInt(id))
-        
-        for (const transportId of otherTransportIds) {
-          const transportPrice = priceBreakdown ? (priceBreakdown[transportId] || 0) : 0
-          
-          const otherResponseData = {
-            driverName: driverInfo.name,
-            driverPhone: driverInfo.phone,
-            vehicleNumber: driverInfo.vehicleNumber || null,
-            deliveryPrice: parseFloat(transportPrice),
-            distance: null,
-            notes: `Transport połączony z #${mainTransportId}. ${notes || ''}`.trim(),
-            cargoDescription: cargoDescription || null,
-            totalWeight: null,
-            newDeliveryDate: transportDate,
-            dateChanged: true,
-            isMerged: true,
-            isSecondaryMerged: true,
-            mainTransportId: mainTransportId,
-            costBreakdown: priceBreakdown || {},
-            routeSequence: routeSequence || []
-          }
-
-          const otherUpdateResult = await trx('spedycje')
-            .where('id', transportId)
-            .update({
-              status: 'responded',
-              response_data: JSON.stringify(otherResponseData),
-              merged_transports: JSON.stringify({
-                isSecondary: true,
-                mainTransportId: mainTransportId,
-                mergedAt: currentTime
-              }),
-              driver_name: driverInfo.name,
-              driver_phone: driverInfo.phone,
-              vehicle_number: driverInfo.vehicleNumber || null,
-              transport_date: transportDate,
-              transport_price: parseFloat(transportPrice),
-              total_distance: null,
-              total_weight: null,
-              cargo_description: cargoDescription || null,
-              route_sequence: JSON.stringify(routeSequence || []),
-              cost_breakdown: JSON.stringify(priceBreakdown || {}),
-              is_merged: true,
-              main_transport_id: mainTransportId,
-              responded_at: currentTime,
-              updated_at: currentTime
-            })
-
-          console.log(`✅ Transport ${transportId} zaktualizowany:`, otherUpdateResult)
-        }
-      })
+        console.log(`✅ Transport ${transportId} zaktualizowany:`, otherUpdateResult)
+      }))
 
       console.log('✅ Transakcja zakończona pomyślnie')
+    })
 
-      return NextResponse.json({
-        success: true,
-        message: `Odpowiedź została zapisana dla ${transportIds.length} połączonych transportów`,
-        mainTransportId: mainTransportId,
-        mergedCount: transportIds.length
-      })
-    }
+    return NextResponse.json({
+      success: true,
+      message: `Odpowiedź została zapisana dla ${transportIds.length} połączonych transportów`,
+      mainTransportId: transportIds[0],
+      mergedCount: transportIds.length
+    })
 
   } catch (error) {
     console.error('❌ Błąd zapisywania odpowiedzi zbiorczej:', error)
