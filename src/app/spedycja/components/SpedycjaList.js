@@ -235,11 +235,11 @@ export default function SpedycjaList({
 
   // Funkcja do pobierania informacji o osobie odpowiedzialnej
   const getResponsiblePersonInfo = (transport) => {
-    // Priorytet: osoba odpowiedzialna, potem osoba tworząca
+    // Jeśli jest osoba odpowiedzialna
     if (transport.responsiblePerson) {
       return {
         name: transport.responsiblePerson,
-        mpk: transport.mpk || '',
+        mpk: transport.mpk || transport.responsible_mpk || '', // Sprawdź różne pola MPK
         email: transport.responsibleEmail || ''
       };
     }
@@ -247,7 +247,7 @@ export default function SpedycjaList({
     // Fallback do osoby tworzącej
     return {
       name: transport.createdBy || 'Nie podano',
-      mpk: transport.mpk || '',
+      mpk: transport.mpk || transport.created_by_mpk || '', // Sprawdź MPK osoby tworzącej
       email: transport.createdByEmail || ''
     };
   }
