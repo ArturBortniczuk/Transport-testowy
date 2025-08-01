@@ -199,8 +199,7 @@ Transporty o ID: ${nonNewTransports.map(t => `${t.id} (status: ${t.status})`).jo
       await Promise.all(secondaryTransportIds.map(async (transportId) => {
         const transport = allTransports.find(t => t.id === parseInt(transportId))
         const transportPrice = priceBreakdown ? 
-          parseFloat(priceBreakdown[transportId] || 0) : 
-          (priceBreakdown[transportId] || 0) : 0
+          parseFloat(priceBreakdown[transportId] || 0) : 0
           
         const otherResponseData = {
           driverName: driverInfo.name,
