@@ -547,14 +547,21 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
 
     const fetchUsers = async () => {
       try {
-        const response = await fetch('/api/users');
+        // ZMIANA: używaj /api/users/list zamiast /api/users
+        const response = await fetch('/api/users/list');
         const data = await response.json();
+        
+        // Dodaj log żeby sprawdzić czy MPK się ładuje
+        console.log('📋 Załadowani użytkownicy:', data);
+        if (data && data.length > 0) {
+          console.log('📋 Przykład użytkownika z MPK:', data[0]);
+        }
+        
         setUsers(data);
       } catch (error) {
         console.error('Błąd pobierania użytkowników:', error);
       }
     };
-
     const fetchConstructions = async () => {
       try {
         const response = await fetch('/api/constructions');
