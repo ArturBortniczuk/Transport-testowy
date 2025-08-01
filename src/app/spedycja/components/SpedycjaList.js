@@ -140,25 +140,50 @@ export default function SpedycjaList({
   
   // Funkcja pomocnicza do określania nazwy firmy rozładunku
   const getUnloadingCompanyName = (transport) => {
-    // Sprawdź delivery_data (JSON)
+    // Sprawdź delivery_data (JSON) - priorytet 1
     if (transport.delivery_data) {
       try {
         const deliveryData = typeof transport.delivery_data === 'string' 
           ? JSON.parse(transport.delivery_data) 
           : transport.delivery_data
-        return deliveryData.company || transport.clientName || 'Nie podano'
+        if (deliveryData.company && deliveryData.company.trim()) {
+          return deliveryData.company.trim();
+        }
       } catch (e) {
         console.error('Błąd parsowania delivery_data:', e)
       }
     }
     
-    // Sprawdź standardowe pole delivery
-    if (transport.delivery && transport.delivery.company) {
-      return transport.delivery.company;
+    // Sprawdź standardowe pole delivery.company - priorytet 2
+    if (transport.delivery && transport.delivery.company && transport.delivery.company.trim()) {
+      return transport.delivery.company.trim();
     }
     
-    // Fallback do clientName
-    return transport.clientName || 'Nie podano'
+    // Sprawdź clientName - priorytet 3
+    if (transport.clientName && transport.clientName.trim()) {
+      return transport.clientName.trim();
+    }
+    
+    // Ostatnia opcja - sprawdź czy w delivery_data jest nazwa miasta jako firma
+    if (transport.delivery_data) {
+      try {
+        const deliveryData = typeof transport.delivery_data === 'string' 
+          ? JSON.parse(transport.delivery_data) 
+          : transport.delivery_data
+        if (deliveryData.city && deliveryData.city.trim()) {
+          return `Klient w ${deliveryData.city.trim()}`;
+        }
+      } catch (e) {
+        // Ignore error
+      }
+    }
+    
+    // Fallback do miasta z delivery
+    if (transport.delivery && transport.delivery.city) {
+      return `Klient w ${transport.delivery.city}`;
+    }
+    
+    return 'Nie podano'
   }
   
   // Funkcja pomocnicza do określania adresu załadunku
@@ -210,11 +235,11 @@ export default function SpedycjaList({
 
   // Funkcja do pobierania informacji o osobie odpowiedzialnej
   const getResponsiblePersonInfo = (transport) => {
-    // Sprawdź czy osoba odpowiedzialna jest ustawiona
-    if (transport.responsiblePerson && transport.mpk) {
+    // Priorytet: osoba odpowiedzialna, potem osoba tworząca
+    if (transport.responsiblePerson) {
       return {
         name: transport.responsiblePerson,
-        mpk: transport.mpk,
+        mpk: transport.mpk || '',
         email: transport.responsibleEmail || ''
       };
     }
@@ -223,25 +248,39 @@ export default function SpedycjaList({
     return {
       name: transport.createdBy || 'Nie podano',
       mpk: transport.mpk || '',
-      email: transport.createdByEmail || transport.responsibleEmail || ''
+      email: transport.createdByEmail || ''
     };
   }
 
   // Funkcja do pobierania odległości z odpowiedzi
   const getDistanceFromResponse = (transport) => {
     try {
+      // Sprawdź response_data
       if (transport.response_data) {
         const responseData = typeof transport.response_data === 'string' 
           ? JSON.parse(transport.response_data) 
           : transport.response_data;
-        return responseData.distance || responseData.totalDistance || null;
+        
+        // Sprawdź różne pola odległości w odpowiedzi
+        if (responseData.distance) return responseData.distance;
+        if (responseData.totalDistance) return responseData.totalDistance;
+        if (responseData.distanceKm) return responseData.distanceKm;
       }
     } catch (e) {
       console.error('Błąd parsowania response_data dla odległości:', e);
     }
     
-    // Sprawdź pole distance_km z bazy
-    return transport.distanceKm || null;
+    // Sprawdź bezpośrednie pole distance_km z bazy
+    if (transport.distanceKm && transport.distanceKm > 0) {
+      return transport.distanceKm;
+    }
+    
+    // Sprawdź alternatywne nazwy pól
+    if (transport.distance_km && transport.distance_km > 0) {
+      return transport.distance_km;
+    }
+    
+    return null;
   }
 
   // Funkcja do pobierania statusu transportu
@@ -307,7 +346,7 @@ export default function SpedycjaList({
   });
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="w-full max-w-none mx-auto space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-800">
           {showArchive ? 'Archiwum zapytań spedycyjnych' : 'Nowe zapytania spedycyjne'}
@@ -506,7 +545,14 @@ export default function SpedycjaList({
                                     <User size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
                                     <div>
                                       <span className="text-gray-500">Zgłosił:</span>
-                                      <span className="ml-1 text-gray-900">{zamowienie.createdBy || 'Nie podano'}</span>
+                                      <span className="ml-1 text-gray-900 font-medium">
+                                        {zamowienie.createdBy || 'Nie podano'}
+                                      </span>
+                                      {zamowienie.createdByEmail && (
+                                        <div className="text-xs text-gray-500 mt-0.5">
+                                          {zamowienie.createdByEmail}
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                   
@@ -514,10 +560,29 @@ export default function SpedycjaList({
                                     <User size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
                                     <div>
                                       <span className="text-gray-500">Odpowiedzialny:</span>
-                                      <span className="ml-1 text-gray-900">{responsibleInfo.name}</span>
+                                      <span className="ml-1 text-gray-900 font-medium">
+                                        {responsibleInfo.name}
+                                      </span>
                                       {responsibleInfo.mpk && (
-                                        <span className="ml-1 text-gray-500">({responsibleInfo.mpk})</span>
+                                        <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs font-medium">
+                                          MPK: {responsibleInfo.mpk}
+                                        </span>
                                       )}
+                                      {responsibleInfo.email && (
+                                        <div className="text-xs text-gray-500 mt-0.5">
+                                          {responsibleInfo.email}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="flex items-start gap-1">
+                                    <Calendar size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
+                                    <div>
+                                      <span className="text-gray-500">Data utworzenia:</span>
+                                      <span className="ml-1 text-gray-900">
+                                        {formatDate(zamowienie.createdAt)}
+                                      </span>
                                     </div>
                                   </div>
                                   
@@ -526,7 +591,21 @@ export default function SpedycjaList({
                                       <MapPin size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
                                       <div>
                                         <span className="text-gray-500">Odległość:</span>
-                                        <span className="ml-1 text-gray-900">{distance} km</span>
+                                        <span className="ml-1 text-gray-900 font-medium">
+                                          {distance} km
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {zamowienie.orderNumber && (
+                                    <div className="flex items-start gap-1">
+                                      <FileText size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
+                                      <div>
+                                        <span className="text-gray-500">Numer zamówienia:</span>
+                                        <span className="ml-1 text-gray-900 font-mono">
+                                          {zamowienie.orderNumber}
+                                        </span>
                                       </div>
                                     </div>
                                   )}
@@ -578,25 +657,75 @@ export default function SpedycjaList({
                                   {/* Informacje o odpowiedzi jeśli istnieją */}
                                   {zamowienie.response && (
                                     <div>
-                                      <div className="text-gray-500 mb-1">Odpowiedź:</div>
-                                      <div className="text-gray-900">
+                                      <div className="text-gray-500 mb-2 font-medium">Odpowiedź spedycyjna:</div>
+                                      <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-2">
                                         {zamowienie.response.driverName && (
-                                          <div>Kierowca: {zamowienie.response.driverName}</div>
+                                          <div className="flex items-center gap-2">
+                                            <User size={12} className="text-green-600" />
+                                            <span className="text-sm">
+                                              <span className="text-gray-600">Kierowca:</span>
+                                              <span className="ml-1 font-medium">{zamowienie.response.driverName}</span>
+                                            </span>
+                                          </div>
                                         )}
                                         {zamowienie.response.driverPhone && (
-                                          <div>Tel: {zamowienie.response.driverPhone}</div>
+                                          <div className="flex items-center gap-2">
+                                            <Phone size={12} className="text-green-600" />
+                                            <span className="text-sm">
+                                              <span className="text-gray-600">Tel:</span>
+                                              <span className="ml-1 font-mono">{zamowienie.response.driverPhone}</span>
+                                            </span>
+                                          </div>
                                         )}
                                         {zamowienie.response.vehicleNumber && (
-                                          <div>Pojazd: {zamowienie.response.vehicleNumber}</div>
+                                          <div className="flex items-center gap-2">
+                                            <Truck size={12} className="text-green-600" />
+                                            <span className="text-sm">
+                                              <span className="text-gray-600">Pojazd:</span>
+                                              <span className="ml-1 font-mono">{zamowienie.response.vehicleNumber}</span>
+                                            </span>
+                                          </div>
                                         )}
                                         {zamowienie.response.vehicleType && (
-                                          <div>Rodzaj pojazdu: {zamowienie.response.vehicleType}</div>
+                                          <div className="flex items-center gap-2">
+                                            <Truck size={12} className="text-green-600" />
+                                            <span className="text-sm">
+                                              <span className="text-gray-600">Rodzaj pojazdu:</span>
+                                              <span className="ml-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs font-medium">
+                                                {zamowienie.response.vehicleType}
+                                              </span>
+                                            </span>
+                                          </div>
                                         )}
                                         {zamowienie.response.transportType && (
-                                          <div>Rodzaj transportu: {zamowienie.response.transportType}</div>
+                                          <div className="flex items-center gap-2">
+                                            <Package size={12} className="text-green-600" />
+                                            <span className="text-sm">
+                                              <span className="text-gray-600">Rodzaj transportu:</span>
+                                              <span className="ml-1 px-2 py-0.5 bg-purple-100 text-purple-800 rounded text-xs font-medium">
+                                                {zamowienie.response.transportType}
+                                              </span>
+                                            </span>
+                                          </div>
                                         )}
                                         {zamowienie.response.deliveryPrice && (
-                                          <div>Cena: {zamowienie.response.deliveryPrice} PLN</div>
+                                          <div className="flex items-center gap-2">
+                                            <DollarSign size={12} className="text-green-600" />
+                                            <span className="text-sm">
+                                              <span className="text-gray-600">Cena:</span>
+                                              <span className="ml-1 font-bold text-green-700">
+                                                {zamowienie.response.deliveryPrice} PLN
+                                              </span>
+                                            </span>
+                                          </div>
+                                        )}
+                                        {zamowienie.response.notes && (
+                                          <div className="mt-2 pt-2 border-t border-green-200">
+                                            <span className="text-gray-600">Uwagi:</span>
+                                            <div className="mt-1 text-sm text-gray-700">
+                                              {zamowienie.response.notes}
+                                            </div>
+                                          </div>
                                         )}
                                       </div>
                                     </div>
