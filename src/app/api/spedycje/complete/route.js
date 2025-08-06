@@ -135,6 +135,66 @@ export async function POST(request) {
         completed_by: userId
       });
     
+    // Jeśli to transport łączony, musimy również utworzyć osobne rekordy w archiwum dla każdego z połączonych transportów
+    if (currentSpedycja.is_merged && currentSpedycja.merged_transports) {
+      try {
+        const mergedData = JSON.parse(currentSpedycja.merged_transports);
+        console.log('Transport łączony - tworzenie rekordów archiwum dla połączonych transportów:', mergedData);
+        
+        // Utwórz osobne rekordy archiwalne dla każdego z połączonych transportów
+        if (mergedData.originalTransports && Array.isArray(mergedData.originalTransports)) {
+          for (const originalTransport of mergedData.originalTransports) {
+            // Przygotuj dane dla rekordu archiwalnego
+            const archiveData = {
+              status: 'completed',
+              order_number: originalTransport.orderNumber,
+              created_by: currentSpedycja.created_by,
+              created_by_email: currentSpedycja.created_by_email,
+              responsible_person: originalTransport.responsiblePerson || currentSpedycja.responsible_person,
+              mpk: originalTransport.mpk,
+              location: originalTransport.location,
+              location_data: originalTransport.location_data,
+              delivery_data: originalTransport.delivery_data,
+              loading_contact: originalTransport.loading_contact,
+              unloading_contact: originalTransport.unloading_contact,
+              delivery_date: originalTransport.delivery_date,
+              documents: originalTransport.documents,
+              notes: originalTransport.notes,
+              client_name: originalTransport.client_name,
+              goods_description: originalTransport.goods_description,
+              responsible_constructions: originalTransport.responsible_constructions,
+              distance_km: originalTransport.distance || 0,
+              // Dane o cenie i odpowiedzi - używamy podzielonej ceny
+              response_data: JSON.stringify({
+                ...responseData,
+                deliveryPrice: originalTransport.costAssigned,
+                originalMainTransportId: id,
+                isFromMergedTransport: true,
+                mergedTransportDate: new Date().toISOString()
+              }),
+              completed_at: db.fn.now(),
+              completed_by: userId,
+              created_at: currentSpedycja.created_at,
+              // Oznacz jako pochodzący z łączonego transportu
+              is_merged: false, // To jest pojedynczy rekord z łączonego transportu
+              transport_type: currentSpedycja.transport_type,
+              vehicle_type: currentSpedycja.vehicle_type
+            };
+            
+            console.log('Tworzenie rekordu archiwum dla transportu:', originalTransport.id, archiveData);
+            
+            // Wstaw rekord do archiwum
+            await db('spedycje').insert(archiveData);
+          }
+          
+          console.log(`Utworzono ${mergedData.originalTransports.length} rekordów archiwum dla połączonych transportów`);
+        }
+      } catch (error) {
+        console.error('Błąd tworzenia rekordów archiwum dla połączonych transportów:', error);
+        // Nie przerywamy procesu - główny transport został już zakończony
+      }
+    }
+    
     if (updated === 0) {
       return NextResponse.json({ 
         success: false, 

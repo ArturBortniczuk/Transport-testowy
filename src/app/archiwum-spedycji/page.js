@@ -29,6 +29,7 @@ export default function ArchiwumSpedycjiPage() {
   const [vehicleTypeFilter, setVehicleTypeFilter] = useState('all')
   const [mergedFilter, setMergedFilter] = useState('all')
   const [drumsFilter, setDrumsFilter] = useState('all')
+  const [mergedOriginFilter, setMergedOriginFilter] = useState('all')
   
   // Lista dostępnych lat i miesięcy
   const currentYear = new Date().getFullYear()
@@ -92,7 +93,7 @@ export default function ArchiwumSpedycjiPage() {
           const uniqueMpks = [...new Set(data.spedycje.map(item => item.mpk).filter(Boolean))]
           setMpkOptions(uniqueMpks)
           
-          applyFilters(data.spedycje, selectedYear, selectedMonth, '', '', 'all', 'all', 'all', 'all')
+          applyFilters(data.spedycje, selectedYear, selectedMonth, '', '', 'all', 'all', 'all', 'all', 'all')
         } else {
           throw new Error(data.error || 'Błąd pobierania danych')
         }
@@ -117,7 +118,7 @@ export default function ArchiwumSpedycjiPage() {
           const uniqueMpks = [...new Set(transporty.map(item => item.mpk).filter(Boolean))]
           setMpkOptions(uniqueMpks)
           
-          applyFilters(transporty, selectedYear, selectedMonth, '', '', 'all', 'all', 'all', 'all')
+          applyFilters(transporty, selectedYear, selectedMonth, '', '', 'all', 'all', 'all', 'all', 'all')
         }
       } catch (localStorageError) {
         console.error('Błąd fallbacku localStorage:', localStorageError)
@@ -243,7 +244,7 @@ export default function ArchiwumSpedycjiPage() {
   }
 
   // Funkcja filtrująca transporty
-  const applyFilters = (transports, year, month, mpkValue, orderNumberValue, transportTypeValue, vehicleTypeValue, mergedValue, drumsValue) => {
+  const applyFilters = (transports, year, month, mpkValue, orderNumberValue, transportTypeValue, vehicleTypeValue, mergedValue, drumsValue, mergedOriginValue) => {
     if (!transports || transports.length === 0) {
       setFilteredArchiwum([])
       return
@@ -317,6 +318,15 @@ export default function ArchiwumSpedycjiPage() {
         }
       }
       
+      // Filtrowanie po pochodzeniu transportu (z łączonych czy nie)
+      if (mergedOriginValue && mergedOriginValue !== 'all') {
+        const isFromMerged = transport.response?.isFromMergedTransport || false
+        if ((mergedOriginValue === 'from_merged' && !isFromMerged) || 
+            (mergedOriginValue === 'original' && isFromMerged)) {
+          return false
+        }
+      }
+      
       return true
     })
     
@@ -326,8 +336,8 @@ export default function ArchiwumSpedycjiPage() {
 
   // Obsługa zmiany filtrów
   useEffect(() => {
-    applyFilters(archiwum, selectedYear, selectedMonth, mpkFilter, orderNumberFilter, transportTypeFilter, vehicleTypeFilter, mergedFilter, drumsFilter)
-  }, [selectedYear, selectedMonth, mpkFilter, orderNumberFilter, transportTypeFilter, vehicleTypeFilter, mergedFilter, drumsFilter, archiwum])
+    applyFilters(archiwum, selectedYear, selectedMonth, mpkFilter, orderNumberFilter, transportTypeFilter, vehicleTypeFilter, mergedFilter, drumsFilter, mergedOriginFilter)
+  }, [selectedYear, selectedMonth, mpkFilter, orderNumberFilter, transportTypeFilter, vehicleTypeFilter, mergedFilter, drumsFilter, mergedOriginFilter, archiwum])
 
   // Funkcja do usuwania transportu
   const handleDeleteTransport = async (id) => {
@@ -349,7 +359,7 @@ export default function ArchiwumSpedycjiPage() {
         // Usuń transport z lokalnego stanu
         const updatedArchiwum = archiwum.filter(transport => transport.id !== id)
         setArchiwum(updatedArchiwum)
-        applyFilters(updatedArchiwum, selectedYear, selectedMonth, mpkFilter, orderNumberFilter, transportTypeFilter, vehicleTypeFilter, mergedFilter, drumsFilter)
+        applyFilters(updatedArchiwum, selectedYear, selectedMonth, mpkFilter, orderNumberFilter, transportTypeFilter, vehicleTypeFilter, mergedFilter, drumsFilter, mergedOriginFilter)
         
         setDeleteStatus({ type: 'success', message: 'Transport został usunięty' })
         
@@ -382,6 +392,7 @@ export default function ArchiwumSpedycjiPage() {
     // Przygotuj dane do eksportu
     const dataToExport = filteredArchiwum.map(transport => {
       const distanceKm = transport.response?.distanceKm || transport.distanceKm || 0
+      // Dla transportów pochodzących z łączonego transportu, użyj podzielonej ceny
       const price = transport.response?.deliveryPrice || 0
       const pricePerKm = calculatePricePerKm(price, distanceKm)
       const responsibleInfo = getResponsibleInfo(transport)
@@ -414,7 +425,9 @@ export default function ArchiwumSpedycjiPage() {
         'Transport bębnów': transport.isDrumsTransport ? 'Tak' : 'Nie',
         'Typ pojazdu': transport.vehicleType || '',
         'Liczba połączonych transportów': transport.isMerged && transport.merged_transports ? 
-          (transport.merged_transports.originalTransports?.length || 0) : 0
+          (transport.merged_transports.originalTransports?.length || 0) : 0,
+        'Pochodzi z połączonego': transport.response?.isFromMergedTransport ? 'Tak' : 'Nie',
+        'ID głównego transportu': transport.response?.originalMainTransportId || ''
       }
     })
     
@@ -733,6 +746,23 @@ export default function ArchiwumSpedycjiPage() {
             </select>
           </div>
           
+          {/* Pochodzenie transportu */}
+          <div>
+            <label htmlFor="mergedOriginFilter" className="block text-sm font-medium text-gray-700 mb-1">
+              Pochodzenie
+            </label>
+            <select
+              id="mergedOriginFilter"
+              value={mergedOriginFilter}
+              onChange={(e) => setMergedOriginFilter(e.target.value)}
+              className={selectStyles}
+            >
+              <option value="all">Wszystkie</option>
+              <option value="original">Oryginalne</option>
+              <option value="from_merged">Z połączonych</option>
+            </select>
+          </div>
+          
           {/* Format eksportu */}
           <div className="flex flex-col justify-end">
             <label htmlFor="exportFormat" className="block text-sm font-medium text-gray-700 mb-1">
@@ -849,6 +879,11 @@ export default function ArchiwumSpedycjiPage() {
                               {transport.isMerged && (
                                 <span className="text-xs bg-emerald-200 text-emerald-800 px-1 py-0.5 rounded font-medium mb-1">
                                   ŁĄCZONY
+                                </span>
+                              )}
+                              {transport.response?.isFromMergedTransport && (
+                                <span className="text-xs bg-orange-200 text-orange-800 px-1 py-0.5 rounded font-medium mb-1">
+                                  CZĘŚĆ ŁĄCZONEGO
                                 </span>
                               )}
                               {transport.isDrumsTransport && (
@@ -1110,6 +1145,11 @@ export default function ArchiwumSpedycjiPage() {
                               <span className="font-medium text-gray-700">Cena transportu:</span>
                               <div className="font-semibold text-gray-900">
                                 {transport.response?.deliveryPrice ? `${transport.response.deliveryPrice} PLN` : 'Brak danych'}
+                                {transport.response?.isFromMergedTransport && (
+                                  <span className="ml-2 text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
+                                    Część z łączonego
+                                  </span>
+                                )}
                               </div>
                             </div>
                             <div>

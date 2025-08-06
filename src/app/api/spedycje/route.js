@@ -407,7 +407,7 @@ const mergeTransports = async (mainTransportId, transportsToMerge, costDistribut
       responsiblePerson: t.responsible_person,
       costAssigned: parseFloat(costDistribution[t.id] || 0),
       distance: t.distance_km || 0,
-      // Zachowaj wszystkie ważne dane
+      // Zachowaj wszystkie ważne dane dla archiwum
       location: t.location,
       location_data: t.location_data,
       delivery_data: t.delivery_data,
@@ -418,7 +418,12 @@ const mergeTransports = async (mainTransportId, transportsToMerge, costDistribut
       delivery_date: t.delivery_date,
       client_name: t.client_name,
       goods_description: t.goods_description,
-      responsible_constructions: t.responsible_constructions
+      responsible_constructions: t.responsible_constructions,
+      // Dodatkowe pola potrzebne dla archiwum
+      created_by: t.created_by,
+      created_by_email: t.created_by_email,
+      responsible_email: t.responsible_email,
+      created_at: t.created_at
     })),
     totalMergedCost: totalDistributedCost,
     mergedAt: new Date().toISOString(),
