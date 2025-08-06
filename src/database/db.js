@@ -428,6 +428,9 @@ const checkSpedycjeTable = async () => {
         // NOWE KOLUMNY dla rodzaju pojazdu i transportu
         table.string('vehicle_type');
         table.string('transport_type');
+        // NOWE KOLUMNY dla systemu łączonych transportów
+        table.boolean('is_merged').defaultTo(false);
+        table.boolean('is_drums_transport').defaultTo(false);
       });
       console.log('Utworzono tabelę spedycje z wszystkimi kolumnami');
       return;
@@ -460,7 +463,9 @@ const checkSpedycjeTable = async () => {
       { name: 'updated_at', type: 'timestamp', default: 'NOW()' },
       // NOWE KOLUMNY
       { name: 'vehicle_type', type: 'string' },
-      { name: 'transport_type', type: 'string' }
+      { name: 'transport_type', type: 'string' },
+      { name: 'is_merged', type: 'boolean', default: false },
+      { name: 'is_drums_transport', type: 'boolean', default: false }
     ];
 
     // Sprawdź i dodaj brakujące kolumny

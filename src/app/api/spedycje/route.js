@@ -466,7 +466,12 @@ const mergeTransports = async (mainTransportId, transportsToMerge, costDistribut
       merged_transports: JSON.stringify(mergedData),
       response_data: JSON.stringify(updatedResponseData),
       // Zaktualizuj odległość na rzeczywistą sekwencyjną
-      distance_km: realRouteDistance
+      distance_km: realRouteDistance,
+      // Oznacz jako transport łączony
+      is_merged: true,
+      // Ustaw typ pojazdu i transport na podstawie odpowiedzi
+      vehicle_type: responseData.vehicleType || null,
+      transport_type: responseData.transportType || 'standard'
     });
   });
 
@@ -665,7 +670,12 @@ export async function GET(request) {
         goodsDescription: item.goods_description,
         responsibleConstructions: item.responsible_constructions,
         // Dodaj dane o połączonych transportach
-        merged_transports: item.merged_transports
+        merged_transports: item.merged_transports,
+        // Dodaj nowe pola
+        vehicleType: item.vehicle_type,
+        transportType: item.transport_type,
+        isMerged: item.is_merged,
+        isDrumsTransport: item.is_drums_transport
       };
     });
     
@@ -886,6 +896,20 @@ export async function PUT(request) {
     // Jeśli odległość jest podana w odpowiedzi, zapiszmy ją również bezpośrednio
     if (responseData.distanceKm) {
       updateData.distance_km = responseData.distanceKm;
+    }
+    
+    // Dodaj informacje o typie pojazdu i transporcie
+    if (responseData.vehicleType) {
+      updateData.vehicle_type = responseData.vehicleType;
+    }
+    
+    if (responseData.transportType) {
+      updateData.transport_type = responseData.transportType;
+    }
+    
+    // Oznacz czy to transport bębnów
+    if (responseData.isDrumsTransport !== undefined) {
+      updateData.is_drums_transport = responseData.isDrumsTransport;
     }
     
     console.log('Dane odpowiedzi do zapisania:', updateData);

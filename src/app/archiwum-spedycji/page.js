@@ -24,6 +24,11 @@ export default function ArchiwumSpedycjiPage() {
   const [mpkFilter, setMpkFilter] = useState('')
   const [orderNumberFilter, setOrderNumberFilter] = useState('')
   const [mpkOptions, setMpkOptions] = useState([])
+  // Nowe filtry
+  const [transportTypeFilter, setTransportTypeFilter] = useState('all')
+  const [vehicleTypeFilter, setVehicleTypeFilter] = useState('all')
+  const [mergedFilter, setMergedFilter] = useState('all')
+  const [drumsFilter, setDrumsFilter] = useState('all')
   
   // Lista dostępnych lat i miesięcy
   const currentYear = new Date().getFullYear()
@@ -87,7 +92,7 @@ export default function ArchiwumSpedycjiPage() {
           const uniqueMpks = [...new Set(data.spedycje.map(item => item.mpk).filter(Boolean))]
           setMpkOptions(uniqueMpks)
           
-          applyFilters(data.spedycje, selectedYear, selectedMonth, '', '')
+          applyFilters(data.spedycje, selectedYear, selectedMonth, '', '', 'all', 'all', 'all', 'all')
         } else {
           throw new Error(data.error || 'Błąd pobierania danych')
         }
@@ -112,7 +117,7 @@ export default function ArchiwumSpedycjiPage() {
           const uniqueMpks = [...new Set(transporty.map(item => item.mpk).filter(Boolean))]
           setMpkOptions(uniqueMpks)
           
-          applyFilters(transporty, selectedYear, selectedMonth, '', '')
+          applyFilters(transporty, selectedYear, selectedMonth, '', '', 'all', 'all', 'all', 'all')
         }
       } catch (localStorageError) {
         console.error('Błąd fallbacku localStorage:', localStorageError)
@@ -238,7 +243,7 @@ export default function ArchiwumSpedycjiPage() {
   }
 
   // Funkcja filtrująca transporty
-  const applyFilters = (transports, year, month, mpkValue, orderNumberValue) => {
+  const applyFilters = (transports, year, month, mpkValue, orderNumberValue, transportTypeValue, vehicleTypeValue, mergedValue, drumsValue) => {
     if (!transports || transports.length === 0) {
       setFilteredArchiwum([])
       return
@@ -278,6 +283,40 @@ export default function ArchiwumSpedycjiPage() {
         }
       }
       
+      // Filtrowanie po typie transportu
+      if (transportTypeValue && transportTypeValue !== 'all') {
+        const transportType = transport.transportType || 'standard'
+        if (transportType !== transportTypeValue) {
+          return false
+        }
+      }
+      
+      // Filtrowanie po typie pojazdu
+      if (vehicleTypeValue && vehicleTypeValue !== 'all') {
+        const vehicleType = transport.vehicleType || ''
+        if (!vehicleType || vehicleType.toLowerCase() !== vehicleTypeValue.toLowerCase()) {
+          return false
+        }
+      }
+      
+      // Filtrowanie po transporcie łączonym
+      if (mergedValue && mergedValue !== 'all') {
+        const isMerged = transport.isMerged || false
+        if ((mergedValue === 'merged' && !isMerged) || 
+            (mergedValue === 'single' && isMerged)) {
+          return false
+        }
+      }
+      
+      // Filtrowanie po transporcie bębnów
+      if (drumsValue && drumsValue !== 'all') {
+        const isDrumsTransport = transport.isDrumsTransport || false
+        if ((drumsValue === 'drums' && !isDrumsTransport) || 
+            (drumsValue === 'normal' && isDrumsTransport)) {
+          return false
+        }
+      }
+      
       return true
     })
     
@@ -287,8 +326,8 @@ export default function ArchiwumSpedycjiPage() {
 
   // Obsługa zmiany filtrów
   useEffect(() => {
-    applyFilters(archiwum, selectedYear, selectedMonth, mpkFilter, orderNumberFilter)
-  }, [selectedYear, selectedMonth, mpkFilter, orderNumberFilter, archiwum])
+    applyFilters(archiwum, selectedYear, selectedMonth, mpkFilter, orderNumberFilter, transportTypeFilter, vehicleTypeFilter, mergedFilter, drumsFilter)
+  }, [selectedYear, selectedMonth, mpkFilter, orderNumberFilter, transportTypeFilter, vehicleTypeFilter, mergedFilter, drumsFilter, archiwum])
 
   // Funkcja do usuwania transportu
   const handleDeleteTransport = async (id) => {
@@ -310,7 +349,7 @@ export default function ArchiwumSpedycjiPage() {
         // Usuń transport z lokalnego stanu
         const updatedArchiwum = archiwum.filter(transport => transport.id !== id)
         setArchiwum(updatedArchiwum)
-        applyFilters(updatedArchiwum, selectedYear, selectedMonth, mpkFilter, orderNumberFilter)
+        applyFilters(updatedArchiwum, selectedYear, selectedMonth, mpkFilter, orderNumberFilter, transportTypeFilter, vehicleTypeFilter, mergedFilter, drumsFilter)
         
         setDeleteStatus({ type: 'success', message: 'Transport został usunięty' })
         
@@ -370,7 +409,12 @@ export default function ArchiwumSpedycjiPage() {
         'Opis towaru (zlecenie)': goodsData.description,
         'Waga towaru (zlecenie)': goodsData.weight,
         'Uwagi': transport.notes || '',
-        'Uwagi przewoźnika': transport.response?.adminNotes || ''
+        'Uwagi przewoźnika': transport.response?.adminNotes || '',
+        'Transport łączony': transport.isMerged ? 'Tak' : 'Nie',
+        'Transport bębnów': transport.isDrumsTransport ? 'Tak' : 'Nie',
+        'Typ pojazdu': transport.vehicleType || '',
+        'Liczba połączonych transportów': transport.isMerged && transport.merged_transports ? 
+          (transport.merged_transports.originalTransports?.length || 0) : 0
       }
     })
     
@@ -555,7 +599,7 @@ export default function ArchiwumSpedycjiPage() {
 
       {/* Filters Section */}
       <div className="mb-8 bg-white rounded-lg shadow p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
           {/* Rok */}
           <div>
             <label htmlFor="yearSelect" className="block text-sm font-medium text-gray-700 mb-1">
@@ -636,6 +680,59 @@ export default function ArchiwumSpedycjiPage() {
             </div>
           </div>
           
+          {/* Transport łączony */}
+          <div>
+            <label htmlFor="mergedFilter" className="block text-sm font-medium text-gray-700 mb-1">
+              Typ łączenia
+            </label>
+            <select
+              id="mergedFilter"
+              value={mergedFilter}
+              onChange={(e) => setMergedFilter(e.target.value)}
+              className={selectStyles}
+            >
+              <option value="all">Wszystkie</option>
+              <option value="merged">Łączone</option>
+              <option value="single">Pojedyncze</option>
+            </select>
+          </div>
+          
+          {/* Transport bębnów */}
+          <div>
+            <label htmlFor="drumsFilter" className="block text-sm font-medium text-gray-700 mb-1">
+              Transport bębnów
+            </label>
+            <select
+              id="drumsFilter"
+              value={drumsFilter}
+              onChange={(e) => setDrumsFilter(e.target.value)}
+              className={selectStyles}
+            >
+              <option value="all">Wszystkie</option>
+              <option value="drums">Bębny</option>
+              <option value="normal">Zwykły</option>
+            </select>
+          </div>
+          
+          {/* Typ pojazdu */}
+          <div>
+            <label htmlFor="vehicleTypeFilter" className="block text-sm font-medium text-gray-700 mb-1">
+              Typ pojazdu
+            </label>
+            <select
+              id="vehicleTypeFilter"
+              value={vehicleTypeFilter}
+              onChange={(e) => setVehicleTypeFilter(e.target.value)}
+              className={selectStyles}
+            >
+              <option value="all">Wszystkie</option>
+              <option value="tir">TIR</option>
+              <option value="bus">Bus</option>
+              <option value="truck">Ciężarówka</option>
+              <option value="van">Dostawczy</option>
+            </select>
+          </div>
+          
           {/* Format eksportu */}
           <div className="flex flex-col justify-end">
             <label htmlFor="exportFormat" className="block text-sm font-medium text-gray-700 mb-1">
@@ -711,8 +808,8 @@ export default function ArchiwumSpedycjiPage() {
                         </h3>
                       </div>
 
-                      {/* Informacje w trzech ramkach */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {/* Informacje w czterech ramkach */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center">
                           <Hash size={16} className="mr-2 text-blue-600" />
                           <div>
@@ -740,6 +837,29 @@ export default function ArchiwumSpedycjiPage() {
                               {responsibleInfo.type === 'construction' ? 'Budowa' : 'Odpowiedzialny'}
                             </span>
                             <span className="font-semibold text-gray-900 text-sm">{responsibleInfo.name}</span>
+                          </div>
+                        </div>
+                        
+                        {/* Nowy panel dla informacji o transporcie */}
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex items-center">
+                          <Truck size={16} className="mr-2 text-emerald-600" />
+                          <div>
+                            <span className="text-xs font-medium text-emerald-700 block">Typ transportu</span>
+                            <div className="flex flex-col">
+                              {transport.isMerged && (
+                                <span className="text-xs bg-emerald-200 text-emerald-800 px-1 py-0.5 rounded font-medium mb-1">
+                                  ŁĄCZONY
+                                </span>
+                              )}
+                              {transport.isDrumsTransport && (
+                                <span className="text-xs bg-yellow-200 text-yellow-800 px-1 py-0.5 rounded font-medium mb-1">
+                                  BĘBNY
+                                </span>
+                              )}
+                              <span className="font-semibold text-gray-900 text-sm">
+                                {transport.vehicleType || 'Standard'}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -979,6 +1099,11 @@ export default function ArchiwumSpedycjiPage() {
                               <span className="font-medium text-gray-700">Odległość:</span>
                               <div className="font-semibold text-gray-900">
                                 {transport.distanceKm || transport.response?.distanceKm || 0} km
+                                {transport.isMerged && (
+                                  <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                    Trasa łączona
+                                  </span>
+                                )}
                               </div>
                             </div>
                             <div>
@@ -996,9 +1121,67 @@ export default function ArchiwumSpedycjiPage() {
                                 }
                               </div>
                             </div>
+                            {transport.vehicleType && (
+                              <div>
+                                <span className="font-medium text-gray-700">Typ pojazdu:</span>
+                                <div className="font-semibold text-gray-900">{transport.vehicleType}</div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
+
+                      {/* Panel z informacjami o łączonych transportach */}
+                      {transport.isMerged && transport.merged_transports && (
+                        <div className="mb-6 bg-gradient-to-br from-cyan-50 to-cyan-100 p-5 rounded-xl shadow-sm border border-cyan-200">
+                          <h4 className="font-bold text-cyan-700 mb-4 pb-2 border-b border-cyan-300 flex items-center text-lg">
+                            <Truck size={20} className="mr-2" />
+                            Transporty łączone ({transport.merged_transports.originalTransports?.length || 0})
+                          </h4>
+                          {transport.merged_transports.originalTransports && transport.merged_transports.originalTransports.length > 0 && (
+                            <div className="space-y-3">
+                              {transport.merged_transports.originalTransports.map((originalTransport, index) => (
+                                <div key={originalTransport.id} className="bg-white p-3 rounded-lg border border-cyan-200">
+                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+                                    <div>
+                                      <span className="font-medium text-gray-700">Nr zamówienia:</span>
+                                      <div className="font-semibold text-gray-900">{originalTransport.orderNumber}</div>
+                                    </div>
+                                    <div>
+                                      <span className="font-medium text-gray-700">MPK:</span>
+                                      <div className="font-semibold text-gray-900">{originalTransport.mpk}</div>
+                                    </div>
+                                    <div>
+                                      <span className="font-medium text-gray-700">Koszt przypisany:</span>
+                                      <div className="font-semibold text-green-600">{originalTransport.costAssigned} PLN</div>
+                                    </div>
+                                  </div>
+                                  <div className="mt-2 text-sm">
+                                    <span className="font-medium text-gray-700">Trasa:</span>
+                                    <div className="font-semibold text-gray-900">{originalTransport.route}</div>
+                                  </div>
+                                </div>
+                              ))}
+                              <div className="mt-4 p-3 bg-cyan-200 rounded-lg">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+                                  <div>
+                                    <span className="font-medium text-cyan-800">Łączny koszt transportów:</span>
+                                    <div className="font-bold text-cyan-900">{transport.merged_transports.totalMergedCost} PLN</div>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-cyan-800">Koszt głównego transportu:</span>
+                                    <div className="font-bold text-cyan-900">{transport.merged_transports.mainTransportCost} PLN</div>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-cyan-800">Punkty trasy:</span>
+                                    <div className="font-bold text-cyan-900">{transport.merged_transports.routePointsCount}</div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* Panel z miejscami załadunku i rozładunku */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
