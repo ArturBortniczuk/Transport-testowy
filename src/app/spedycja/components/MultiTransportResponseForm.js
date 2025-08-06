@@ -56,6 +56,13 @@ export default function MultiTransportResponseForm({
     }
   }, [selectedTransports, transportOptions])
 
+  // Automatyczne wypełnienie równomiernego podziału gdy zmienia się liczba transportów
+  useEffect(() => {
+    if (selectedTransports.length > 1 && totalPrice && Object.keys(priceBreakdown).length === 0) {
+      distributeCostsEvenly()
+    }
+  }, [selectedTransports.length, totalPrice])
+
   // Funkcje pomocnicze do pobierania danych z transportów
   const getLoadingCity = (transport) => {
     if (transport.location === 'Magazyn Białystok') return 'Białystok'
@@ -252,6 +259,34 @@ export default function MultiTransportResponseForm({
     setRouteSequence(newSequence)
   }
 
+  // Obsługa zmiany podziału kosztów
+  const handlePriceBreakdownChange = (transportId, value) => {
+    const numericValue = parseFloat(value) || 0
+    setPriceBreakdown(prev => ({
+      ...prev,
+      [transportId]: numericValue
+    }))
+  }
+
+  // Równomierne rozłożenie kosztów
+  const distributeCostsEvenly = () => {
+    if (!totalPrice || selectedTransports.length === 0) return
+    
+    const pricePerTransport = parseFloat(totalPrice) / selectedTransports.length
+    const newBreakdown = {}
+    
+    selectedTransports.forEach(transport => {
+      newBreakdown[transport.id] = parseFloat(pricePerTransport.toFixed(2))
+    })
+    
+    setPriceBreakdown(newBreakdown)
+  }
+
+  // Obliczanie sumy przypisanych kosztów
+  const getTotalAssignedCost = () => {
+    return Object.values(priceBreakdown).reduce((sum, cost) => sum + (parseFloat(cost) || 0), 0)
+  }
+
   // Obliczanie łącznej odległości
   const calculateTotalDistance = async () => {
     if (routeSequence.length < 2) {
@@ -316,6 +351,16 @@ export default function MultiTransportResponseForm({
 
     if (!transportType) {
       newErrors.transportType = 'Wybierz rodzaj transportu'
+    }
+
+    // Walidacja podziału kosztów dla wielu transportów
+    if (selectedTransports.length > 1) {
+      const totalAssigned = getTotalAssignedCost()
+      const totalPriceNum = parseFloat(totalPrice) || 0
+      
+      if (Math.abs(totalAssigned - totalPriceNum) > 0.01) {
+        newErrors.priceBreakdown = `Suma przypisanych kosztów (${totalAssigned.toFixed(2)} PLN) musi być równa łącznej cenie (${totalPriceNum.toFixed(2)} PLN)`
+      }
     }
     
     setErrors(newErrors)
@@ -664,6 +709,79 @@ export default function MultiTransportResponseForm({
                 </div>
               </div>
               
+              {/* Podział kosztów - tylko dla wielu transportów */}
+              {selectedTransports.length > 1 && (
+                <div className="bg-orange-50 rounded-xl p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                      <Calculator size={20} />
+                      Podział kosztów ({selectedTransports.length} transportów)
+                    </h3>
+                    <button
+                      onClick={distributeCostsEvenly}
+                      className="flex items-center gap-2 px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 text-sm"
+                      type="button"
+                    >
+                      <RefreshCw size={16} />
+                      Rozłóż równomiernie
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    {selectedTransports.map((transport) => (
+                      <div key={transport.id} className="flex items-center justify-between p-3 bg-white rounded-lg border">
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-900">
+                            {getLoadingCity(transport)} → {getUnloadingCity(transport)}
+                          </div>
+                          <div className="text-sm text-gray-600">
+                            {transport.orderNumber || `Transport ${transport.id}`}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={priceBreakdown[transport.id] || ''}
+                            onChange={(e) => handlePriceBreakdownChange(transport.id, e.target.value)}
+                            className="w-24 px-2 py-1 border border-gray-300 rounded text-sm text-right"
+                            placeholder="0.00"
+                          />
+                          <span className="text-sm text-gray-600">PLN</span>
+                        </div>
+                      </div>
+                    ))}
+                    
+                    {/* Podsumowanie podziału */}
+                    <div className="pt-3 border-t border-orange-200">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600">Suma przypisanych kosztów:</span>
+                        <span className={`font-medium ${getTotalAssignedCost() === parseFloat(totalPrice || 0) ? 'text-green-600' : 'text-red-600'}`}>
+                          {getTotalAssignedCost().toFixed(2)} PLN
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600">Łączna cena transportu:</span>
+                        <span className="font-medium text-gray-900">{parseFloat(totalPrice || 0).toFixed(2)} PLN</span>
+                      </div>
+                      {Math.abs(getTotalAssignedCost() - parseFloat(totalPrice || 0)) > 0.01 && (
+                        <div className="flex items-center justify-between text-sm text-red-600 mt-1">
+                          <span>Różnica:</span>
+                          <span className="font-medium">{(parseFloat(totalPrice || 0) - getTotalAssignedCost()).toFixed(2)} PLN</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Błąd walidacji podziału kosztów */}
+                  {errors.priceBreakdown && (
+                    <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                      {errors.priceBreakdown}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Szczegóły transportu */}
               <div className="bg-gray-50 rounded-xl p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">

@@ -2,6 +2,28 @@
 import { NextResponse } from 'next/server';
 import db from '@/database/db';
 
+// Helper function to get transport route
+const getTransportRoute = (transport) => {
+  let start = transport.location || 'Nie podano';
+  let end = 'Nie podano';
+  
+  // Parse delivery data
+  if (transport.delivery_data) {
+    try {
+      const deliveryData = typeof transport.delivery_data === 'string' 
+        ? JSON.parse(transport.delivery_data) 
+        : transport.delivery_data;
+      end = deliveryData.city || 'Nie podano';
+    } catch (e) {
+      // Ignore parsing errors
+    }
+  } else if (transport.delivery && transport.delivery.city) {
+    end = transport.delivery.city;
+  }
+  
+  return `${start} → ${end}`;
+};
+
 // Funkcja pomocnicza do weryfikacji sesji
 const validateSession = async (authToken) => {
   if (!authToken) {
@@ -125,6 +147,58 @@ export async function POST(request) {
     console.log('Aktualizacja zlecenia z ID:', id);
     console.log('Dane odpowiedzi do zapisania:', responseData);
     
+    // Sprawdź czy to transport łączony na podstawie response_data
+    let isMergedTransport = false;
+    let mergedData = null;
+    
+    try {
+      const responseData = currentSpedycja.response_data ? 
+        JSON.parse(currentSpedycja.response_data) : {};
+      
+      isMergedTransport = responseData.isMerged && responseData.isMainMerged;
+      
+      if (isMergedTransport) {
+        // Pobierz wszystkie transporty które były połączone
+        const mergedTransportIds = responseData.mergedTransportIds || [];
+        console.log('Transport łączony - pobieranie szczegółów dla ID:', mergedTransportIds);
+        
+        const allMergedTransports = await db('spedycje')
+          .whereIn('id', mergedTransportIds)
+          .select('*');
+        
+        mergedData = {
+          originalTransports: allMergedTransports.map(transport => ({
+            id: transport.id,
+            orderNumber: transport.order_number,
+            mpk: transport.mpk,
+            route: getTransportRoute(transport),
+            costAssigned: responseData.costBreakdown ? 
+              parseFloat(responseData.costBreakdown[transport.id] || 0) : 
+              parseFloat(responseData.deliveryPrice || 0) / mergedTransportIds.length,
+            distance: transport.distance_km || 0,
+            location: transport.location,
+            location_data: transport.location_data,
+            delivery_data: transport.delivery_data,
+            documents: transport.documents,
+            notes: transport.notes,
+            loading_contact: transport.loading_contact,
+            unloading_contact: transport.unloading_contact,
+            delivery_date: transport.delivery_date,
+            client_name: transport.client_name,
+            goods_description: transport.goods_description,
+            responsible_constructions: transport.responsible_constructions,
+            created_by: transport.created_by,
+            created_by_email: transport.created_by_email,
+            responsible_email: transport.responsible_email,
+            created_at: transport.created_at,
+            responsiblePerson: transport.responsible_person
+          }))
+        };
+      }
+    } catch (error) {
+      console.error('Błąd parsowania danych połączonego transportu:', error);
+    }
+    
     // Aktualizujemy rekord w bazie
     const updated = await db('spedycje')
       .where('id', id)
@@ -132,13 +206,17 @@ export async function POST(request) {
         status: 'completed',
         response_data: JSON.stringify(responseData),
         completed_at: db.fn.now(),
-        completed_by: userId
+        completed_by: userId,
+        // Dodaj dane o połączonych transportach do głównego rekordu
+        ...(isMergedTransport && mergedData ? {
+          merged_transports: JSON.stringify(mergedData),
+          is_merged: true
+        } : {})
       });
     
     // Jeśli to transport łączony, musimy również utworzyć osobne rekordy w archiwum dla każdego z połączonych transportów
-    if (currentSpedycja.is_merged && currentSpedycja.merged_transports) {
+    if (isMergedTransport && mergedData) {
       try {
-        const mergedData = JSON.parse(currentSpedycja.merged_transports);
         console.log('Transport łączony - tworzenie rekordów archiwum dla połączonych transportów:', mergedData);
         
         // Utwórz osobne rekordy archiwalne dla każdego z połączonych transportów
@@ -150,7 +228,8 @@ export async function POST(request) {
               order_number: originalTransport.orderNumber,
               created_by: currentSpedycja.created_by,
               created_by_email: currentSpedycja.created_by_email,
-              responsible_person: originalTransport.responsiblePerson || currentSpedycja.responsible_person,
+              responsible_person: originalTransport.responsiblePerson || originalTransport.responsible_person || currentSpedycja.responsible_person,
+              responsible_email: originalTransport.responsible_email,
               mpk: originalTransport.mpk,
               location: originalTransport.location,
               location_data: originalTransport.location_data,
@@ -188,6 +267,23 @@ export async function POST(request) {
           }
           
           console.log(`Utworzono ${mergedData.originalTransports.length} rekordów archiwum dla połączonych transportów`);
+          
+          // Oznacz wszystkie drugorzędne transporty jako completed
+          const secondaryTransportIds = mergedData.originalTransports
+            .map(t => t.id)
+            .filter(transportId => transportId !== id); // Exclude main transport
+          
+          if (secondaryTransportIds.length > 0) {
+            const secondaryUpdate = await db('spedycje')
+              .whereIn('id', secondaryTransportIds)
+              .update({
+                status: 'completed',
+                completed_at: db.fn.now(),
+                completed_by: userId
+              });
+            
+            console.log(`Oznaczono ${secondaryUpdate} drugorzędnych transportów jako completed`);
+          }
         }
       } catch (error) {
         console.error('Błąd tworzenia rekordów archiwum dla połączonych transportów:', error);
