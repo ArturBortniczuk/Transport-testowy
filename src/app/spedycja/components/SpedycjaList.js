@@ -3,7 +3,7 @@ import React, { useState } from 'react'
 import { format } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { generateCMR } from '@/lib/utils/generateCMR'
-import { Truck, Package, MapPin, Phone, FileText, Calendar, DollarSign, User, Clipboard, ArrowRight, ChevronDown, ChevronUp, AlertCircle, Edit, Pencil, Building, ShoppingBag, Weight, Bot, Link as LinkIcon, Unlink, Copy, ExternalLink, CheckCircle, Clock } from 'lucide-react'
+import { Truck, Package, MapPin, Phone, FileText, Calendar, DollarSign, User, Clipboard, ArrowRight, ChevronDown, ChevronUp, AlertCircle, Edit, Pencil, Building, ShoppingBag, Weight, Bot, Link as LinkIcon, Unlink, Copy, ExternalLink, CheckCircle, Clock, Container } from 'lucide-react'
 import MultiTransportResponseForm from './MultiTransportResponseForm'
 
 export default function SpedycjaList({ 
@@ -336,6 +336,32 @@ export default function SpedycjaList({
     return `${loadingCity} → ${deliveryCity}`;
   }
 
+  // Funkcja do pobierania odpowiedniej ikony na podstawie typu transportu
+  const getTransportIcon = (transport) => {
+    try {
+      // Sprawdź response_data dla typu transportu
+      if (transport.response_data) {
+        const responseData = typeof transport.response_data === 'string' 
+          ? JSON.parse(transport.response_data) 
+          : transport.response_data;
+        
+        if (responseData.transportType === 'opakowaniowy') {
+          return { icon: Container, color: 'text-orange-600', bgColor: 'bg-orange-100' };
+        }
+      }
+      
+      // Sprawdź standardowe pole response
+      if (transport.response?.transportType === 'opakowaniowy') {
+        return { icon: Container, color: 'text-orange-600', bgColor: 'bg-orange-100' };
+      }
+      
+      // Domyślna ikona ciężarówki
+      return { icon: Truck, color: 'text-blue-600', bgColor: 'bg-blue-100' };
+    } catch (e) {
+      return { icon: Truck, color: 'text-blue-600', bgColor: 'bg-blue-100' };
+    }
+  }
+
   // Filtruj zamówienia na podstawie trybu archiwum
   const filteredSpedycje = zamowienia.filter(zamowienie => {
     if (showArchive) {
@@ -353,7 +379,7 @@ export default function SpedycjaList({
         </h1>
         
         {/* Przycisk odpowiedzi zbiorczej - tylko dla nowych zapytań */}
-        {!showArchive && filteredSpedycje.length > 0 && (
+        {!showArchive && filteredSpedycje.filter(s => s.status === 'new').length > 0 && (
           <button
             onClick={() => setShowMultiResponseForm(true)}
             className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
@@ -361,7 +387,7 @@ export default function SpedycjaList({
             <Truck size={20} />
             Odpowiedz
             <span className="bg-green-500 text-white px-2 py-1 rounded-full text-xs">
-              {filteredSpedycje.length}
+              {filteredSpedycje.filter(s => s.status === 'new').length}
             </span>
           </button>
         )}
@@ -372,7 +398,7 @@ export default function SpedycjaList({
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <MultiTransportResponseForm
-              availableTransports={filteredSpedycje}
+              availableTransports={filteredSpedycje.filter(transport => transport.status === 'new')}
               onSubmit={handleMultiTransportResponse}
               onClose={() => setShowMultiResponseForm(false)}
             />
@@ -463,9 +489,15 @@ export default function SpedycjaList({
                         {/* Trasa */}
                         <td className="px-6 py-5">
                           <div className="flex items-center gap-3">
-                            <div className="bg-blue-100 rounded-lg p-2">
-                              <Truck size={16} className="text-blue-600" />
-                            </div>
+                            {(() => {
+                              const iconInfo = getTransportIcon(zamowienie);
+                              const IconComponent = iconInfo.icon;
+                              return (
+                                <div className={`${iconInfo.bgColor} rounded-lg p-2`}>
+                                  <IconComponent size={16} className={iconInfo.color} />
+                                </div>
+                              );
+                            })()}
                             <div>
                               <div className="font-semibold text-gray-900 text-sm">
                                 {getLoadingCity(zamowienie)} → {getDeliveryCity(zamowienie)}
@@ -620,14 +652,18 @@ export default function SpedycjaList({
                                   <div className="flex items-start gap-1">
                                     <User size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
                                     <div>
-                                      <span className="text-gray-500">Odpowiedzialny:</span>
-                                      <span className="ml-1 text-gray-900 font-medium">
-                                        {responsibleInfo.name}
-                                      </span>
-                                      {responsibleInfo.mpk && (
-                                        <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs font-medium">
-                                          MPK: {responsibleInfo.mpk}
+                                      <div>
+                                        <span className="text-gray-500">Odpowiedzialny:</span>
+                                        <span className="ml-1 text-gray-900 font-medium">
+                                          {responsibleInfo.name}
                                         </span>
+                                      </div>
+                                      {responsibleInfo.mpk && (
+                                        <div className="mt-1">
+                                          <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs font-medium">
+                                            MPK: {responsibleInfo.mpk}
+                                          </span>
+                                        </div>
                                       )}
                                       {responsibleInfo.email && (
                                         <div className="text-xs text-gray-500 mt-0.5">
@@ -670,6 +706,30 @@ export default function SpedycjaList({
                                       </div>
                                     </div>
                                   )}
+                                  
+                                  {zamowienie.documents && (
+                                    <div className="flex items-start gap-1">
+                                      <FileText size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
+                                      <div>
+                                        <span className="text-gray-500">Dokumenty:</span>
+                                        <span className="ml-1 text-gray-900">
+                                          {zamowienie.documents}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {zamowienie.notes && (
+                                    <div className="flex items-start gap-1">
+                                      <FileText size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
+                                      <div>
+                                        <span className="text-gray-500">Uwagi:</span>
+                                        <div className="ml-1 text-gray-900 text-sm">
+                                          {zamowienie.notes}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                               
@@ -695,30 +755,16 @@ export default function SpedycjaList({
                                 </div>
                               </div>
                               
-                              {/* Sekcja 3: Dodatkowe informacje */}
+                              {/* Sekcja 3: Odpowiedź */}
                               <div className="bg-white rounded-lg p-4 shadow-sm border border-purple-200">
                                 <h4 className="text-sm font-bold text-purple-900 border-b border-purple-200 pb-2 mb-3 flex items-center gap-2">
-                                  <FileText size={16} className="text-purple-600" />
-                                  Dodatkowe informacje
+                                  <CheckCircle size={16} className="text-purple-600" />
+                                  Odpowiedź spedycyjna
                                 </h4>
                                 
                                 <div className="space-y-2 text-sm">
-                                  {zamowienie.notes && (
-                                    <div>
-                                      <div className="text-gray-500 mb-1">Uwagi:</div>
-                                      <div className="text-gray-900">{zamowienie.notes}</div>
-                                    </div>
-                                  )}
-                                  
-                                  {zamowienie.documents && (
-                                    <div>
-                                      <div className="text-gray-500 mb-1">Dokumenty:</div>
-                                      <div className="text-gray-900">{zamowienie.documents}</div>
-                                    </div>
-                                  )}
-                                  
                                   {/* Informacje o odpowiedzi jeśli istnieją */}
-                                  {zamowienie.response && (
+                                  {zamowienie.response ? (
                                     <div>
                                       <div className="text-gray-500 mb-2 font-medium">Odpowiedź spedycyjna:</div>
                                       <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-2">
@@ -844,6 +890,15 @@ export default function SpedycjaList({
                                             return null;
                                           }
                                         })()}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="text-center py-4">
+                                      <div className="bg-gray-100 rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-2">
+                                        <Clock size={24} className="text-gray-400" />
+                                      </div>
+                                      <div className="text-gray-500 text-sm">
+                                        Oczekuje na odpowiedź
                                       </div>
                                     </div>
                                   )}

@@ -199,97 +199,28 @@ export async function POST(request) {
       console.error('Błąd parsowania danych połączonego transportu:', error);
     }
     
-    // Aktualizujemy rekord w bazie
+    // Sprawdzamy czy potrzebujemy oznaczić połączone transporty jako completed
+    let transportsToComplete = [id]; // Zawsze oznaczamy główny transport
+    
+    if (isMergedTransport && mergedData && mergedData.originalTransports) {
+      // Dodajemy wszystkie transporty które były połączone
+      const allMergedIds = mergedData.originalTransports.map(t => t.id);
+      transportsToComplete = [...new Set([...transportsToComplete, ...allMergedIds])]; // Usuń duplikaty
+      console.log('Oznaczanie jako completed wszystkich połączonych transportów:', transportsToComplete);
+    }
+    
+    // Aktualizujemy wszystkie transporty naraz
     const updated = await db('spedycje')
-      .where('id', id)
+      .whereIn('id', transportsToComplete)
       .update({
         status: 'completed',
         response_data: JSON.stringify(responseData),
         completed_at: db.fn.now(),
-        completed_by: userId,
-        // Dodaj dane o połączonych transportach do głównego rekordu
-        ...(isMergedTransport && mergedData ? {
-          merged_transports: JSON.stringify(mergedData),
-          is_merged: true
-        } : {})
+        completed_by: userId
       });
     
-    // Jeśli to transport łączony, musimy również utworzyć osobne rekordy w archiwum dla każdego z połączonych transportów
-    if (isMergedTransport && mergedData) {
-      try {
-        console.log('Transport łączony - tworzenie rekordów archiwum dla połączonych transportów:', mergedData);
-        
-        // Utwórz osobne rekordy archiwalne dla każdego z połączonych transportów
-        if (mergedData.originalTransports && Array.isArray(mergedData.originalTransports)) {
-          for (const originalTransport of mergedData.originalTransports) {
-            // Przygotuj dane dla rekordu archiwalnego
-            const archiveData = {
-              status: 'completed',
-              order_number: originalTransport.orderNumber,
-              created_by: currentSpedycja.created_by,
-              created_by_email: currentSpedycja.created_by_email,
-              responsible_person: originalTransport.responsiblePerson || originalTransport.responsible_person || currentSpedycja.responsible_person,
-              responsible_email: originalTransport.responsible_email,
-              mpk: originalTransport.mpk,
-              location: originalTransport.location,
-              location_data: originalTransport.location_data,
-              delivery_data: originalTransport.delivery_data,
-              loading_contact: originalTransport.loading_contact,
-              unloading_contact: originalTransport.unloading_contact,
-              delivery_date: originalTransport.delivery_date,
-              documents: originalTransport.documents,
-              notes: originalTransport.notes,
-              client_name: originalTransport.client_name,
-              goods_description: originalTransport.goods_description,
-              responsible_constructions: originalTransport.responsible_constructions,
-              distance_km: originalTransport.distance || 0,
-              // Dane o cenie i odpowiedzi - używamy podzielonej ceny
-              response_data: JSON.stringify({
-                ...responseData,
-                deliveryPrice: originalTransport.costAssigned,
-                originalMainTransportId: id,
-                isFromMergedTransport: true,
-                mergedTransportDate: new Date().toISOString()
-              }),
-              completed_at: db.fn.now(),
-              completed_by: userId,
-              created_at: currentSpedycja.created_at,
-              // Oznacz jako pochodzący z łączonego transportu
-              is_merged: false, // To jest pojedynczy rekord z łączonego transportu
-              transport_type: currentSpedycja.transport_type,
-              vehicle_type: currentSpedycja.vehicle_type
-            };
-            
-            console.log('Tworzenie rekordu archiwum dla transportu:', originalTransport.id, archiveData);
-            
-            // Wstaw rekord do archiwum
-            await db('spedycje').insert(archiveData);
-          }
-          
-          console.log(`Utworzono ${mergedData.originalTransports.length} rekordów archiwum dla połączonych transportów`);
-          
-          // Oznacz wszystkie drugorzędne transporty jako completed
-          const secondaryTransportIds = mergedData.originalTransports
-            .map(t => t.id)
-            .filter(transportId => transportId !== id); // Exclude main transport
-          
-          if (secondaryTransportIds.length > 0) {
-            const secondaryUpdate = await db('spedycje')
-              .whereIn('id', secondaryTransportIds)
-              .update({
-                status: 'completed',
-                completed_at: db.fn.now(),
-                completed_by: userId
-              });
-            
-            console.log(`Oznaczono ${secondaryUpdate} drugorzędnych transportów jako completed`);
-          }
-        }
-      } catch (error) {
-        console.error('Błąd tworzenia rekordów archiwum dla połączonych transportów:', error);
-        // Nie przerywamy procesu - główny transport został już zakończony
-      }
-    }
+    console.log(`Oznaczono ${updated} transportów jako completed`);
+    
     
     if (updated === 0) {
       return NextResponse.json({ 
@@ -298,9 +229,15 @@ export async function POST(request) {
       }, { status: 500 });
     }
     
+    const completedCount = transportsToComplete.length;
+    const message = completedCount > 1 
+      ? `${completedCount} połączonych transportów zostało oznaczonych jako zrealizowane`
+      : 'Zlecenie zostało pomyślnie oznaczone jako zrealizowane';
+    
     return NextResponse.json({ 
       success: true,
-      message: 'Zlecenie zostało pomyślnie oznaczone jako zrealizowane'
+      message: message,
+      completedTransports: completedCount
     });
   } catch (error) {
     console.error('Error completing spedycja:', error);

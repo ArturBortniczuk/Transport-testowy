@@ -195,17 +195,13 @@ export default function MultiTransportResponseForm({
     setErrors(prev => ({ ...prev, transports: null }))
   }
 
-  // Obsługa opcji transportu (załadunek/rozładunek)
+  // Obsługa opcji transportu (załadunek/rozładunek) - umożliwia optymalizację trasy
   const handleTransportOptionToggle = (transportId, option) => {
     setTransportOptions(prev => {
       const currentOptions = prev[transportId] || { loading: true, unloading: true }
       const newValue = !currentOptions[option]
       
-      // Zapobiegaj odznaczeniu obu opcji - co najmniej jedna musi być zaznaczona
-      if (!newValue && !currentOptions[option === 'loading' ? 'unloading' : 'loading']) {
-        return prev // Nie zmieniaj stanu, jeśli próbuje się odznać ostatnią opcję
-      }
-      
+      // Pozwól na odznaczenie dowolnej opcji - to jest cel tej funkcji (optymalizacja trasy)
       return {
         ...prev,
         [transportId]: {
@@ -216,14 +212,15 @@ export default function MultiTransportResponseForm({
     })
   }
 
-  // Generowanie sekwencji trasy
+  // Generowanie sekwencji trasy - tylko uwzględnione punkty
   const generateRouteSequence = () => {
     const sequence = []
     
-    // Dodaj punkty na podstawie wybranych transportów i opcji
+    // Dodaj punkty na podstawie wybranych transportów i opcji "Uwzględnij"
     selectedTransports.forEach(transport => {
       const options = transportOptions[transport.id] || { loading: true, unloading: true }
       
+      // Dodaj załadunek tylko jeśli jest uwzględniony
       if (options.loading) {
         sequence.push({
           id: `${transport.id}-loading`,
@@ -236,6 +233,7 @@ export default function MultiTransportResponseForm({
         })
       }
       
+      // Dodaj rozładunek tylko jeśli jest uwzględniony
       if (options.unloading) {
         sequence.push({
           id: `${transport.id}-unloading`,
@@ -249,6 +247,7 @@ export default function MultiTransportResponseForm({
       }
     })
     
+    console.log('🗺️ Wygenerowano sekwencję trasy z', sequence.length, 'punktów')
     setRouteSequence(sequence)
   }
 
@@ -307,34 +306,39 @@ export default function MultiTransportResponseForm({
     return Object.values(priceBreakdown).reduce((sum, cost) => sum + (parseFloat(cost) || 0), 0)
   }
 
-  // Obliczanie łącznej odległości - używamy Google Maps API
+  // Obliczanie łącznej odległości na podstawie rzeczywistej sekwencji trasy
   const calculateTotalDistance = async () => {
     if (routeSequence.length < 2) {
       setTotalDistance(0)
+      setUpdateMessage('Za mało punktów w trasie')
+      setTimeout(() => setUpdateMessage(''), 2000)
       return
     }
     
     setIsUpdatingDistance(true)
-    setUpdateMessage('Obliczam odległość na podstawie rzeczywistej trasy...')
+    setUpdateMessage(`Obliczam odległość dla ${routeSequence.length} punktów trasy...`)
     
     try {
-      // Przygotuj współrzędne dla każdego punktu w sekwencji
+      // Przygotuj współrzędne dla każdego punktu w aktualnej sekwencji
       const waypoints = []
       
       for (const point of routeSequence) {
         let coords = null
         
-        // Pobierz współrzędne na podstawie typu punktu
-        if (point.city === 'Białystok' && point.type === 'loading') {
+        // Pobierz współrzędne na podstawie miasta i typu punktu
+        if (point.city === 'Białystok') {
           coords = { lat: 53.1325, lng: 23.1688 }
-        } else if (point.city === 'Zielonka' && point.type === 'loading') {
+        } else if (point.city === 'Zielonka') {
           coords = { lat: 52.3125, lng: 21.1390 }
         } else {
-          // Dla innych punktów spróbuj geokodowania
+          // Dla innych miast spróbuj geokodowania
           try {
-            const fullAddress = `${point.city}, ${point.address.split(',').slice(1).join(',').trim()}, Poland`
+            const address = point.address.includes(',') ? 
+              `${point.city}, ${point.address.split(',').slice(1).join(',').trim()}, Poland` : 
+              `${point.city}, Poland`
+              
             const response = await fetch(
-              `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(fullAddress)}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`
+              `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`
             )
             const data = await response.json()
             
@@ -342,45 +346,53 @@ export default function MultiTransportResponseForm({
               coords = data.results[0].geometry.location
             }
           } catch (e) {
-            console.warn(`Nie udało się znaleźć współrzędnych dla ${point.city}`)
+            console.warn(`Geokodowanie nie powiodło się dla ${point.city}`)
           }
         }
         
         if (coords) {
-          waypoints.push(`${coords.lat},${coords.lng}`)
-        } else {
-          waypoints.push(point.city + ', Poland') // Fallback
+          waypoints.push(coords)
         }
       }
       
       if (waypoints.length >= 2) {
-        // Oblicz rzeczywistą odległość używając Google Distance Matrix API
-        const origin = waypoints[0]
-        const destination = waypoints[waypoints.length - 1]
-        const wayPointsString = waypoints.slice(1, -1).join('|')
+        // Oblicz odległość jako sumę odcinków między kolejnymi punktami
+        let totalDistance = 0
         
-        const url = `/api/distance?origins=${encodeURIComponent(origin)}&destinations=${encodeURIComponent(destination)}${wayPointsString ? `&waypoints=${encodeURIComponent(wayPointsString)}` : ''}`
-        
-        const response = await fetch(url)
-        const data = await response.json()
-        
-        if (data.status === 'OK' && data.rows?.[0]?.elements?.[0]?.status === 'OK') {
-          const distanceKm = Math.round(data.rows[0].elements[0].distance.value / 1000)
-          setTotalDistance(distanceKm)
-          setUpdateMessage(`Obliczona odległość: ${distanceKm} km`)
-        } else {
-          throw new Error('Nie udało się obliczyć odległości')
+        for (let i = 0; i < waypoints.length - 1; i++) {
+          const origin = waypoints[i]
+          const destination = waypoints[i + 1]
+          
+          try {
+            const response = await fetch(`/api/distance?origins=${origin.lat},${origin.lng}&destinations=${destination.lat},${destination.lng}`)
+            const data = await response.json()
+            
+            if (data.status === 'OK' && data.rows?.[0]?.elements?.[0]?.status === 'OK') {
+              totalDistance += Math.round(data.rows[0].elements[0].distance.value / 1000)
+            } else {
+              // Fallback: użyj wzoru haversine
+              const dist = calculateHaversineDistance(origin.lat, origin.lng, destination.lat, destination.lng)
+              totalDistance += Math.round(dist)
+            }
+          } catch (e) {
+            // Fallback: użyj wzoru haversine
+            const dist = calculateHaversineDistance(origin.lat, origin.lng, destination.lat, destination.lng)
+            totalDistance += Math.round(dist)
+          }
         }
+        
+        setTotalDistance(totalDistance)
+        setUpdateMessage(`Obliczono trasę: ${totalDistance} km (${routeSequence.length} punktów)`)
       } else {
-        throw new Error('Za mało punktów do obliczenia trasy')
+        throw new Error('Nie udało się uzyskać współrzędnych punktów')
       }
       
       setTimeout(() => setUpdateMessage(''), 3000)
     } catch (error) {
       console.error('Błąd obliczania odległości:', error)
       
-      // Fallback - użyj estymacji
-      const estimatedDistance = Math.round(routeSequence.length * 45 + (routeSequence.length - 1) * 35)
+      // Fallback - prosta estymacja na podstawie liczby punktów
+      const estimatedDistance = Math.round(routeSequence.length * 60 + Math.random() * 100)
       setTotalDistance(estimatedDistance)
       setUpdateMessage(`Estymowana odległość: ${estimatedDistance} km (błąd API)`)
       
@@ -388,6 +400,19 @@ export default function MultiTransportResponseForm({
     } finally {
       setIsUpdatingDistance(false)
     }
+  }
+  
+  // Pomocnicza funkcja obliczania odległości haversine
+  const calculateHaversineDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // promień ziemi w km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const distance = R * c;
+    return distance * 1.2; // dodaj 20% na rzeczywiste drogi
   }
 
   // Walidacja formularza
