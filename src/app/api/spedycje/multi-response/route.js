@@ -154,12 +154,20 @@ Transporty o ID: ${nonNewTransports.map(t => `${t.id} (status: ${t.status})`).jo
       
       console.log('🎯 Główny transport:', mainTransportId)
 
+      // Oblicz cenę dla głównego transportu
+      const mainTransportPrice = priceBreakdown ? 
+        parseFloat(priceBreakdown[mainTransportId] || 0) :
+        parseFloat(totalPrice) / transportIds.length
+        
+      console.log(`💰 Główny transport ${mainTransportId}: przydzielona cena ${mainTransportPrice} PLN`)
+
       // Przygotuj dane odpowiedzi dla głównego transportu
       const mainResponseData = {
         driverName: driverInfo.name,
         driverPhone: driverInfo.phone,
         vehicleNumber: driverInfo.vehicleNumber || null,
-        deliveryPrice: parseFloat(totalPrice),
+        deliveryPrice: parseFloat(mainTransportPrice.toFixed(2)), // Użyj przydzielonej ceny, nie całkowitej
+        totalDeliveryPrice: parseFloat(totalPrice), // Zachowaj całkowitą cenę jako dodatkowe pole
         distance: totalDistance || null,
         notes: notes || null,
         cargoDescription: cargoDescription || null,
@@ -199,13 +207,16 @@ Transporty o ID: ${nonNewTransports.map(t => `${t.id} (status: ${t.status})`).jo
       await Promise.all(secondaryTransportIds.map(async (transportId) => {
         const transport = allTransports.find(t => t.id === parseInt(transportId))
         const transportPrice = priceBreakdown ? 
-          parseFloat(priceBreakdown[transportId] || 0) : 0
+          parseFloat(priceBreakdown[transportId] || 0) : 
+          parseFloat(totalPrice) / transportIds.length // Równomierne rozłożenie jeśli brak podziału
+          
+        console.log(`💰 Transport ${transportId}: przydzielona cena ${transportPrice} PLN`)
           
         const otherResponseData = {
           driverName: driverInfo.name,
           driverPhone: driverInfo.phone,
           vehicleNumber: driverInfo.vehicleNumber || null,
-          deliveryPrice: parseFloat(transportPrice),
+          deliveryPrice: parseFloat(transportPrice.toFixed(2)), // Zaokrągl do 2 miejsc po przecinku
           distance: null,
           notes: `Transport połączony z #${mainTransportId}. ${notes || ''}`.trim(),
           cargoDescription: cargoDescription || null,

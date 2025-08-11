@@ -197,13 +197,23 @@ export default function MultiTransportResponseForm({
 
   // Obsługa opcji transportu (załadunek/rozładunek)
   const handleTransportOptionToggle = (transportId, option) => {
-    setTransportOptions(prev => ({
-      ...prev,
-      [transportId]: {
-        ...prev[transportId],
-        [option]: !prev[transportId]?.[option]
+    setTransportOptions(prev => {
+      const currentOptions = prev[transportId] || { loading: true, unloading: true }
+      const newValue = !currentOptions[option]
+      
+      // Zapobiegaj odznaczeniu obu opcji - co najmniej jedna musi być zaznaczona
+      if (!newValue && !currentOptions[option === 'loading' ? 'unloading' : 'loading']) {
+        return prev // Nie zmieniaj stanu, jeśli próbuje się odznać ostatnią opcję
       }
-    }))
+      
+      return {
+        ...prev,
+        [transportId]: {
+          ...currentOptions,
+          [option]: newValue
+        }
+      }
+    })
   }
 
   // Generowanie sekwencji trasy
@@ -268,16 +278,26 @@ export default function MultiTransportResponseForm({
     }))
   }
 
-  // Równomierne rozłożenie kosztów
+  // Równomierne rozłożenie kosztów z poprawką zaokrągleń
   const distributeCostsEvenly = () => {
     if (!totalPrice || selectedTransports.length === 0) return
     
-    const pricePerTransport = parseFloat(totalPrice) / selectedTransports.length
+    const totalPriceNum = parseFloat(totalPrice)
+    const transportCount = selectedTransports.length
+    const basePrice = Math.floor((totalPriceNum * 100) / transportCount) / 100 // Zaokrąglij w dół do 2 miejsc
+    const remainder = totalPriceNum - (basePrice * transportCount)
+    
     const newBreakdown = {}
     
-    selectedTransports.forEach(transport => {
-      newBreakdown[transport.id] = parseFloat(pricePerTransport.toFixed(2))
+    selectedTransports.forEach((transport, index) => {
+      // Przydziel podstawową kwotę plus ewentualną resztę do pierwszego transportu
+      const price = index === 0 ? basePrice + remainder : basePrice
+      newBreakdown[transport.id] = parseFloat(price.toFixed(2))
     })
+    
+    // Sprawdź czy suma jest prawidłowa
+    const sum = Object.values(newBreakdown).reduce((acc, val) => acc + val, 0)
+    console.log(`💰 Podział kosztów: cena całkowita ${totalPriceNum}, suma podziału ${sum.toFixed(2)}`)
     
     setPriceBreakdown(newBreakdown)
   }
@@ -287,7 +307,7 @@ export default function MultiTransportResponseForm({
     return Object.values(priceBreakdown).reduce((sum, cost) => sum + (parseFloat(cost) || 0), 0)
   }
 
-  // Obliczanie łącznej odległości
+  // Obliczanie łącznej odległości - używamy Google Maps API
   const calculateTotalDistance = async () => {
     if (routeSequence.length < 2) {
       setTotalDistance(0)
@@ -295,26 +315,76 @@ export default function MultiTransportResponseForm({
     }
     
     setIsUpdatingDistance(true)
-    setUpdateMessage('Obliczam odległość...')
+    setUpdateMessage('Obliczam odległość na podstawie rzeczywistej trasy...')
     
     try {
-      const waypoints = routeSequence.map(point => 
-        `${point.city}, ${point.address.split(',').slice(1).join(',').trim()}`
-      )
+      // Przygotuj współrzędne dla każdego punktu w sekwencji
+      const waypoints = []
       
-      // Symulacja obliczenia odległości - w rzeczywistości użyłbyś API maps
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      for (const point of routeSequence) {
+        let coords = null
+        
+        // Pobierz współrzędne na podstawie typu punktu
+        if (point.city === 'Białystok' && point.type === 'loading') {
+          coords = { lat: 53.1325, lng: 23.1688 }
+        } else if (point.city === 'Zielonka' && point.type === 'loading') {
+          coords = { lat: 52.3125, lng: 21.1390 }
+        } else {
+          // Dla innych punktów spróbuj geokodowania
+          try {
+            const fullAddress = `${point.city}, ${point.address.split(',').slice(1).join(',').trim()}, Poland`
+            const response = await fetch(
+              `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(fullAddress)}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`
+            )
+            const data = await response.json()
+            
+            if (data.status === 'OK' && data.results?.[0]) {
+              coords = data.results[0].geometry.location
+            }
+          } catch (e) {
+            console.warn(`Nie udało się znaleźć współrzędnych dla ${point.city}`)
+          }
+        }
+        
+        if (coords) {
+          waypoints.push(`${coords.lat},${coords.lng}`)
+        } else {
+          waypoints.push(point.city + ', Poland') // Fallback
+        }
+      }
       
-      // Przykładowa kalkulacja - zastąp rzeczywistym API
-      const estimatedDistance = Math.round(routeSequence.length * 50 + Math.random() * 200)
-      setTotalDistance(estimatedDistance)
-      setUpdateMessage(`Odległość: ${estimatedDistance} km`)
+      if (waypoints.length >= 2) {
+        // Oblicz rzeczywistą odległość używając Google Distance Matrix API
+        const origin = waypoints[0]
+        const destination = waypoints[waypoints.length - 1]
+        const wayPointsString = waypoints.slice(1, -1).join('|')
+        
+        const url = `/api/distance?origins=${encodeURIComponent(origin)}&destinations=${encodeURIComponent(destination)}${wayPointsString ? `&waypoints=${encodeURIComponent(wayPointsString)}` : ''}`
+        
+        const response = await fetch(url)
+        const data = await response.json()
+        
+        if (data.status === 'OK' && data.rows?.[0]?.elements?.[0]?.status === 'OK') {
+          const distanceKm = Math.round(data.rows[0].elements[0].distance.value / 1000)
+          setTotalDistance(distanceKm)
+          setUpdateMessage(`Obliczona odległość: ${distanceKm} km`)
+        } else {
+          throw new Error('Nie udało się obliczyć odległości')
+        }
+      } else {
+        throw new Error('Za mało punktów do obliczenia trasy')
+      }
       
-      setTimeout(() => setUpdateMessage(''), 2000)
+      setTimeout(() => setUpdateMessage(''), 3000)
     } catch (error) {
       console.error('Błąd obliczania odległości:', error)
-      setUpdateMessage('Błąd obliczania odległości')
-      setTimeout(() => setUpdateMessage(''), 2000)
+      
+      // Fallback - użyj estymacji
+      const estimatedDistance = Math.round(routeSequence.length * 45 + (routeSequence.length - 1) * 35)
+      setTotalDistance(estimatedDistance)
+      setUpdateMessage(`Estymowana odległość: ${estimatedDistance} km (błąd API)`)
+      
+      setTimeout(() => setUpdateMessage(''), 3000)
     } finally {
       setIsUpdatingDistance(false)
     }
@@ -505,7 +575,7 @@ export default function MultiTransportResponseForm({
                               <label className="flex items-center gap-2 cursor-pointer">
                                 <input
                                   type="checkbox"
-                                  checked={options.loading}
+                                  checked={options.loading || false}
                                   onChange={(e) => {
                                     e.stopPropagation()
                                     handleTransportOptionToggle(transport.id, 'loading')
@@ -517,7 +587,7 @@ export default function MultiTransportResponseForm({
                               <label className="flex items-center gap-2 cursor-pointer">
                                 <input
                                   type="checkbox"
-                                  checked={options.unloading}
+                                  checked={options.unloading || false}
                                   onChange={(e) => {
                                     e.stopPropagation()
                                     handleTransportOptionToggle(transport.id, 'unloading')

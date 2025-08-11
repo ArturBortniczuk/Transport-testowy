@@ -422,12 +422,22 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
     }
   }
   
-  // Funkcja do obliczania odległości
+  // Funkcja do obliczania odległości z poprawną obsługą błędów
   async function calculateDistance(originLat, originLng, destinationLat, destinationLng) {
     try {
+      // Sprawdź czy współrzędne są poprawne
+      if (!originLat || !originLng || !destinationLat || !destinationLng) {
+        throw new Error('Nieprawidłowe współrzędne');
+      }
+      
       const url = `/api/distance?origins=${originLat},${originLng}&destinations=${destinationLat},${destinationLng}`;
       
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
       
       if (!response.ok) {
         throw new Error(`Żądanie API nie powiodło się ze statusem: ${response.status}`);
@@ -443,14 +453,43 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
           data.rows[0].elements[0].status === 'OK') {
         
         const distance = Math.round(data.rows[0].elements[0].distance.value / 1000);
+        console.log(`✅ Obliczono odległość: ${distance} km`);
         return distance;
       }
       
-      throw new Error('Nieprawidłowa odpowiedź API');
+      // Jeśli API nie zwróciło prawidłowej odpowiedzi, użyj estymacji
+      console.warn('API Maps nie zwróciło prawidłowej odpowiedzi, używam estymacji');
+      const estDistance = Math.round(calculateEstimatedDistance(originLat, originLng, destinationLat, destinationLng));
+      return estDistance;
+      
     } catch (error) {
       console.error('Błąd obliczania odległości:', error);
-      throw error;
+      
+      // Fallback do estymacji na podstawie współrzędnych
+      try {
+        const estDistance = Math.round(calculateEstimatedDistance(originLat, originLng, destinationLat, destinationLng));
+        console.log(`📏 Użyto estymacji odległości: ${estDistance} km`);
+        return estDistance;
+      } catch (estError) {
+        console.error('Błąd estymacji odległości:', estError);
+        throw new Error('Nie udało się obliczyć odległości');
+      }
     }
+  }
+  
+  // Funkcja pomocnicza do estymacji odległości na podstawie współrzędnych (wzór haversine)
+  function calculateEstimatedDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Promień Ziemi w kilometrach
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const distance = R * c;
+    
+    // Dodaj 15% na rzeczywiste drogi (estymacja)
+    return distance * 1.15;
   }
 
   // Obliczanie odległości
@@ -703,6 +742,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       const data = {
         location: selectedLocation,
         producerAddress: selectedLocation === 'Odbiory własne' ? {
+          company: formData.get('producerCompany'),
           city: formData.get('producerCity'),
           postalCode: formData.get('producerPostalCode'),
           street: formData.get('producerStreet'),
@@ -1148,6 +1188,17 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
             {selectedLocation === 'Odbiory własne' && (
               <div className="p-4 border border-gray-200 rounded-md bg-gray-50 space-y-4">
                 <h4 className="font-medium">Adres producenta</h4>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Nazwa firmy producenta</label>
+                  <input
+                    name="producerCompany"
+                    type="text"
+                    className="w-full p-2 border rounded-md"
+                    defaultValue={initialData?.producerAddress?.company || ''}
+                    placeholder="Nazwa firmy producenta"
+                    required
+                  />
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium mb-1">Miasto</label>

@@ -380,37 +380,72 @@ export default function SpedycjaList({
         </div>
       )}
 
-      {/* Lista transportów w formie tabeli */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      {/* Lista transportów w formie tabeli z ulepszoną stylistyką */}
+      <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
         {filteredSpedycje.length === 0 ? (
-          <div className="text-center py-12">
-            <Package size={48} className="mx-auto text-gray-400 mb-4" />
-            <p className="text-gray-600 text-lg">
+          <div className="text-center py-16">
+            <div className="bg-gray-100 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6">
+              <Package size={48} className="text-gray-400" />
+            </div>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">
               {showArchive ? 'Brak zamówień w archiwum' : 'Brak nowych zamówień'}
+            </h3>
+            <p className="text-gray-600 mb-6">
+              {showArchive 
+                ? 'Nie ma jeszcze zrealizowanych zamówień spedycyjnych.' 
+                : 'Gdy pojawią się nowe zapytania spedycyjne, zobaczysz je tutaj.'
+              }
             </p>
+            {!showArchive && (
+              <button
+                onClick={onCreateOrder}
+                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              >
+                <Package size={20} className="mr-2" />
+                Dodaj nowe zamówienie
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Trasa
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                    <div className="flex items-center gap-2">
+                      <Truck size={14} className="text-blue-600" />
+                      Trasa
+                    </div>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Firmy
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                    <div className="flex items-center gap-2">
+                      <Building size={14} className="text-green-600" />
+                      Firmy
+                    </div>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Daty
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                    <div className="flex items-center gap-2">
+                      <Calendar size={14} className="text-purple-600" />
+                      Daty
+                    </div>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Numer/MPK
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                    <div className="flex items-center gap-2">
+                      <FileText size={14} className="text-orange-600" />
+                      Numer/MPK
+                    </div>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle size={14} className="text-yellow-600" />
+                      Status
+                    </div>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Akcje
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                    <div className="flex items-center gap-2">
+                      <User size={14} className="text-indigo-600" />
+                      Akcje
+                    </div>
                   </th>
                 </tr>
               </thead>
@@ -424,13 +459,15 @@ export default function SpedycjaList({
                   return (
                     <React.Fragment key={zamowienie.id}>
                       {/* Główny wiersz */}
-                      <tr className="hover:bg-gray-50 transition-colors">
+                      <tr className="hover:bg-blue-50 transition-colors border-l-4 border-l-transparent hover:border-l-blue-400">
                         {/* Trasa */}
-                        <td className="px-4 py-4">
-                          <div className="flex items-center gap-2">
-                            <Truck size={16} className="text-blue-600 flex-shrink-0" />
+                        <td className="px-6 py-5">
+                          <div className="flex items-center gap-3">
+                            <div className="bg-blue-100 rounded-lg p-2">
+                              <Truck size={16} className="text-blue-600" />
+                            </div>
                             <div>
-                              <div className="font-medium text-gray-900">
+                              <div className="font-semibold text-gray-900 text-sm">
                                 {getLoadingCity(zamowienie)} → {getDeliveryCity(zamowienie)}
                               </div>
                               {isMerged && (
@@ -439,65 +476,88 @@ export default function SpedycjaList({
                                   Połączony
                                 </span>
                               )}
+                              {distance && (
+                                <div className="text-xs text-gray-500 mt-1">
+                                  📏 {distance} km
+                                </div>
+                              )}
                             </div>
                           </div>
                         </td>
                         
                         {/* Firmy */}
-                        <td className="px-4 py-4">
-                          <div className="text-sm">
-                            <div className="font-medium text-gray-900">
-                              {getLoadingCompanyName(zamowienie)}
+                        <td className="px-6 py-5">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <Building size={12} className="text-green-600 flex-shrink-0" />
+                              <div className="font-medium text-gray-900 text-sm truncate">
+                                {getLoadingCompanyName(zamowienie)}
+                              </div>
                             </div>
-                            <div className="text-gray-500">
-                              → {getUnloadingCompanyName(zamowienie)}
+                            <div className="flex items-center gap-2">
+                              <ArrowRight size={12} className="text-gray-400 flex-shrink-0" />
+                              <div className="text-gray-600 text-sm truncate">
+                                {getUnloadingCompanyName(zamowienie)}
+                              </div>
                             </div>
                           </div>
                         </td>
                         
                         {/* Daty */}
-                        <td className="px-4 py-4">
-                          <div className="text-sm">
-                            <div className="flex items-center gap-1 text-gray-900">
-                              <Clock size={12} />
-                              <span>Dodano: {formatDate(zamowienie.createdAt)}</span>
+                        <td className="px-6 py-5">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <Clock size={12} className="text-blue-600 flex-shrink-0" />
+                              <span className="text-sm text-gray-900">
+                                {formatDate(zamowienie.createdAt)}
+                              </span>
                             </div>
-                            <div className="flex items-center gap-1 text-gray-500">
-                              <Calendar size={12} />
-                              <span>Dostawa: {formatDate(zamowienie.deliveryDate)}</span>
+                            <div className="flex items-center gap-2">
+                              <Calendar size={12} className="text-purple-600 flex-shrink-0" />
+                              <span className="text-sm text-gray-600">
+                                {formatDate(zamowienie.deliveryDate)}
+                              </span>
                             </div>
                           </div>
                         </td>
                         
                         {/* Numer/MPK */}
-                        <td className="px-4 py-4">
-                          <div className="text-sm">
-                            <div className="flex items-center gap-1 text-gray-900">
-                              <FileText size={12} />
-                              <span>{zamowienie.orderNumber || 'Brak numeru'}</span>
+                        <td className="px-6 py-5">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <FileText size={12} className="text-orange-600 flex-shrink-0" />
+                              <span className="text-sm font-mono text-gray-900">
+                                {zamowienie.orderNumber || 'Brak numeru'}
+                              </span>
                             </div>
-                            <div className="flex items-center gap-1 text-gray-500">
-                              <Clipboard size={12} />
-                              <span>MPK: {responsibleInfo.mpk || 'Brak'}</span>
+                            <div className="flex items-center gap-2">
+                              <Clipboard size={12} className="text-indigo-600 flex-shrink-0" />
+                              <span className="text-sm text-gray-600">
+                                {responsibleInfo.mpk || 'Brak MPK'}
+                              </span>
                             </div>
                           </div>
                         </td>
                         
                         {/* Status */}
-                        <td className="px-4 py-4">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${statusInfo.class}`}>
+                        <td className="px-6 py-5">
+                          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${statusInfo.class} shadow-sm`}>
                             {statusInfo.icon}
                             {statusInfo.text}
                           </span>
                         </td>
                         
                         {/* Akcje */}
-                        <td className="px-4 py-4">
-                          <div className="flex items-center gap-2">
+                        <td className="px-6 py-5">
+                          <div className="flex items-center gap-1">
                             {/* Przycisk rozwijania */}
                             <button
                               onClick={() => setExpandedId(expandedId === zamowienie.id ? null : zamowienie.id)}
-                              className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                              className={`p-2 rounded-lg transition-colors ${
+                                expandedId === zamowienie.id 
+                                  ? 'bg-blue-100 text-blue-600' 
+                                  : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                              }`}
                               title="Rozwiń szczegóły"
                             >
                               {expandedId === zamowienie.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -507,7 +567,7 @@ export default function SpedycjaList({
                             {canEdit(zamowienie) && zamowienie.status !== 'completed' && (
                               <button
                                 onClick={() => onEdit(zamowienie)}
-                                className="p-1 text-blue-600 hover:text-blue-800 transition-colors"
+                                className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded-lg transition-colors"
                                 title="Edytuj"
                               >
                                 <Edit size={16} />
@@ -518,7 +578,7 @@ export default function SpedycjaList({
                             {isAdmin && zamowienie.status === 'responded' && (
                               <button
                                 onClick={() => onMarkAsCompleted(zamowienie.id)}
-                                className="p-1 text-green-600 hover:text-green-800 transition-colors"
+                                className="p-2 text-green-600 hover:text-green-800 hover:bg-green-100 rounded-lg transition-colors"
                                 title="Oznacz jako zrealizowane"
                               >
                                 <CheckCircle size={16} />
@@ -531,12 +591,13 @@ export default function SpedycjaList({
                       {/* Rozwinięte szczegóły */}
                       {expandedId === zamowienie.id && (
                         <tr>
-                          <td colSpan="6" className="px-4 py-4 bg-gray-50">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          <td colSpan="6" className="px-8 py-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-l-blue-400">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                               
                               {/* Sekcja 1: Informacje podstawowe */}
-                              <div className="space-y-3">
-                                <h4 className="text-sm font-semibold text-gray-900 border-b pb-1">
+                              <div className="bg-white rounded-lg p-4 shadow-sm border border-blue-200">
+                                <h4 className="text-sm font-bold text-blue-900 border-b border-blue-200 pb-2 mb-3 flex items-center gap-2">
+                                  <User size={16} className="text-blue-600" />
                                   Informacje podstawowe
                                 </h4>
                                 
@@ -613,8 +674,9 @@ export default function SpedycjaList({
                               </div>
                               
                               {/* Sekcja 2: Adresy */}
-                              <div className="space-y-3">
-                                <h4 className="text-sm font-semibold text-gray-900 border-b pb-1">
+                              <div className="bg-white rounded-lg p-4 shadow-sm border border-green-200">
+                                <h4 className="text-sm font-bold text-green-900 border-b border-green-200 pb-2 mb-3 flex items-center gap-2">
+                                  <MapPin size={16} className="text-green-600" />
                                   Szczegóły adresów
                                 </h4>
                                 
@@ -634,8 +696,9 @@ export default function SpedycjaList({
                               </div>
                               
                               {/* Sekcja 3: Dodatkowe informacje */}
-                              <div className="space-y-3">
-                                <h4 className="text-sm font-semibold text-gray-900 border-b pb-1">
+                              <div className="bg-white rounded-lg p-4 shadow-sm border border-purple-200">
+                                <h4 className="text-sm font-bold text-purple-900 border-b border-purple-200 pb-2 mb-3 flex items-center gap-2">
+                                  <FileText size={16} className="text-purple-600" />
                                   Dodatkowe informacje
                                 </h4>
                                 
@@ -721,12 +784,66 @@ export default function SpedycjaList({
                                         )}
                                         {zamowienie.response.notes && (
                                           <div className="mt-2 pt-2 border-t border-green-200">
-                                            <span className="text-gray-600">Uwagi:</span>
+                                            <span className="text-gray-600">Uwagi przewoźnika:</span>
                                             <div className="mt-1 text-sm text-gray-700">
                                               {zamowienie.response.notes}
                                             </div>
                                           </div>
                                         )}
+                                        
+                                        {/* Dodatkowe informacje z response_data jeśli istnieją */}
+                                        {(() => {
+                                          try {
+                                            const responseData = zamowienie.response_data ? 
+                                              (typeof zamowienie.response_data === 'string' ? 
+                                                JSON.parse(zamowienie.response_data) : 
+                                                zamowienie.response_data) : null;
+                                            
+                                            return responseData && (
+                                              <div className="mt-2 pt-2 border-t border-green-200">
+                                                {responseData.notes && responseData.notes !== zamowienie.response?.notes && (
+                                                  <div className="mb-2">
+                                                    <span className="text-gray-600">Notatki odpowiadającego:</span>
+                                                    <div className="mt-1 text-sm text-gray-700">
+                                                      {responseData.notes}
+                                                    </div>
+                                                  </div>
+                                                )}
+                                                
+                                                {responseData.cargoDescription && (
+                                                  <div className="mb-2">
+                                                    <span className="text-gray-600">Opis ładunku:</span>
+                                                    <div className="mt-1 text-sm text-gray-700">
+                                                      {responseData.cargoDescription}
+                                                    </div>
+                                                  </div>
+                                                )}
+                                                
+                                                {responseData.totalWeight && (
+                                                  <div className="mb-2">
+                                                    <span className="text-gray-600">Łączna waga:</span>
+                                                    <div className="mt-1 text-sm text-gray-700">
+                                                      {responseData.totalWeight} kg
+                                                    </div>
+                                                  </div>
+                                                )}
+                                                
+                                                {responseData.isMerged && (
+                                                  <div className="mb-2">
+                                                    <div className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200">
+                                                      <LinkIcon size={10} className="mr-1" />
+                                                      Transport połączony
+                                                      {responseData.isMainMerged && ' (główny)'}
+                                                      {responseData.isSecondaryMerged && ` (z ${responseData.mainTransportId})`}
+                                                    </div>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            );
+                                          } catch (e) {
+                                            return null;
+                                          }
+                                        })()}
                                       </div>
                                     </div>
                                   )}
