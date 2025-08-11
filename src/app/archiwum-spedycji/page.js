@@ -24,12 +24,21 @@ export default function ArchiwumSpedycjiPage() {
   const [mpkFilter, setMpkFilter] = useState('')
   const [orderNumberFilter, setOrderNumberFilter] = useState('')
   const [mpkOptions, setMpkOptions] = useState([])
-  // Nowe filtry
+  // Wszystkie filtry
   const [transportTypeFilter, setTransportTypeFilter] = useState('all')
   const [vehicleTypeFilter, setVehicleTypeFilter] = useState('all')
   const [mergedFilter, setMergedFilter] = useState('all')
   const [drumsFilter, setDrumsFilter] = useState('all')
   const [mergedOriginFilter, setMergedOriginFilter] = useState('all')
+  const [driverNameFilter, setDriverNameFilter] = useState('')
+  const [clientNameFilter, setClientNameFilter] = useState('')
+  const [createdByFilter, setCreatedByFilter] = useState('')
+  const [cityFromFilter, setCityFromFilter] = useState('')
+  const [cityToFilter, setCityToFilter] = useState('')
+  const [priceMinFilter, setPriceMinFilter] = useState('')
+  const [priceMaxFilter, setPriceMaxFilter] = useState('')
+  const [distanceMinFilter, setDistanceMinFilter] = useState('')
+  const [distanceMaxFilter, setDistanceMaxFilter] = useState('')
   
   // Lista dostępnych lat i miesięcy
   const currentYear = new Date().getFullYear()
@@ -93,7 +102,7 @@ export default function ArchiwumSpedycjiPage() {
           const uniqueMpks = [...new Set(data.spedycje.map(item => item.mpk).filter(Boolean))]
           setMpkOptions(uniqueMpks)
           
-          applyFilters(data.spedycje, selectedYear, selectedMonth, '', '', 'all', 'all', 'all', 'all', 'all')
+          applyFilters(data.spedycje, selectedYear, selectedMonth, '', '', 'all', 'all', 'all', 'all', 'all', '', '', '', '', '', '', '', '', '')
         } else {
           throw new Error(data.error || 'Błąd pobierania danych')
         }
@@ -118,7 +127,7 @@ export default function ArchiwumSpedycjiPage() {
           const uniqueMpks = [...new Set(transporty.map(item => item.mpk).filter(Boolean))]
           setMpkOptions(uniqueMpks)
           
-          applyFilters(transporty, selectedYear, selectedMonth, '', '', 'all', 'all', 'all', 'all', 'all')
+          applyFilters(transporty, selectedYear, selectedMonth, '', '', 'all', 'all', 'all', 'all', 'all', '', '', '', '', '', '', '', '', '')
         }
       } catch (localStorageError) {
         console.error('Błąd fallbacku localStorage:', localStorageError)
@@ -243,8 +252,8 @@ export default function ArchiwumSpedycjiPage() {
     return transport.location || 'Nie podano';
   }
 
-  // Funkcja filtrująca transporty
-  const applyFilters = (transports, year, month, mpkValue, orderNumberValue, transportTypeValue, vehicleTypeValue, mergedValue, drumsValue, mergedOriginValue) => {
+  // Funkcja filtrująca transporty - uwzględnia wszystkie filtry
+  const applyFilters = (transports, year, month, mpkValue, orderNumberValue, transportTypeValue, vehicleTypeValue, mergedValue, drumsValue, mergedOriginValue, driverName, clientName, createdBy, cityFrom, cityTo, priceMin, priceMax, distanceMin, distanceMax) => {
     if (!transports || transports.length === 0) {
       setFilteredArchiwum([])
       return
@@ -284,9 +293,95 @@ export default function ArchiwumSpedycjiPage() {
         }
       }
       
+      // Filtrowanie po nazwie kierowcy
+      if (driverName) {
+        const driverFullName = `${transport.response?.driverName || ''} ${transport.response?.driverSurname || ''}`.trim()
+        if (!driverFullName.toLowerCase().includes(driverName.toLowerCase())) {
+          return false
+        }
+      }
+      
+      // Filtrowanie po nazwie klienta
+      if (clientName) {
+        const client = transport.clientName || ''
+        if (!client.toLowerCase().includes(clientName.toLowerCase())) {
+          return false
+        }
+      }
+      
+      // Filtrowanie po osobie tworzącej
+      if (createdBy) {
+        const creator = transport.createdBy || ''
+        if (!creator.toLowerCase().includes(createdBy.toLowerCase())) {
+          return false
+        }
+      }
+      
+      // Filtrowanie po mieście źródłowym
+      if (cityFrom) {
+        const fromCity = getLoadingCity(transport)
+        if (!fromCity.toLowerCase().includes(cityFrom.toLowerCase())) {
+          return false
+        }
+      }
+      
+      // Filtrowanie po mieście docelowym
+      if (cityTo) {
+        const toCity = getDeliveryCity(transport)
+        if (!toCity.toLowerCase().includes(cityTo.toLowerCase())) {
+          return false
+        }
+      }
+      
+      // Filtrowanie po cenie (min)
+      if (priceMin) {
+        const price = parseFloat(transport.response?.deliveryPrice) || 0
+        if (price < parseFloat(priceMin)) {
+          return false
+        }
+      }
+      
+      // Filtrowanie po cenie (max)
+      if (priceMax) {
+        const price = parseFloat(transport.response?.deliveryPrice) || 0
+        if (price > parseFloat(priceMax)) {
+          return false
+        }
+      }
+      
+      // Filtrowanie po odległości (min)
+      if (distanceMin) {
+        const distance = transport.response?.distanceKm || transport.distanceKm || 0
+        if (distance < parseFloat(distanceMin)) {
+          return false
+        }
+      }
+      
+      // Filtrowanie po odległości (max)
+      if (distanceMax) {
+        const distance = transport.response?.distanceKm || transport.distanceKm || 0
+        if (distance > parseFloat(distanceMax)) {
+          return false
+        }
+      }
+      
       // Filtrowanie po typie transportu
       if (transportTypeValue && transportTypeValue !== 'all') {
-        const transportType = transport.transportType || 'standard'
+        // Sprawdź w response_data
+        let transportType = 'standard';
+        try {
+          if (transport.response_data) {
+            const responseData = typeof transport.response_data === 'string' 
+              ? JSON.parse(transport.response_data) 
+              : transport.response_data;
+            transportType = responseData.transportType || 'standard';
+          } else if (transport.response?.transportType) {
+            transportType = transport.response.transportType;
+          }
+        } catch (e) {
+          transportType = 'standard';
+        }
+        
         if (transportType !== transportTypeValue) {
           return false
         }
@@ -294,7 +389,21 @@ export default function ArchiwumSpedycjiPage() {
       
       // Filtrowanie po typie pojazdu
       if (vehicleTypeValue && vehicleTypeValue !== 'all') {
-        const vehicleType = transport.vehicleType || ''
+        // Sprawdź w response_data
+        let vehicleType = '';
+        try {
+          if (transport.response_data) {
+            const responseData = typeof transport.response_data === 'string' 
+              ? JSON.parse(transport.response_data) 
+              : transport.response_data;
+            vehicleType = responseData.vehicleType || '';
+          } else if (transport.response?.vehicleType) {
+            vehicleType = transport.response.vehicleType;
+          }
+        } catch (e) {
+          vehicleType = '';
+        }
+        
         if (!vehicleType || vehicleType.toLowerCase() !== vehicleTypeValue.toLowerCase()) {
           return false
         }
@@ -302,16 +411,43 @@ export default function ArchiwumSpedycjiPage() {
       
       // Filtrowanie po transporcie łączonym
       if (mergedValue && mergedValue !== 'all') {
-        const isMerged = transport.isMerged || false
+        // Sprawdź w response_data
+        let isMerged = false;
+        try {
+          if (transport.response_data) {
+            const responseData = typeof transport.response_data === 'string' 
+              ? JSON.parse(transport.response_data) 
+              : transport.response_data;
+            isMerged = responseData.isMerged || false;
+          } else if (transport.response?.isMerged) {
+            isMerged = transport.response.isMerged;
+          }
+        } catch (e) {
+          isMerged = false;
+        }
+        
         if ((mergedValue === 'merged' && !isMerged) || 
             (mergedValue === 'single' && isMerged)) {
           return false
         }
       }
       
-      // Filtrowanie po transporcie bębnów
+      // Filtrowanie po transporcie bębnów (sprawdź czy transportType to "opakowaniowy")
       if (drumsValue && drumsValue !== 'all') {
-        const isDrumsTransport = transport.isDrumsTransport || false
+        let isDrumsTransport = false;
+        try {
+          if (transport.response_data) {
+            const responseData = typeof transport.response_data === 'string' 
+              ? JSON.parse(transport.response_data) 
+              : transport.response_data;
+            isDrumsTransport = responseData.transportType === 'opakowaniowy';
+          } else if (transport.response?.transportType) {
+            isDrumsTransport = transport.response.transportType === 'opakowaniowy';
+          }
+        } catch (e) {
+          isDrumsTransport = false;
+        }
+        
         if ((drumsValue === 'drums' && !isDrumsTransport) || 
             (drumsValue === 'normal' && isDrumsTransport)) {
           return false
@@ -320,7 +456,20 @@ export default function ArchiwumSpedycjiPage() {
       
       // Filtrowanie po pochodzeniu transportu (z łączonych czy nie)
       if (mergedOriginValue && mergedOriginValue !== 'all') {
-        const isFromMerged = transport.response?.isFromMergedTransport || false
+        let isFromMerged = false;
+        try {
+          if (transport.response_data) {
+            const responseData = typeof transport.response_data === 'string' 
+              ? JSON.parse(transport.response_data) 
+              : transport.response_data;
+            isFromMerged = responseData.isFromMergedTransport || false;
+          } else if (transport.response?.isFromMergedTransport) {
+            isFromMerged = transport.response.isFromMergedTransport;
+          }
+        } catch (e) {
+          isFromMerged = false;
+        }
+        
         if ((mergedOriginValue === 'from_merged' && !isFromMerged) || 
             (mergedOriginValue === 'original' && isFromMerged)) {
           return false
@@ -336,8 +485,8 @@ export default function ArchiwumSpedycjiPage() {
 
   // Obsługa zmiany filtrów
   useEffect(() => {
-    applyFilters(archiwum, selectedYear, selectedMonth, mpkFilter, orderNumberFilter, transportTypeFilter, vehicleTypeFilter, mergedFilter, drumsFilter, mergedOriginFilter)
-  }, [selectedYear, selectedMonth, mpkFilter, orderNumberFilter, transportTypeFilter, vehicleTypeFilter, mergedFilter, drumsFilter, mergedOriginFilter, archiwum])
+    applyFilters(archiwum, selectedYear, selectedMonth, mpkFilter, orderNumberFilter, transportTypeFilter, vehicleTypeFilter, mergedFilter, drumsFilter, mergedOriginFilter, driverNameFilter, clientNameFilter, createdByFilter, cityFromFilter, cityToFilter, priceMinFilter, priceMaxFilter, distanceMinFilter, distanceMaxFilter)
+  }, [selectedYear, selectedMonth, mpkFilter, orderNumberFilter, transportTypeFilter, vehicleTypeFilter, mergedFilter, drumsFilter, mergedOriginFilter, driverNameFilter, clientNameFilter, createdByFilter, cityFromFilter, cityToFilter, priceMinFilter, priceMaxFilter, distanceMinFilter, distanceMaxFilter, archiwum])
 
   // Funkcja do usuwania transportu
   const handleDeleteTransport = async (id) => {
@@ -359,7 +508,7 @@ export default function ArchiwumSpedycjiPage() {
         // Usuń transport z lokalnego stanu
         const updatedArchiwum = archiwum.filter(transport => transport.id !== id)
         setArchiwum(updatedArchiwum)
-        applyFilters(updatedArchiwum, selectedYear, selectedMonth, mpkFilter, orderNumberFilter, transportTypeFilter, vehicleTypeFilter, mergedFilter, drumsFilter, mergedOriginFilter)
+        applyFilters(updatedArchiwum, selectedYear, selectedMonth, mpkFilter, orderNumberFilter, transportTypeFilter, vehicleTypeFilter, mergedFilter, drumsFilter, mergedOriginFilter, driverNameFilter, clientNameFilter, createdByFilter, cityFromFilter, cityToFilter, priceMinFilter, priceMaxFilter, distanceMinFilter, distanceMaxFilter)
         
         setDeleteStatus({ type: 'success', message: 'Transport został usunięty' })
         
@@ -612,6 +761,14 @@ export default function ArchiwumSpedycjiPage() {
 
       {/* Filters Section */}
       <div className="mb-8 bg-white rounded-lg shadow p-6">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-gray-800 mb-2 flex items-center">
+            <Search size={20} className="mr-2" />
+            Filtry wyszukiwania
+          </h2>
+          <p className="text-sm text-gray-600">Użyj filtrów aby znaleźć konkretne transporty w archiwum</p>
+        </div>
+        
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
           {/* Rok */}
           <div>
@@ -763,6 +920,194 @@ export default function ArchiwumSpedycjiPage() {
             </select>
           </div>
           
+          {/* Nazwa kierowcy */}
+          <div>
+            <label htmlFor="driverNameFilter" className="block text-sm font-medium text-gray-700 mb-1">
+              Kierowca
+            </label>
+            <div className="relative">
+              <input
+                id="driverNameFilter"
+                type="text"
+                value={driverNameFilter}
+                onChange={(e) => setDriverNameFilter(e.target.value)}
+                placeholder="Imię i nazwisko"
+                className={inputStyles}
+              />
+              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <User size={18} className="text-gray-400" />
+              </div>
+            </div>
+          </div>
+          
+          {/* Nazwa klienta */}
+          <div>
+            <label htmlFor="clientNameFilter" className="block text-sm font-medium text-gray-700 mb-1">
+              Klient
+            </label>
+            <div className="relative">
+              <input
+                id="clientNameFilter"
+                type="text"
+                value={clientNameFilter}
+                onChange={(e) => setClientNameFilter(e.target.value)}
+                placeholder="Nazwa klienta"
+                className={inputStyles}
+              />
+              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <Building size={18} className="text-gray-400" />
+              </div>
+            </div>
+          </div>
+          
+          {/* Osoba tworząca */}
+          <div>
+            <label htmlFor="createdByFilter" className="block text-sm font-medium text-gray-700 mb-1">
+              Utworzone przez
+            </label>
+            <div className="relative">
+              <input
+                id="createdByFilter"
+                type="text"
+                value={createdByFilter}
+                onChange={(e) => setCreatedByFilter(e.target.value)}
+                placeholder="Osoba tworząca"
+                className={inputStyles}
+              />
+              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <User size={18} className="text-gray-400" />
+              </div>
+            </div>
+          </div>
+          
+          {/* Miasto źródłowe */}
+          <div>
+            <label htmlFor="cityFromFilter" className="block text-sm font-medium text-gray-700 mb-1">
+              Miasto załadunku
+            </label>
+            <div className="relative">
+              <input
+                id="cityFromFilter"
+                type="text"
+                value={cityFromFilter}
+                onChange={(e) => setCityFromFilter(e.target.value)}
+                placeholder="Skąd"
+                className={inputStyles}
+              />
+              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <MapPin size={18} className="text-gray-400" />
+              </div>
+            </div>
+          </div>
+          
+          {/* Miasto docelowe */}
+          <div>
+            <label htmlFor="cityToFilter" className="block text-sm font-medium text-gray-700 mb-1">
+              Miasto dostawy
+            </label>
+            <div className="relative">
+              <input
+                id="cityToFilter"
+                type="text"
+                value={cityToFilter}
+                onChange={(e) => setCityToFilter(e.target.value)}
+                placeholder="Dokąd"
+                className={inputStyles}
+              />
+              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <MapPin size={18} className="text-gray-400" />
+              </div>
+            </div>
+          </div>
+          
+          {/* Cena min */}
+          <div>
+            <label htmlFor="priceMinFilter" className="block text-sm font-medium text-gray-700 mb-1">
+              Cena od (PLN)
+            </label>
+            <div className="relative">
+              <input
+                id="priceMinFilter"
+                type="number"
+                value={priceMinFilter}
+                onChange={(e) => setPriceMinFilter(e.target.value)}
+                placeholder="0"
+                className={inputStyles}
+                min="0"
+                step="0.01"
+              />
+              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <DollarSign size={18} className="text-gray-400" />
+              </div>
+            </div>
+          </div>
+          
+          {/* Cena max */}
+          <div>
+            <label htmlFor="priceMaxFilter" className="block text-sm font-medium text-gray-700 mb-1">
+              Cena do (PLN)
+            </label>
+            <div className="relative">
+              <input
+                id="priceMaxFilter"
+                type="number"
+                value={priceMaxFilter}
+                onChange={(e) => setPriceMaxFilter(e.target.value)}
+                placeholder="9999"
+                className={inputStyles}
+                min="0"
+                step="0.01"
+              />
+              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <DollarSign size={18} className="text-gray-400" />
+              </div>
+            </div>
+          </div>
+          
+          {/* Odległość min */}
+          <div>
+            <label htmlFor="distanceMinFilter" className="block text-sm font-medium text-gray-700 mb-1">
+              Odległość od (km)
+            </label>
+            <div className="relative">
+              <input
+                id="distanceMinFilter"
+                type="number"
+                value={distanceMinFilter}
+                onChange={(e) => setDistanceMinFilter(e.target.value)}
+                placeholder="0"
+                className={inputStyles}
+                min="0"
+                step="1"
+              />
+              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <MapPin size={18} className="text-gray-400" />
+              </div>
+            </div>
+          </div>
+          
+          {/* Odległość max */}
+          <div>
+            <label htmlFor="distanceMaxFilter" className="block text-sm font-medium text-gray-700 mb-1">
+              Odległość do (km)
+            </label>
+            <div className="relative">
+              <input
+                id="distanceMaxFilter"
+                type="number"
+                value={distanceMaxFilter}
+                onChange={(e) => setDistanceMaxFilter(e.target.value)}
+                placeholder="2000"
+                className={inputStyles}
+                min="0"
+                step="1"
+              />
+              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <MapPin size={18} className="text-gray-400" />
+              </div>
+            </div>
+          </div>
+          
           {/* Format eksportu */}
           <div className="flex flex-col justify-end">
             <label htmlFor="exportFormat" className="block text-sm font-medium text-gray-700 mb-1">
@@ -789,6 +1134,36 @@ export default function ArchiwumSpedycjiPage() {
               </button>
             </div>
           </div>
+        </div>
+        
+        {/* Przycisk czyszczenia filtrów */}
+        <div className="mt-6 flex justify-center">
+          <button
+            onClick={() => {
+              setSelectedYear(new Date().getFullYear())
+              setSelectedMonth('all')
+              setMpkFilter('')
+              setOrderNumberFilter('')
+              setTransportTypeFilter('all')
+              setVehicleTypeFilter('all')
+              setMergedFilter('all')
+              setDrumsFilter('all')
+              setMergedOriginFilter('all')
+              setDriverNameFilter('')
+              setClientNameFilter('')
+              setCreatedByFilter('')
+              setCityFromFilter('')
+              setCityToFilter('')
+              setPriceMinFilter('')
+              setPriceMaxFilter('')
+              setDistanceMinFilter('')
+              setDistanceMaxFilter('')
+            }}
+            className="px-6 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors flex items-center gap-2"
+          >
+            <AlertCircle size={16} />
+            Wyczyść wszystkie filtry
+          </button>
         </div>
       </div>
 
@@ -977,32 +1352,80 @@ export default function ArchiwumSpedycjiPage() {
                             <Truck size={20} className="mr-2" />
                             Dane przewoźnika
                           </h4>
-                          {transport.response && transport.response.driverName ? (
-                            <div className="space-y-3 text-sm">
-                              <div>
-                                <span className="font-medium text-gray-700">Kierowca:</span>
-                                <div className="font-semibold text-gray-900">
-                                  {transport.response.driverName} {transport.response.driverSurname}
+                          {(() => {
+                            // Pobierz dane z response lub response_data
+                            let driverData = null;
+                            
+                            if (transport.response) {
+                              driverData = transport.response;
+                            } else if (transport.response_data) {
+                              try {
+                                const responseData = typeof transport.response_data === 'string' 
+                                  ? JSON.parse(transport.response_data) 
+                                  : transport.response_data;
+                                driverData = responseData;
+                              } catch (e) {
+                                console.error('Error parsing response_data:', e);
+                              }
+                            }
+                            
+                            if (driverData && driverData.driverName) {
+                              return (
+                                <div className="space-y-3 text-sm">
+                                  <div>
+                                    <span className="font-medium text-gray-700">Kierowca:</span>
+                                    <div className="font-semibold text-gray-900">
+                                      {driverData.driverName} {driverData.driverSurname || ''}
+                                    </div>
+                                  </div>
+                                  {driverData.vehicleNumber && (
+                                    <div>
+                                      <span className="font-medium text-gray-700">Numer pojazdu:</span>
+                                      <div className="font-semibold text-gray-900">{driverData.vehicleNumber}</div>
+                                    </div>
+                                  )}
+                                  {driverData.driverPhone && (
+                                    <div>
+                                      <span className="font-medium text-gray-700">Telefon:</span>
+                                      <div className="font-semibold text-blue-600">
+                                        <a href={`tel:${driverData.driverPhone}`} className="hover:underline">
+                                          {driverData.driverPhone}
+                                        </a>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {driverData.vehicleType && (
+                                    <div>
+                                      <span className="font-medium text-gray-700">Typ pojazdu:</span>
+                                      <div className="font-semibold text-gray-900">{driverData.vehicleType}</div>
+                                    </div>
+                                  )}
+                                  {driverData.transportType && (
+                                    <div>
+                                      <span className="font-medium text-gray-700">Typ transportu:</span>
+                                      <div className="font-semibold text-gray-900">
+                                        {driverData.transportType === 'opakowaniowy' ? 'Opakowaniowy (bębny)' : 'Towarowy'}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {driverData.notes && (
+                                    <div>
+                                      <span className="font-medium text-gray-700">Uwagi przewoźnika:</span>
+                                      <div className="font-semibold text-gray-900 bg-yellow-50 p-2 rounded border">
+                                        {driverData.notes}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
-                              </div>
-                              <div>
-                                <span className="font-medium text-gray-700">Numer auta:</span>
-                                <div className="font-semibold text-gray-900">{transport.response.vehicleNumber}</div>
-                              </div>
-                              <div>
-                                <span className="font-medium text-gray-700">Telefon:</span>
-                                <div className="font-semibold text-blue-600">
-                                  <a href={`tel:${transport.response.driverPhone}`} className="hover:underline">
-                                    {transport.response.driverPhone}
-                                  </a>
+                              );
+                            } else {
+                              return (
+                                <div className="text-sm text-gray-500 italic">
+                                  Brak danych o przewoźniku lub transport nie został jeszcze zrealizowany
                                 </div>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="text-sm text-gray-500 italic">
-                              Brak danych o przewoźniku
-                            </div>
-                          )}
+                              );
+                            }
+                          })()}
                         </div>
 
                         {/* Panel 3: Dane o towarze */}
@@ -1120,6 +1543,31 @@ export default function ArchiwumSpedycjiPage() {
                               <span className="font-medium text-gray-700">Data zakończenia:</span>
                               <div className="font-semibold text-gray-900">{formatDateTime(transport.completedAt)}</div>
                             </div>
+                            {(() => {
+                              // Sprawdź czy są dodatkowe informacje o dacie odpowiedzi
+                              let respondedAt = null;
+                              try {
+                                if (transport.response_data) {
+                                  const responseData = typeof transport.response_data === 'string' 
+                                    ? JSON.parse(transport.response_data) 
+                                    : transport.response_data;
+                                  respondedAt = responseData.respondedAt;
+                                }
+                                respondedAt = respondedAt || transport.responded_at;
+                              } catch (e) {
+                                respondedAt = transport.responded_at;
+                              }
+                              
+                              if (respondedAt && respondedAt !== transport.completedAt) {
+                                return (
+                                  <div>
+                                    <span className="font-medium text-gray-700">Data odpowiedzi:</span>
+                                    <div className="font-semibold text-gray-900">{formatDateTime(respondedAt)}</div>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
                           </div>
                         </div>
 
@@ -1129,47 +1577,125 @@ export default function ArchiwumSpedycjiPage() {
                             <DollarSign size={20} className="mr-2" />
                             Informacje finansowe
                           </h4>
-                          <div className="space-y-3 text-sm">
-                            <div>
-                              <span className="font-medium text-gray-700">Odległość:</span>
-                              <div className="font-semibold text-gray-900">
-                                {transport.distanceKm || transport.response?.distanceKm || 0} km
-                                {transport.isMerged && (
-                                  <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                                    Trasa łączona
-                                  </span>
+                          {(() => {
+                            // Pobierz dane finansowe z response lub response_data
+                            let responseData = transport.response;
+                            let distance = transport.distanceKm || transport.response?.distanceKm || 0;
+                            let price = transport.response?.deliveryPrice || 0;
+                            let isMerged = false;
+                            let isFromMerged = false;
+                            let totalDeliveryPrice = null;
+                            
+                            if (transport.response_data) {
+                              try {
+                                const parsedData = typeof transport.response_data === 'string' 
+                                  ? JSON.parse(transport.response_data) 
+                                  : transport.response_data;
+                                
+                                distance = parsedData.distance || distance;
+                                price = parsedData.deliveryPrice || price;
+                                isMerged = parsedData.isMerged || false;
+                                isFromMerged = parsedData.isFromMergedTransport || false;
+                                totalDeliveryPrice = parsedData.totalDeliveryPrice;
+                              } catch (e) {
+                                console.error('Error parsing financial data:', e);
+                              }
+                            }
+                            
+                            return (
+                              <div className="space-y-3 text-sm">
+                                <div>
+                                  <span className="font-medium text-gray-700">Odległość:</span>
+                                  <div className="font-semibold text-gray-900">
+                                    {distance} km
+                                    {isMerged && (
+                                      <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                        Trasa łączona
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div>
+                                  <span className="font-medium text-gray-700">Cena transportu:</span>
+                                  <div className="font-semibold text-gray-900">
+                                    {price ? `${price} PLN` : 'Brak danych'}
+                                    {isFromMerged && (
+                                      <span className="ml-2 text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
+                                        Część z łączonego
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                {totalDeliveryPrice && totalDeliveryPrice !== price && (
+                                  <div>
+                                    <span className="font-medium text-gray-700">Cena całkowita (łączona):</span>
+                                    <div className="font-semibold text-blue-900">
+                                      {totalDeliveryPrice} PLN
+                                      <span className="ml-2 text-xs bg-blue-200 text-blue-800 px-2 py-1 rounded">
+                                        Suma wszystkich części
+                                      </span>
+                                    </div>
+                                  </div>
                                 )}
+                                <div>
+                                  <span className="font-medium text-gray-700">Cena za kilometr:</span>
+                                  <div className="font-semibold text-gray-900">
+                                    {price && distance ? 
+                                      `${calculatePricePerKm(price, distance)} PLN/km` : 
+                                      'Brak danych'
+                                    }
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                            <div>
-                              <span className="font-medium text-gray-700">Cena transportu:</span>
-                              <div className="font-semibold text-gray-900">
-                                {transport.response?.deliveryPrice ? `${transport.response.deliveryPrice} PLN` : 'Brak danych'}
-                                {transport.response?.isFromMergedTransport && (
-                                  <span className="ml-2 text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
-                                    Część z łączonego
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div>
-                              <span className="font-medium text-gray-700">Cena za kilometr:</span>
-                              <div className="font-semibold text-gray-900">
-                                {transport.response?.deliveryPrice ? 
-                                  `${calculatePricePerKm(transport.response.deliveryPrice, transport.distanceKm || transport.response?.distanceKm)} PLN/km` : 
-                                  'Brak danych'
-                                }
-                              </div>
-                            </div>
-                            {transport.vehicleType && (
-                              <div>
-                                <span className="font-medium text-gray-700">Typ pojazdu:</span>
-                                <div className="font-semibold text-gray-900">{transport.vehicleType}</div>
-                              </div>
-                            )}
-                          </div>
+                            );
+                          })()}
                         </div>
                       </div>
+
+                      {/* Panel z sekwencją trasy jeśli dostępna */}
+                      {(() => {
+                        let routeSequence = null;
+                        try {
+                          if (transport.response_data) {
+                            const responseData = typeof transport.response_data === 'string' 
+                              ? JSON.parse(transport.response_data) 
+                              : transport.response_data;
+                            routeSequence = responseData.routeSequence;
+                          }
+                        } catch (e) {
+                          console.error('Error parsing route sequence:', e);
+                        }
+                        
+                        if (routeSequence && routeSequence.length > 0) {
+                          return (
+                            <div className="mb-6 bg-gradient-to-br from-indigo-50 to-indigo-100 p-5 rounded-xl shadow-sm border border-indigo-200">
+                              <h4 className="font-bold text-indigo-700 mb-4 pb-2 border-b border-indigo-300 flex items-center text-lg">
+                                <MapPin size={20} className="mr-2" />
+                                Sekwencja trasy ({routeSequence.length} punktów)
+                              </h4>
+                              <div className="space-y-2">
+                                {routeSequence.map((point, index) => (
+                                  <div key={point.id || index} className="flex items-center p-3 bg-white rounded-lg border border-indigo-200">
+                                    <div className="bg-indigo-200 text-indigo-800 rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold mr-3">
+                                      {index + 1}
+                                    </div>
+                                    <div className="flex-1">
+                                      <div className="font-semibold text-gray-900">
+                                        {point.city}
+                                        <span className="ml-2 text-xs bg-gray-100 px-2 py-1 rounded">
+                                          {point.type === 'loading' ? 'Załadunek' : 'Rozładunek'}
+                                        </span>
+                                      </div>
+                                      <div className="text-sm text-gray-600">{point.company}</div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
 
                       {/* Panel z informacjami o łączonych transportach */}
                       {transport.isMerged && transport.merged_transports && (
