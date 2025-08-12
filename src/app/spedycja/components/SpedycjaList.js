@@ -362,6 +362,62 @@ export default function SpedycjaList({
     }
   }
 
+  // Funkcja do generowania URL Google Maps z pełną trasą
+  const generateGoogleMapsUrl = (transport) => {
+    try {
+      // Sprawdź czy to transport połączony z sekwencją trasy
+      if (transport.response_data) {
+        const responseData = typeof transport.response_data === 'string' 
+          ? JSON.parse(transport.response_data) 
+          : transport.response_data;
+        
+        if (responseData?.isMerged && responseData?.routeSequence && responseData.routeSequence.length > 0) {
+          // Użyj sekwencji trasy dla połączonych transportów
+          const sequence = responseData.routeSequence;
+          
+          if (sequence.length === 1) {
+            // Jeden punkt - użyj podstawowej trasy
+            const point = sequence[0];
+            return `https://www.google.com/maps/search/${encodeURIComponent(point.city)}`;
+          } else if (sequence.length === 2) {
+            // Dwa punkty - bezpośrednia trasa
+            const start = sequence[0];
+            const end = sequence[sequence.length - 1];
+            return `https://www.google.com/maps/dir/${encodeURIComponent(start.city)}/${encodeURIComponent(end.city)}`;
+          } else {
+            // Wiele punktów - użyj waypoints
+            const start = sequence[0];
+            const end = sequence[sequence.length - 1];
+            const waypoints = sequence.slice(1, -1); // Wszystkie punkty między pierwszym a ostatnim
+            
+            let url = `https://www.google.com/maps/dir/${encodeURIComponent(start.city)}`;
+            
+            // Dodaj waypoints
+            waypoints.forEach(point => {
+              url += `/${encodeURIComponent(point.city)}`;
+            });
+            
+            // Dodaj punkt końcowy
+            url += `/${encodeURIComponent(end.city)}`;
+            
+            return url;
+          }
+        }
+      }
+      
+      // Fallback dla pojedynczych transportów lub bez sekwencji
+      const startCity = getLoadingCity(transport);
+      const endCity = getDeliveryCity(transport);
+      return `https://www.google.com/maps/dir/${encodeURIComponent(startCity)}/${encodeURIComponent(endCity)}`;
+    } catch (e) {
+      console.error('Błąd generowania URL Google Maps:', e);
+      // Fallback
+      const startCity = getLoadingCity(transport);
+      const endCity = getDeliveryCity(transport);
+      return `https://www.google.com/maps/dir/${encodeURIComponent(startCity)}/${encodeURIComponent(endCity)}`;
+    }
+  }
+
   // Filtruj zamówienia na podstawie trybu archiwum
   const filteredSpedycje = zamowienia.filter(zamowienie => {
     if (showArchive) {
@@ -941,15 +997,18 @@ export default function SpedycjaList({
                                     {/* Przycisk Google Maps */}
                                     <button
                                       onClick={() => {
-                                        const startCity = getLoadingCity(zamowienie)
-                                        const endCity = getDeliveryCity(zamowienie)
-                                        const url = `https://www.google.com/maps/dir/${encodeURIComponent(startCity)}/${encodeURIComponent(endCity)}`
+                                        const url = generateGoogleMapsUrl(zamowienie)
                                         window.open(url, '_blank')
                                       }}
                                       className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
                                     >
                                       <MapPin size={16} />
                                       Zobacz trasę w Google Maps
+                                      {isMergedTransport(zamowienie) && (
+                                        <span className="ml-1 px-1 py-0.5 bg-blue-500 rounded text-xs">
+                                          PEŁNA TRASA
+                                        </span>
+                                      )}
                                     </button>
                                     
                                     {/* Przycisk generowania CMR */}

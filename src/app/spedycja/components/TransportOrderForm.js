@@ -298,55 +298,93 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
           <div className="mt-4 pt-3 border-t border-gray-200">
             <h4 className="font-bold text-sm mb-2 text-gray-800">Szczegóły wszystkich tras:</h4>
             
-            {/* Główna trasa */}
-            <div className="mb-2 p-2 bg-white rounded border border-purple-100">
-              <div className="flex justify-between items-center">
-                <div>
-                  <span className="font-medium">GŁÓWNA: {zamowienie.orderNumber}</span>
-                  <div className="text-xs text-gray-600 mt-1">
-                    Załadunek: {zamowienie.location === 'Odbiory własne' 
-                      ? formatAddress(zamowienie.producerAddress) 
-                      : zamowienie.location}
-                  </div>
-                  <div className="text-xs text-gray-600">
-                    Rozładunek: {formatAddress(zamowienie.delivery)}
-                  </div>
+            {mergedData.routeSequence && mergedData.routeSequence.length > 0 ? (
+              /* Wyświetl sekwencję trasy */
+              <div className="mb-3 p-3 bg-blue-50 rounded border border-blue-200">
+                <h5 className="font-medium text-blue-800 mb-3 flex items-center">
+                  <MapPin size={16} className="mr-2" />
+                  Kompletna sekwencja trasy (automatycznie wygenerowana)
+                </h5>
+                <div className="space-y-2">
+                  {mergedData.routeSequence.map((point, index) => (
+                    <div key={point.id} className="flex items-start gap-3 p-2 bg-white rounded border">
+                      <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0">
+                        {index + 1}
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-900">
+                          {point.type === 'loading' ? '📦 Załadunek' : '🏢 Rozładunek'} - {point.city}
+                        </div>
+                        <div className="text-sm text-gray-600 mt-1">
+                          <strong>{point.company}</strong>
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {point.address}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="text-right text-sm">
-                  <div className="font-medium text-green-600">
-                    {mergedData.costBreakdown?.mainTransport?.cost || 0} PLN
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    MPK: {zamowienie.mpk}
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            {/* Dodatkowe trasy */}
-            {mergedData.originalTransports.map((transport, index) => (
-              <div key={transport.id} className="mb-2 p-2 bg-white rounded border border-gray-100">
-                <div className="flex justify-between items-center">
+                
+                {/* Podsumowanie trasy */}
+                <div className="mt-3 pt-3 border-t border-blue-200 grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <span className="font-medium">{index + 2}. {transport.orderNumber}</span>
-                    <div className="text-xs text-gray-600 mt-1">
-                      Trasa: {transport.route}
-                    </div>
-                    <div className="text-xs text-gray-600">
-                      Odpowiedzialny: {transport.responsiblePerson || 'Brak'}
-                    </div>
+                    <span className="text-gray-600">Łączna odległość:</span>
+                    <span className="ml-2 font-medium text-blue-700">{mergedData.totalDistance || 0} km</span>
                   </div>
-                  <div className="text-right text-sm">
-                    <div className="font-medium text-green-600">
-                      {transport.costAssigned || 0} PLN
+                  <div>
+                    <span className="text-gray-600">Punktów w trasie:</span>
+                    <span className="ml-2 font-medium text-blue-700">{mergedData.routeSequence.length}</span>
+                  </div>
+                  {mergedData.cargoDescription && (
+                    <div className="col-span-2">
+                      <span className="text-gray-600">Rodzaj ładunku:</span>
+                      <span className="ml-2 font-medium text-blue-700">{mergedData.cargoDescription}</span>
                     </div>
-                    <div className="text-xs text-gray-500">
-                      MPK: {transport.mpk}
+                  )}
+                  {mergedData.totalWeight && (
+                    <div className="col-span-2">
+                      <span className="text-gray-600">Łączna waga:</span>
+                      <span className="ml-2 font-medium text-blue-700">{mergedData.totalWeight} kg</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* Fallback - stary sposób wyświetlania */
+              <div>
+                <div className="mb-2 p-2 bg-white rounded border border-purple-100">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <span className="font-medium">GŁÓWNA: {zamowienie.orderNumber}</span>
+                      <div className="text-xs text-gray-600 mt-1">
+                        Załadunek: {zamowienie.location === 'Odbiory własne' 
+                          ? formatAddress(zamowienie.producerAddress) 
+                          : zamowienie.location}
+                      </div>
+                      <div className="text-xs text-gray-600">
+                        Rozładunek: {formatAddress(zamowienie.delivery)}
+                      </div>
+                    </div>
+                    <div className="text-right text-sm">
+                      <div className="font-medium text-green-600">
+                        {mergedData.costBreakdown?.[zamowienie.id] || 0} PLN
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        MPK: {zamowienie.mpk}
+                      </div>
                     </div>
                   </div>
                 </div>
+                
+                {/* Pozostałe transporty */}
+                {mergedData.originalTransports && mergedData.originalTransports.length > 0 && (
+                  <div className="text-sm text-gray-600 mt-2">
+                    <strong>Transporty połączone:</strong> {mergedData.originalTransports.join(', ')}
+                  </div>
+                )}
               </div>
-            ))}
+            )}
           </div>
         )}
       </div>
