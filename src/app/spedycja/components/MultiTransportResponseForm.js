@@ -27,6 +27,7 @@ export default function MultiTransportResponseForm({
   const [isUpdatingDistance, setIsUpdatingDistance] = useState(false)
   const [updateMessage, setUpdateMessage] = useState('')
   const [errors, setErrors] = useState({})
+  const [goodsPrice, setGoodsPrice] = useState('')
 
   // NOWE POLA - Rodzaj pojazdu i rodzaj transportu
   const [vehicleType, setVehicleType] = useState('')
@@ -200,14 +201,34 @@ export default function MultiTransportResponseForm({
     setTransportOptions(prev => {
       const currentOptions = prev[transportId] || { loading: true, unloading: true }
       const newValue = !currentOptions[option]
+      const newOptions = {
+        ...currentOptions,
+        [option]: newValue
+      }
       
-      // Pozwól na odznaczenie dowolnej opcji - to jest cel tej funkcji (optymalizacja trasy)
+      // Jeśli obie opcje zostały odznaczone, usuń transport z wybranych
+      if (!newOptions.loading && !newOptions.unloading) {
+        console.log(`🚫 Transport ${transportId} usunięty - brak wybranych opcji trasy`)
+        
+        // Usuń transport z selectedTransports
+        setSelectedTransports(current => current.filter(t => t.id !== transportId))
+        
+        // Usuń z podziału kosztów
+        setPriceBreakdown(current => {
+          const newBreakdown = { ...current }
+          delete newBreakdown[transportId]
+          return newBreakdown
+        })
+        
+        // Usuń z opcji transportu
+        const newTransportOptions = { ...prev }
+        delete newTransportOptions[transportId]
+        return newTransportOptions
+      }
+      
       return {
         ...prev,
-        [transportId]: {
-          ...currentOptions,
-          [option]: newValue
-        }
+        [transportId]: newOptions
       }
     })
   }
@@ -480,6 +501,7 @@ export default function MultiTransportResponseForm({
       totalWeight: totalWeight ? parseFloat(totalWeight) : null,
       totalDistance,
       isMerged: selectedTransports.length > 1,
+      goodsPrice: goodsPrice ? parseFloat(goodsPrice) : null,
       // NOWE POLA
       vehicleType,
       transportType
@@ -900,6 +922,21 @@ export default function MultiTransportResponseForm({
                       placeholder="1500.00"
                     />
                     {errors.totalPrice && <p className="mt-1 text-sm text-red-600">{errors.totalPrice}</p>}
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Cena towaru (PLN)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={goodsPrice}
+                      onChange={(e) => setGoodsPrice(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="5000.00"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">Wartość przewożonego towaru (opcjonalne)</p>
                   </div>
                   
                   <div>

@@ -821,13 +821,37 @@ export default function SpedycjaList({
                                           <div className="flex items-center gap-2">
                                             <DollarSign size={12} className="text-green-600" />
                                             <span className="text-sm">
-                                              <span className="text-gray-600">Cena:</span>
+                                              <span className="text-gray-600">Cena transportu:</span>
                                               <span className="ml-1 font-bold text-green-700">
                                                 {zamowienie.response.deliveryPrice} PLN
                                               </span>
                                             </span>
                                           </div>
                                         )}
+                                        {(() => {
+                                          try {
+                                            const responseData = zamowienie.response_data ? 
+                                              (typeof zamowienie.response_data === 'string' ? 
+                                                JSON.parse(zamowienie.response_data) : 
+                                                zamowienie.response_data) : null;
+                                            
+                                            const goodsPrice = responseData?.goodsPrice || zamowienie.response?.goodsPrice;
+                                            
+                                            return goodsPrice && (
+                                              <div className="flex items-center gap-2">
+                                                <Package size={12} className="text-blue-600" />
+                                                <span className="text-sm">
+                                                  <span className="text-gray-600">Cena towaru:</span>
+                                                  <span className="ml-1 font-bold text-blue-700">
+                                                    {goodsPrice} PLN
+                                                  </span>
+                                                </span>
+                                              </div>
+                                            );
+                                          } catch (e) {
+                                            return null;
+                                          }
+                                        })()}
                                         {zamowienie.response.notes && (
                                           <div className="mt-2 pt-2 border-t border-green-200">
                                             <span className="text-gray-600">Uwagi przewoźnika:</span>

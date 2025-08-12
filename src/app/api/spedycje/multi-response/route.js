@@ -20,6 +20,7 @@ export async function POST(request) {
       totalWeight,
       totalDistance,
       isMerged,
+      goodsPrice,
       // NOWE POLA
       vehicleType,
       transportType
@@ -112,6 +113,7 @@ Transporty o ID: ${nonNewTransports.map(t => `${t.id} (status: ${t.status})`).jo
         driverPhone: driverInfo.phone,
         vehicleNumber: driverInfo.vehicleNumber || null,
         deliveryPrice: parseFloat(totalPrice),
+        goodsPrice: goodsPrice ? parseFloat(goodsPrice) : null,
         distance: totalDistance || null,
         notes: notes || null,
         cargoDescription: cargoDescription || null,
@@ -168,6 +170,7 @@ Transporty o ID: ${nonNewTransports.map(t => `${t.id} (status: ${t.status})`).jo
         vehicleNumber: driverInfo.vehicleNumber || null,
         deliveryPrice: parseFloat(mainTransportPrice.toFixed(2)), // Użyj przydzielonej ceny, nie całkowitej
         totalDeliveryPrice: parseFloat(totalPrice), // Zachowaj całkowitą cenę jako dodatkowe pole
+        goodsPrice: goodsPrice ? parseFloat(goodsPrice) : null,
         distance: totalDistance || null,
         notes: notes || null,
         cargoDescription: cargoDescription || null,
@@ -217,6 +220,7 @@ Transporty o ID: ${nonNewTransports.map(t => `${t.id} (status: ${t.status})`).jo
           driverPhone: driverInfo.phone,
           vehicleNumber: driverInfo.vehicleNumber || null,
           deliveryPrice: parseFloat(transportPrice.toFixed(2)), // Zaokrągl do 2 miejsc po przecinku
+          goodsPrice: goodsPrice ? parseFloat(goodsPrice) : null,
           distance: null,
           notes: `Transport połączony z #${mainTransportId}. ${notes || ''}`.trim(),
           cargoDescription: cargoDescription || null,
