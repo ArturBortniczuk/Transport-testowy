@@ -506,7 +506,7 @@ Zmodyfikuj dane i zapisz jako nowe zamówienie.`, 'success');
           <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <SpedycjaForm 
               onSubmit={isEditing 
-                ? (id, data) => handleSaveEdit(selectedZamowienie.id, data)
+                ? (data) => handleSaveEdit(selectedZamowienie.id, data)
                 : selectedZamowienie 
                   ? handleSubmit // To dla kopiowania - traktujemy jako nowe zamówienie
                   : handleSubmit  // To dla zupełnie nowego zamówienia
