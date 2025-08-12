@@ -165,9 +165,13 @@ export default function MultiTransportResponseForm({
 
   // Obsługa wyboru transportów
   const handleTransportToggle = (transport) => {
+    console.log(`🖱️ Kliknięto na transport ${transport.id}`)
+    
     const isSelected = selectedTransports.find(t => t.id === transport.id)
+    console.log(`📋 Transport ${transport.id} jest wybrany:`, !!isSelected)
     
     if (isSelected) {
+      console.log(`➖ Usuwam transport ${transport.id}`)
       // Usuń transport
       const newSelected = selectedTransports.filter(t => t.id !== transport.id)
       setSelectedTransports(newSelected)
@@ -182,6 +186,7 @@ export default function MultiTransportResponseForm({
       delete newOptions[transport.id]
       setTransportOptions(newOptions)
     } else {
+      console.log(`➕ Dodaję transport ${transport.id}`)
       // Dodaj transport
       setSelectedTransports([...selectedTransports, transport])
       
@@ -198,6 +203,8 @@ export default function MultiTransportResponseForm({
 
   // Obsługa opcji transportu (załadunek/rozładunek) - umożliwia optymalizację trasy
   const handleTransportOptionToggle = (transportId, option) => {
+    console.log(`🔄 Przełączanie opcji ${option} dla transportu ${transportId}`)
+    
     setTransportOptions(prev => {
       const currentOptions = prev[transportId] || { loading: true, unloading: true }
       const newValue = !currentOptions[option]
@@ -206,12 +213,18 @@ export default function MultiTransportResponseForm({
         [option]: newValue
       }
       
+      console.log(`📋 Transport ${transportId} opcje:`, currentOptions, '→', newOptions)
+      
       // Jeśli obie opcje zostały odznaczone, usuń transport z wybranych
       if (!newOptions.loading && !newOptions.unloading) {
         console.log(`🚫 Transport ${transportId} usunięty - brak wybranych opcji trasy`)
         
         // Usuń transport z selectedTransports
-        setSelectedTransports(current => current.filter(t => t.id !== transportId))
+        setSelectedTransports(current => {
+          const filtered = current.filter(t => t.id !== transportId)
+          console.log(`📦 Usuwam transport ${transportId} z wybranych. Pozostało: ${filtered.length}`)
+          return filtered
+        })
         
         // Usuń z podziału kosztów
         setPriceBreakdown(current => {
@@ -225,6 +238,8 @@ export default function MultiTransportResponseForm({
         delete newTransportOptions[transportId]
         return newTransportOptions
       }
+      
+      console.log(`✅ Transport ${transportId} pozostaje z opcjami:`, newOptions)
       
       return {
         ...prev,
@@ -575,16 +590,18 @@ export default function MultiTransportResponseForm({
                     return (
                       <div 
                         key={transport.id} 
-                        className={`p-4 border-2 rounded-lg transition-all cursor-pointer ${
+                        className={`p-4 border-2 rounded-lg transition-all ${
                           isSelected 
                             ? 'border-green-300 bg-green-50 shadow-md' 
-                            : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
+                            : 'border-gray-200 bg-white'
                         }`}
-                        onClick={() => handleTransportToggle(transport)}
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
+                            <div 
+                              className="flex items-center gap-2 mb-2 cursor-pointer hover:bg-gray-100 p-1 rounded"
+                              onClick={() => handleTransportToggle(transport)}
+                            >
                               <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
                                 isSelected ? 'border-green-500 bg-green-500' : 'border-gray-300'
                               }`}>
