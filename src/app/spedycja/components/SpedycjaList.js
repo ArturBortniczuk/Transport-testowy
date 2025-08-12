@@ -374,12 +374,12 @@ export default function SpedycjaList({
   return (
     <div className="w-full max-w-none mx-auto space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-800">
+        <h1 className="text-3xl font-bold text-gray-900">
           {showArchive ? 'Archiwum zapytań spedycyjnych' : 'Nowe zapytania spedycyjne'}
         </h1>
         
-        {/* Przycisk odpowiedzi zbiorczej - tylko dla nowych zapytań */}
-        {!showArchive && filteredSpedycje.filter(s => s.status === 'new').length > 0 && (
+        {/* Przycisk odpowiedzi zbiorczej - tylko dla osób z uprawnieniami i nowych zapytań */}
+        {!showArchive && filteredSpedycje.filter(s => s.status === 'new').length > 0 && isAdmin && (
           <button
             onClick={() => setShowMultiResponseForm(true)}
             className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
@@ -413,7 +413,7 @@ export default function SpedycjaList({
             <div className="bg-gray-100 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6">
               <Package size={48} className="text-gray-400" />
             </div>
-            <h3 className="text-xl font-semibold text-gray-800 mb-2">
+            <h3 className="text-xl font-bold text-gray-900 mb-2">
               {showArchive ? 'Brak zamówień w archiwum' : 'Brak nowych zamówień'}
             </h3>
             <p className="text-gray-600 mb-6">

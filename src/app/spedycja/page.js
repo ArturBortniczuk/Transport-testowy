@@ -373,9 +373,9 @@ Zmodyfikuj dane i zapisz jako nowe zamówienie.`, 'success');
     }
   }
 
-  // Funkcja sprawdzania uprawnień do dodawania zamówień
+  // Funkcja sprawdzania uprawnień do dodawania zamówień  
   const checkCanAddOrder = () => {
-    return userRole === 'admin' || userRole === 'sales' || canAddOrder;
+    return true; // Wszyscy mogą dodawać nowe zapytania spedycyjne
   };
 
   // Funkcja sprawdzania uprawnień do odpowiadania

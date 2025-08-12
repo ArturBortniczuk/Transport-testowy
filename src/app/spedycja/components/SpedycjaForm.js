@@ -779,7 +779,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
   return (
     <form onSubmit={handleSubmit} className="p-6 space-y-6">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-semibold">
+        <h2 className="text-2xl font-bold text-gray-900">
           {isResponse ? 'Odpowiedź na zamówienie spedycji' : 
            isEditing ? 'Edycja zamówienia spedycji' : 
            isCopying ? 'Nowe zamówienie (skopiowane)' :
@@ -846,7 +846,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
           {!isEditing && (
             <div className="mb-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium flex items-center">
+                <h3 className="text-lg font-bold text-gray-900 flex items-center">
                   <LinkIcon size={20} className="mr-2 text-blue-600" />
                   Łączenie transportów
                 </h3>
@@ -1039,7 +1039,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
           )}
 
           <div className="space-y-4">
-            <h3 className="text-lg font-medium">Dane przewoźnika</h3>
+            <h3 className="text-lg font-bold text-gray-900">Dane przewoźnika</h3>
             
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -1147,7 +1147,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
       ) : (
         <>
           <div className="space-y-4">
-            <h3 className="text-lg font-medium">Źródło załadunku</h3>
+            <h3 className="text-lg font-bold text-gray-900">Źródło załadunku</h3>
             
             <div className="grid grid-cols-3 gap-4">
               <label className="flex items-center">
@@ -1298,7 +1298,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
           </div>
 
           <div className="space-y-4">
-            <h3 className="text-lg font-medium">Adres dostawy</h3>
+            <h3 className="text-lg font-bold text-gray-900">Adres dostawy</h3>
             
             <div>
               <label className="block text-sm font-medium mb-1">
@@ -1426,7 +1426,7 @@ export default function SpedycjaForm({ onSubmit, onCancel, initialData, isRespon
 
           {!isResponse && !isEditing && (
             <div className="space-y-4">
-              <h3 className="text-lg font-medium">Osoba odpowiedzialna</h3>
+              <h3 className="text-lg font-bold text-gray-900">Osoba odpowiedzialna</h3>
               
               <div className="relative" ref={dropdownRef}>
                 <label className="block text-sm font-medium mb-1">

@@ -95,7 +95,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
   return (
     <form onSubmit={handleSubmit} className="p-6 space-y-6">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-semibold">Stwórz zlecenie transportowe</h2>
+        <h2 className="text-2xl font-bold text-gray-900">Stwórz zlecenie transportowe</h2>
         <button
           type="button"
           onClick={onCancel}
@@ -114,7 +114,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
       {/* Informacja o transporcie połączonym */}
       {isMergedTransport && (
         <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
-          <h3 className="font-medium text-purple-700 mb-3 flex items-center">
+          <h3 className="font-bold text-gray-900 mb-3 flex items-center">
             <LinkIcon size={18} className="mr-2" />
             Transport połączony - automatycznie uwzględnione wszystkie trasy
           </h3>
@@ -253,7 +253,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
         {/* Szczegóły tras dla transportu połączonego */}
         {isMergedTransport && mergedData && (
           <div className="mt-4 pt-3 border-t border-gray-200">
-            <h4 className="font-medium text-sm mb-2 text-purple-700">Szczegóły wszystkich tras:</h4>
+            <h4 className="font-bold text-sm mb-2 text-gray-800">Szczegóły wszystkich tras:</h4>
             
             {/* Główna trasa */}
             <div className="mb-2 p-2 bg-white rounded border border-purple-100">
