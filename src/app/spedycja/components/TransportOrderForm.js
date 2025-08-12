@@ -219,7 +219,6 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
             value={formData.dataZaladunku}
             onChange={handleChange}
             className="w-full p-2 border rounded-md"
-            required
           />
         </div>
         <div>
@@ -230,7 +229,6 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
             value={formData.dataRozladunku}
             onChange={handleChange}
             className="w-full p-2 border rounded-md"
-            required
           />
         </div>
       </div>
