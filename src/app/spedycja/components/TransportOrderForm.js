@@ -6,7 +6,7 @@ import { Calendar, Info, Truck, FileText, MapPin, DollarSign, LinkIcon, Building
 export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
   const [formData, setFormData] = useState({
     towar: '',
-    terminPlatnosci: '14 dni',
+    terminPlatnosci: '30 dni',
     waga: '',
     dataZaladunku: '',
     dataRozladunku: '',
@@ -17,15 +17,47 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
   const [error, setError] = useState(null)
   
   // Sprawdź czy transport jest połączony
-  const isMergedTransport = zamowienie?.merged_transports && zamowienie?.response?.isMerged
+  const isMergedTransport = (() => {
+    // Sprawdź response_data
+    if (zamowienie?.response_data) {
+      try {
+        const responseData = typeof zamowienie.response_data === 'string' 
+          ? JSON.parse(zamowienie.response_data) 
+          : zamowienie.response_data
+        return responseData?.isMerged || false
+      } catch (e) {
+        console.error('Błąd parsowania response_data:', e)
+      }
+    }
+    
+    // Fallback do starych pól
+    return zamowienie?.merged_transports && zamowienie?.response?.isMerged
+  })()
   
   // Pobierz dane o połączonych transportach
   const getMergedData = () => {
     if (!isMergedTransport) return null
     
     try {
+      // Sprawdź response_data
+      if (zamowienie?.response_data) {
+        const responseData = typeof zamowienie.response_data === 'string' 
+          ? JSON.parse(zamowienie.response_data) 
+          : zamowienie.response_data
+        
+        return {
+          originalTransports: responseData?.mergedTransportIds || [],
+          costBreakdown: responseData?.costBreakdown || responseData?.priceBreakdown || null,
+          routeSequence: responseData?.routeSequence || [],
+          totalDistance: responseData?.totalDistance || 0,
+          cargoDescription: responseData?.cargoDescription || '',
+          totalWeight: responseData?.totalWeight || 0
+        }
+      }
+      
+      // Fallback do starych pól
       return {
-        originalTransports: zamowienie.merged_transports.originalTransports || [],
+        originalTransports: zamowienie.merged_transports?.originalTransports || [],
         costBreakdown: zamowienie.response?.costBreakdown || null
       }
     } catch (error) {
@@ -35,6 +67,17 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
   }
   
   const mergedData = getMergedData()
+  
+  // Automatyczne wypełnienie danych dla połączonych transportów
+  useEffect(() => {
+    if (isMergedTransport && mergedData) {
+      setFormData(prev => ({
+        ...prev,
+        towar: mergedData.cargoDescription || prev.towar,
+        waga: mergedData.totalWeight ? mergedData.totalWeight.toString() : prev.waga
+      }))
+    }
+  }, [isMergedTransport, mergedData])
   
   const handleChange = (e) => {
     const { name, value } = e.target

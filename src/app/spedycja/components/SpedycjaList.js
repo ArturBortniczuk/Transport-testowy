@@ -928,6 +928,59 @@ export default function SpedycjaList({
                                   )}
                                 </div>
                               </div>
+                              
+                              {/* Sekcja 4: Akcje - przyciski działań */}
+                              {zamowienie.response && (
+                                <div className="col-span-full bg-white rounded-lg p-4 shadow-sm border border-orange-200">
+                                  <h4 className="text-sm font-bold text-orange-900 border-b border-orange-200 pb-2 mb-4 flex items-center gap-2">
+                                    <Truck size={16} className="text-orange-600" />
+                                    Działania
+                                  </h4>
+                                  
+                                  <div className="flex flex-wrap gap-3">
+                                    {/* Przycisk Google Maps */}
+                                    <button
+                                      onClick={() => {
+                                        const startCity = getLoadingCity(zamowienie)
+                                        const endCity = getDeliveryCity(zamowienie)
+                                        const url = `https://www.google.com/maps/dir/${encodeURIComponent(startCity)}/${encodeURIComponent(endCity)}`
+                                        window.open(url, '_blank')
+                                      }}
+                                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                                    >
+                                      <MapPin size={16} />
+                                      Zobacz trasę w Google Maps
+                                    </button>
+                                    
+                                    {/* Przycisk generowania CMR */}
+                                    <button
+                                      onClick={() => {
+                                        try {
+                                          generateCMR(zamowienie)
+                                        } catch (error) {
+                                          console.error('Błąd generowania CMR:', error)
+                                          alert('Wystąpił błąd podczas generowania CMR')
+                                        }
+                                      }}
+                                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
+                                    >
+                                      <FileText size={16} />
+                                      Generuj CMR
+                                    </button>
+                                    
+                                    {/* Przycisk tworzenia zlecenia transportowego */}
+                                    {canSendOrder && (
+                                      <button
+                                        onClick={() => onCreateOrder(zamowienie)}
+                                        className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
+                                      >
+                                        <Clipboard size={16} />
+                                        Stwórz zlecenie transportowe
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </td>
                         </tr>
