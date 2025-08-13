@@ -141,10 +141,15 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
         <h2 className="text-2xl font-bold text-gray-900">Stwórz zlecenie transportowe</h2>
         <button
           type="button"
-          onClick={onCancel}
+          onClick={() => {
+            console.log('Zamykanie formularza z nagłówka');
+            if (onCancel) {
+              onCancel();
+            }
+          }}
           className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors"
         >
-          Anuluj
+          Zamknij
         </button>
       </div>
       
@@ -163,17 +168,20 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
           </h3>
           
           <div className="space-y-2 text-sm">
-            {/* Główny transport */}
-            <div className="font-medium text-purple-800">
-              1. {zamowienie.orderNumber} - {getTransportRoute(zamowienie)} (MPK: {zamowienie.mpk})
-            </div>
-            
-            {/* Połączone transporty */}
-            {mergedData?.originalTransports.map((transport, index) => (
-              <div key={transport.id} className="text-purple-700 ml-4">
-                {index + 2}. {transport.orderNumber} - {transport.route} (MPK: {transport.mpk})
+            {/* Połączone transporty - wyświetl wszystkie z mergedData */}
+            {mergedData?.originalTransports && mergedData.originalTransports.length > 0 ? (
+              mergedData.originalTransports.map((transport, index) => (
+                <div key={transport.id || index} className="font-medium text-purple-700">
+                  {index + 1}. {transport.orderNumber || `Transport ${transport.id}`} - 
+                  {transport.route || `${transport.startCity || 'Start'} → ${transport.endCity || 'Cel'}`} 
+                  {transport.mpk && `(MPK: ${transport.mpk})`}
+                </div>
+              ))
+            ) : (
+              <div className="text-purple-700">
+                Brak szczegółowych danych o połączonych transportach
               </div>
-            ))}
+            )}
             
             <div className="mt-3 pt-2 border-t border-purple-200 font-medium text-purple-800">
               Łączna wartość: {zamowienie.response?.deliveryPrice || 0} PLN
@@ -282,11 +290,13 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
           </div>
           
           <div>
-            <p><span className="font-medium">Trasa główna:</span> {getTransportRoute(zamowienie)}</p>
-            <p><span className="font-medium">Odległość:</span> {zamowienie.distanceKm || 0} km</p>
+            {!isMergedTransport && (
+              <p><span className="font-medium">Trasa:</span> {getTransportRoute(zamowienie)}</p>
+            )}
+            <p><span className="font-medium">Łączna odległość:</span> {mergedData?.totalDistance || zamowienie.distanceKm || 0} km</p>
             <p><span className="font-medium">Wartość transportu:</span> {zamowienie.response?.deliveryPrice || 0} PLN</p>
             {isMergedTransport && (
-              <p><span className="font-medium">Liczba tras:</span> {(mergedData?.originalTransports.length || 0) + 1}</p>
+              <p><span className="font-medium">Liczba transportów:</span> {mergedData?.originalTransports.length || 1}</p>
             )}
           </div>
         </div>
@@ -327,12 +337,20 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
                 {/* Podsumowanie trasy */}
                 <div className="mt-3 pt-3 border-t border-blue-200 grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <span className="text-gray-600">Łączna odległość:</span>
+                    <span className="text-gray-600">Łączna odległość trasy:</span>
                     <span className="ml-2 font-medium text-blue-700">{mergedData.totalDistance || 0} km</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Liczba transportów:</span>
+                    <span className="ml-2 font-medium text-blue-700">{mergedData.originalTransports?.length || 1}</span>
                   </div>
                   <div>
                     <span className="text-gray-600">Punktów w trasie:</span>
                     <span className="ml-2 font-medium text-blue-700">{mergedData.routeSequence.length}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Łączne koszty:</span>
+                    <span className="ml-2 font-medium text-blue-700">{zamowienie.response?.deliveryPrice || 0} PLN</span>
                   </div>
                   {mergedData.cargoDescription && (
                     <div className="col-span-2">
@@ -390,10 +408,15 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
       <div className="flex justify-end gap-2 pt-4 border-t">
         <button
           type="button"
-          onClick={onCancel}
+          onClick={() => {
+            console.log('Zamykanie formularza zlecenia transportowego');
+            if (onCancel) {
+              onCancel();
+            }
+          }}
           className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors"
         >
-          Anuluj
+          Zamknij
         </button>
         <button
           type="submit"
