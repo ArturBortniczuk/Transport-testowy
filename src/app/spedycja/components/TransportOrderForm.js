@@ -38,6 +38,14 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
   const getMergedData = () => {
     if (!isMergedTransport) return null
     
+    // Debug - sprawdźmy jakie dane mamy
+    console.log('🔍 Debug getMergedData:', {
+      zamowienie: zamowienie,
+      response_data: zamowienie?.response_data,
+      response: zamowienie?.response,
+      merged_transports: zamowienie?.merged_transports
+    });
+    
     try {
       // Sprawdź response_data
       if (zamowienie?.response_data) {
@@ -100,17 +108,144 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
   
   const mergedData = getMergedData()
   
+  // State dla szczegółów połączonych transportów
+  const [mergedTransportsDetails, setMergedTransportsDetails] = useState([]);
+  const [isLoadingMergedDetails, setIsLoadingMergedDetails] = useState(false);
+  
+  // Funkcja do pobierania szczegółów połączonych transportów
+  const fetchMergedTransportsDetails = async () => {
+    if (!isMergedTransport || !mergedData?.originalTransports?.length) {
+      return;
+    }
+    
+    setIsLoadingMergedDetails(true);
+    
+    try {
+      const transportIds = mergedData.originalTransports;
+      console.log('📡 Pobieranie szczegółów dla transportów:', transportIds);
+      
+      const transportPromises = transportIds.map(async (transportId) => {
+        if (typeof transportId === 'object' && transportId.id) {
+          // Jeśli to już obiekt z danymi, użyj go
+          return transportId;
+        }
+        
+        // Pobierz szczegóły z API
+        const response = await fetch(`/api/spedycje/${transportId}`);
+        if (response.ok) {
+          const data = await response.json();
+          return data.spedycja;
+        }
+        return null;
+      });
+      
+      const details = await Promise.all(transportPromises);
+      const validDetails = details.filter(detail => detail !== null);
+      
+      console.log('📋 Pobrane szczegóły transportów:', validDetails);
+      setMergedTransportsDetails(validDetails);
+    } catch (error) {
+      console.error('Błąd pobierania szczegółów transportów:', error);
+    } finally {
+      setIsLoadingMergedDetails(false);
+    }
+  };
+  
+  // Pobierz szczegóły połączonych transportów
+  useEffect(() => {
+    if (isMergedTransport && mergedData) {
+      fetchMergedTransportsDetails();
+    }
+  }, [isMergedTransport, mergedData?.originalTransports]);
+  
+  // Funkcja agregująca dane ze wszystkich połączonych transportów
+  const getAggregatedMergedData = () => {
+    if (!isMergedTransport) return null;
+    
+    const baseData = mergedData || {};
+    
+    // Jeśli nie mamy jeszcze szczegółów, zwróć podstawowe dane
+    if (!mergedTransportsDetails.length) {
+      return baseData;
+    }
+    
+    // Agreguj dane z wszystkich transportów (głównego + połączonych)
+    let allCargoDescriptions = [];
+    let totalWeight = 0;
+    let allOrderNumbers = [zamowienie.orderNumber || zamowienie.id];
+    let allMpks = zamowienie.mpk ? [zamowienie.mpk] : [];
+    let allDocuments = zamowienie.documents ? [zamowienie.documents] : [];
+    let allClients = zamowienie.clientName ? [zamowienie.clientName] : [];
+    let totalPrice = parseFloat(baseData.totalPrice || 0);
+    
+    // Dodaj dane z głównego transportu
+    if (zamowienie.goodsDescription?.description) {
+      allCargoDescriptions.push(zamowienie.goodsDescription.description);
+    }
+    if (zamowienie.goodsDescription?.weight) {
+      totalWeight += parseFloat(zamowienie.goodsDescription.weight) || 0;
+    }
+    
+    // Agreguj dane z połączonych transportów
+    mergedTransportsDetails.forEach(transport => {
+      if (transport.orderNumber) allOrderNumbers.push(transport.orderNumber);
+      if (transport.mpk) allMpks.push(transport.mpk);
+      if (transport.documents) allDocuments.push(transport.documents);
+      if (transport.clientName) allClients.push(transport.clientName);
+      
+      // Pobierz dane o towarze z połączonych transportów
+      if (transport.goodsDescription?.description) {
+        allCargoDescriptions.push(transport.goodsDescription.description);
+      }
+      if (transport.goodsDescription?.weight) {
+        totalWeight += parseFloat(transport.goodsDescription.weight) || 0;
+      }
+      
+      // Dodaj ceny z response_data każdego transportu
+      if (transport.response_data) {
+        try {
+          const responseData = typeof transport.response_data === 'string' 
+            ? JSON.parse(transport.response_data) 
+            : transport.response_data;
+          if (responseData.deliveryPrice) {
+            totalPrice += parseFloat(responseData.deliveryPrice) || 0;
+          }
+        } catch (e) {
+          console.warn('Błąd parsowania response_data dla transportu:', transport.id);
+        }
+      }
+    });
+    
+    return {
+      ...baseData,
+      allOrderNumbers: [...new Set(allOrderNumbers)],
+      allMpks: [...new Set(allMpks.filter(mpk => mpk))],
+      allDocuments: [...new Set(allDocuments.filter(doc => doc))],
+      allClients: [...new Set(allClients.filter(client => client))],
+      cargoDescription: allCargoDescriptions.filter(desc => desc).join(', ') || baseData.cargoDescription || '',
+      totalWeight: totalWeight || baseData.totalWeight || 0,
+      totalPrice: totalPrice,
+      originalTransports: mergedTransportsDetails.length > 0 ? mergedTransportsDetails : baseData.originalTransports || []
+    };
+  };
+  
+  // Użyj zagregowanych danych zamiast podstawowych mergedData
+  const aggregatedMergedData = getAggregatedMergedData();
+  
   // Funkcja do obliczania rzeczywistej odległości trasy dla połączonych transportów
   const calculateRouteDistance = async () => {
-    if (!isMergedTransport || !mergedData?.routeSequence || mergedData.routeSequence.length < 2) {
+    if (!isMergedTransport) {
       return zamowienie.distanceKm || 0;
     }
 
-    try {
-      // Przygotuj punkty trasy w odpowiedniej kolejności
-      const waypoints = [];
-      
-      for (const point of mergedData.routeSequence) {
+    // Jeśli mamy routeSequence, użyj jej
+    const routeSequence = mergedData?.routeSequence || aggregatedMergedData?.routeSequence;
+    if (routeSequence && routeSequence.length >= 2) {
+      try {
+        // Przygotuj punkty trasy w odpowiedniej kolejności
+        const waypoints = [];
+        
+        for (const point of routeSequence) {
         let address = '';
         
         if (point.type === 'loading') {
@@ -178,12 +313,89 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
         return totalDistance;
       }
       
-    } catch (error) {
-      console.error('Błąd obliczania odległości trasy:', error);
+      } catch (error) {
+        console.error('Błąd obliczania odległości z routeSequence:', error);
+      }
+    }
+    
+    // Jeśli nie ma routeSequence, oblicz na podstawie rzeczywistych transportów
+    if (aggregatedMergedData?.originalTransports?.length > 0) {
+      try {
+        console.log('📍 Obliczanie odległości na podstawie transportów:', aggregatedMergedData.originalTransports);
+        
+        const waypoints = [];
+        
+        // Główny transport - załadunek
+        const mainLoadingAddress = getMainLoadingAddress();
+        if (mainLoadingAddress) {
+          waypoints.push(mainLoadingAddress);
+        }
+        
+        // Dodaj wszystkie punkty rozładunku z połączonych transportów
+        aggregatedMergedData.originalTransports.forEach(transport => {
+          const deliveryAddress = getTransportDeliveryAddress(transport);
+          if (deliveryAddress) {
+            waypoints.push(deliveryAddress);
+          }
+        });
+        
+        // Główny transport - rozładunek (na końcu)
+        const mainDeliveryAddress = getMainDeliveryAddress();
+        if (mainDeliveryAddress) {
+          waypoints.push(mainDeliveryAddress);
+        }
+        
+        console.log('🗺️ Punkty trasy:', waypoints);
+        
+        if (waypoints.length >= 2) {
+          const origin = waypoints[0];
+          const destination = waypoints[waypoints.length - 1];
+          const waypointsParam = waypoints.slice(1, -1).map(wp => encodeURIComponent(wp)).join('|');
+          
+          const url = `/api/distance?origins=${encodeURIComponent(origin)}&destinations=${encodeURIComponent(destination)}${waypointsParam ? `&waypoints=${waypointsParam}` : ''}`;
+          
+          const response = await fetch(url);
+          const data = await response.json();
+          
+          if (data.status === 'OK' && data.rows && data.rows[0] && data.rows[0].elements && data.rows[0].elements[0]) {
+            const distanceKm = Math.round(data.rows[0].elements[0].distance.value / 1000);
+            console.log(`✅ Obliczono rzeczywistą odległość całej trasy: ${distanceKm} km`);
+            return distanceKm;
+          }
+        }
+      } catch (error) {
+        console.error('Błąd obliczania odległości na podstawie transportów:', error);
+      }
     }
     
     // Ostateczny fallback
     return zamowienie.distanceKm || 0;
+  };
+  
+  // Funkcje pomocnicze do pobierania adresów
+  const getMainLoadingAddress = () => {
+    if (zamowienie.location === 'Magazyn Białystok') {
+      return 'Białystok, Wysockiego 69B';
+    } else if (zamowienie.location === 'Magazyn Zielonka') {
+      return 'Zielonka, Krótka 2';
+    } else if (zamowienie.location === 'Odbiory własne' && zamowienie.producerAddress) {
+      return `${zamowienie.producerAddress.city}, ${zamowienie.producerAddress.postalCode || ''}, ${zamowienie.producerAddress.street || ''}`;
+    }
+    return null;
+  };
+  
+  const getMainDeliveryAddress = () => {
+    if (zamowienie.delivery) {
+      return `${zamowienie.delivery.city}, ${zamowienie.delivery.postalCode || ''}, ${zamowienie.delivery.street || ''}`;
+    }
+    return null;
+  };
+  
+  const getTransportDeliveryAddress = (transport) => {
+    if (transport.delivery) {
+      return `${transport.delivery.city}, ${transport.delivery.postalCode || ''}, ${transport.delivery.street || ''}`;
+    }
+    return null;
   };
   
   // State dla rzeczywistej odległości
@@ -191,23 +403,23 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
   
   // Oblicz odległość przy załadowaniu komponentu
   useEffect(() => {
-    if (isMergedTransport && mergedData?.routeSequence) {
+    if (isMergedTransport && (mergedData?.routeSequence || aggregatedMergedData?.originalTransports?.length > 0)) {
       calculateRouteDistance().then(distance => {
         setCalculatedRouteDistance(distance);
       });
     }
-  }, [isMergedTransport, mergedData]);
+  }, [isMergedTransport, mergedData, aggregatedMergedData]);
   
   // Automatyczne wypełnienie danych dla połączonych transportów
   useEffect(() => {
-    if (isMergedTransport && mergedData) {
+    if (isMergedTransport && aggregatedMergedData) {
       setFormData(prev => ({
         ...prev,
-        towar: mergedData.cargoDescription || prev.towar,
-        waga: mergedData.totalWeight ? mergedData.totalWeight.toString() : prev.waga
+        towar: aggregatedMergedData.cargoDescription || prev.towar,
+        waga: aggregatedMergedData.totalWeight ? aggregatedMergedData.totalWeight.toString() : prev.waga
       }))
     }
-  }, [isMergedTransport, mergedData])
+  }, [isMergedTransport, aggregatedMergedData])
   
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -370,29 +582,29 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
           <div>
             <p><span className="font-medium">Numery zleceń:</span> {
-              isMergedTransport && mergedData?.allOrderNumbers 
-                ? mergedData.allOrderNumbers.join(', ')
+              isMergedTransport && aggregatedMergedData?.allOrderNumbers 
+                ? aggregatedMergedData.allOrderNumbers.join(', ')
                 : (zamowienie.orderNumber || zamowienie.id)
             }</p>
             <p><span className="font-medium">MPK:</span> {
-              isMergedTransport && mergedData?.allMpks 
-                ? mergedData.allMpks.filter(mpk => mpk).join(', ')
+              isMergedTransport && aggregatedMergedData?.allMpks 
+                ? aggregatedMergedData.allMpks.filter(mpk => mpk).join(', ')
                 : zamowienie.mpk
             }</p>
             <p><span className="font-medium">Dokumenty:</span> {
-              isMergedTransport && mergedData?.allDocuments 
-                ? mergedData.allDocuments.filter(doc => doc).join(', ')
+              isMergedTransport && aggregatedMergedData?.allDocuments 
+                ? aggregatedMergedData.allDocuments.filter(doc => doc).join(', ')
                 : zamowienie.documents
             }</p>
-            {(zamowienie.clientName || (isMergedTransport && mergedData?.allClients?.length > 0)) && (
+            {(zamowienie.clientName || (isMergedTransport && aggregatedMergedData?.allClients?.length > 0)) && (
               <p><span className="font-medium">Klienci:</span> {
-                isMergedTransport && mergedData?.allClients 
-                  ? mergedData.allClients.filter(client => client).join(', ')
+                isMergedTransport && aggregatedMergedData?.allClients 
+                  ? aggregatedMergedData.allClients.filter(client => client).join(', ')
                   : zamowienie.clientName
               }</p>
             )}
-            {isMergedTransport && mergedData?.cargoDescription && (
-              <p><span className="font-medium">Opis ładunku:</span> {mergedData.cargoDescription}</p>
+            {isMergedTransport && aggregatedMergedData?.cargoDescription && (
+              <p><span className="font-medium">Opis ładunku:</span> {aggregatedMergedData.cargoDescription}</p>
             )}
           </div>
           
@@ -423,21 +635,21 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
               <span className="text-green-600 text-xs">(rzeczywista trasa)</span>
             )}</p>
             <p><span className="font-medium">Wartość transportu:</span> {
-              isMergedTransport && mergedData?.totalPrice 
-                ? mergedData.totalPrice 
+              isMergedTransport && aggregatedMergedData?.totalPrice 
+                ? aggregatedMergedData.totalPrice 
                 : (zamowienie.response?.deliveryPrice || 0)
             } PLN</p>
             {isMergedTransport && (
-              <p><span className="font-medium">Liczba połączonych transportów:</span> {mergedData?.originalTransports.length || 1}</p>
+              <p><span className="font-medium">Liczba połączonych transportów:</span> {aggregatedMergedData?.originalTransports.length || 1}</p>
             )}
-            {isMergedTransport && mergedData?.totalWeight && (
-              <p><span className="font-medium">Łączna waga:</span> {mergedData.totalWeight} kg</p>
+            {isMergedTransport && aggregatedMergedData?.totalWeight && (
+              <p><span className="font-medium">Łączna waga:</span> {aggregatedMergedData.totalWeight} kg</p>
             )}
           </div>
         </div>
         
         {/* Szczegóły tras dla transportu połączonego */}
-        {isMergedTransport && mergedData && (
+        {isMergedTransport && aggregatedMergedData && (
           <div className="mt-4 pt-3 border-t border-gray-200">
             <h4 className="font-bold text-sm mb-2 text-gray-800">Szczegóły wszystkich tras:</h4>
             
@@ -485,7 +697,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
                   </div>
                   <div>
                     <span className="text-gray-600">Liczba transportów:</span>
-                    <span className="ml-2 font-medium text-blue-700">{mergedData.originalTransports?.length || 1}</span>
+                    <span className="ml-2 font-medium text-blue-700">{aggregatedMergedData.originalTransports?.length || 1}</span>
                   </div>
                   <div>
                     <span className="text-gray-600">Punktów w trasie:</span>
@@ -495,16 +707,16 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
                     <span className="text-gray-600">Łączne koszty:</span>
                     <span className="ml-2 font-medium text-blue-700">{zamowienie.response?.deliveryPrice || 0} PLN</span>
                   </div>
-                  {mergedData.cargoDescription && (
+                  {aggregatedMergedData.cargoDescription && (
                     <div className="col-span-2">
                       <span className="text-gray-600">Rodzaj ładunku:</span>
-                      <span className="ml-2 font-medium text-blue-700">{mergedData.cargoDescription}</span>
+                      <span className="ml-2 font-medium text-blue-700">{aggregatedMergedData.cargoDescription}</span>
                     </div>
                   )}
-                  {mergedData.totalWeight && (
+                  {aggregatedMergedData.totalWeight && (
                     <div className="col-span-2">
                       <span className="text-gray-600">Łączna waga:</span>
-                      <span className="ml-2 font-medium text-blue-700">{mergedData.totalWeight} kg</span>
+                      <span className="ml-2 font-medium text-blue-700">{aggregatedMergedData.totalWeight} kg</span>
                     </div>
                   )}
                 </div>
@@ -527,7 +739,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
                     </div>
                     <div className="text-right text-sm">
                       <div className="font-medium text-green-600">
-                        {mergedData.costBreakdown?.[zamowienie.id] || 0} PLN
+                        {aggregatedMergedData.costBreakdown?.[zamowienie.id] || 0} PLN
                       </div>
                       <div className="text-xs text-gray-500">
                         MPK: {zamowienie.mpk}
@@ -537,9 +749,9 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
                 </div>
                 
                 {/* Pozostałe transporty */}
-                {mergedData.originalTransports && mergedData.originalTransports.length > 0 && (
+                {aggregatedMergedData.originalTransports && aggregatedMergedData.originalTransports.length > 0 && (
                   <div className="text-sm text-gray-600 mt-2">
-                    <strong>Transporty połączone:</strong> {mergedData.originalTransports.join(', ')}
+                    <strong>Transporty połączone:</strong> {aggregatedMergedData.originalTransports.map(t => t.orderNumber || t.id).join(', ')}
                   </div>
                 )}
               </div>
