@@ -98,18 +98,8 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
     }
   }
   
-  // Memoizuj wynik getMergedData żeby uniknąć nieskończonych wywołań
-  const [mergedData, setMergedData] = useState(null)
-  
-  // Oblicz mergedData tylko raz przy załadowaniu
-  useEffect(() => {
-    if (isMergedTransport) {
-      const data = getMergedData()
-      setMergedData(data)
-    } else {
-      setMergedData(null)
-    }
-  }, [isMergedTransport]) // Tylko przy zmianie stanu merged
+  // Pobierz dane o połączonych transportach
+  const mergedData = isMergedTransport ? getMergedData() : null
   
   // State dla szczegółów połączonych transportów
   const [mergedTransportsDetails, setMergedTransportsDetails] = useState([]);
@@ -156,7 +146,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
     if (isMergedTransport && mergedData?.originalTransports?.length > 0) {
       fetchMergedTransportsDetails();
     }
-  }, [isMergedTransport, mergedData]); // Uproszczone dependency
+  }, [isMergedTransport]); // Zależność tylko od stanu połączenia
   
   // Funkcja agregująca dane ze wszystkich połączonych transportów
   const getAggregatedMergedData = () => {
@@ -229,8 +219,18 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
     };
   };
   
-  // Użyj zagregowanych danych zamiast podstawowych mergedData
-  const aggregatedMergedData = getAggregatedMergedData();
+  // Memoizuj zagregowane dane
+  const [aggregatedMergedData, setAggregatedMergedData] = useState(null);
+  
+  // Zaktualizuj zagregowane dane gdy zmieni się mergedTransportsDetails
+  useEffect(() => {
+    if (isMergedTransport) {
+      const aggregated = getAggregatedMergedData();
+      setAggregatedMergedData(aggregated);
+    } else {
+      setAggregatedMergedData(null);
+    }
+  }, [isMergedTransport, mergedTransportsDetails]);
   
   // Funkcja do pobierania odległości trasy z wykorzystaniem istniejących danych
   const getRouteDistanceFromData = () => {
@@ -290,7 +290,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
     }
 
     // Jeśli mamy routeSequence, użyj jej
-    const routeSequence = mergedData?.routeSequence || aggregatedMergedData?.routeSequence;
+    const routeSequence = mergedData?.routeSequence;
     if (routeSequence && routeSequence.length >= 2) {
       try {
         // Przygotuj punkty trasy w odpowiedniej kolejności
@@ -368,7 +368,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
     }
     
     // Jeśli nie ma routeSequence, oblicz na podstawie rzeczywistych transportów
-    if (aggregatedMergedData?.originalTransports?.length > 0) {
+    if (mergedTransportsDetails.length > 0) {
       try {
         
         const waypoints = [];
@@ -380,7 +380,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
         }
         
         // Dodaj wszystkie punkty rozładunku z połączonych transportów
-        aggregatedMergedData.originalTransports.forEach(transport => {
+        mergedTransportsDetails.forEach(transport => {
           const deliveryAddress = getTransportDeliveryAddress(transport);
           if (deliveryAddress) {
             waypoints.push(deliveryAddress);
@@ -448,27 +448,30 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
   // State dla rzeczywistej odległości
   const [calculatedRouteDistance, setCalculatedRouteDistance] = useState(0);
   
-  // Oblicz odległość przy załadowaniu komponentu - używamy prostej funkcji
+  // Oblicz odległość przy załadowaniu komponentu
   useEffect(() => {
-    if (isMergedTransport) {
-      // Najpierw spróbuj pobrać istniejące dane
-      const existingDistance = getRouteDistanceFromData();
-      if (existingDistance > 0) {
-        setCalculatedRouteDistance(existingDistance);
-      } else if (mergedData?.routeSequence?.length > 0 || mergedTransportsDetails.length > 0) {
-        // Tylko jeśli brak danych, oblicz rzeczywistą odległość
-        calculateRouteDistance().then(distance => {
+    const calculateDistance = async () => {
+      if (isMergedTransport) {
+        // Najpierw spróbuj pobrać istniejące dane
+        const existingDistance = getRouteDistanceFromData();
+        if (existingDistance > 0) {
+          setCalculatedRouteDistance(existingDistance);
+        } else if (mergedData?.routeSequence?.length > 0 || mergedTransportsDetails.length > 0) {
+          // Tylko jeśli brak danych, oblicz rzeczywistą odległość
+          const distance = await calculateRouteDistance();
           setCalculatedRouteDistance(distance);
-        });
+        }
+      } else {
+        setCalculatedRouteDistance(zamowienie.distanceKm || 0);
       }
-    } else {
-      setCalculatedRouteDistance(zamowienie.distanceKm || 0);
-    }
-  }, [isMergedTransport, mergedData, mergedTransportsDetails.length]); // Specyficzne dependencies
+    };
+    
+    calculateDistance();
+  }, [isMergedTransport, mergedTransportsDetails.length]); // Uproszczone dependencies
   
   // Automatyczne wypełnienie danych dla połączonych transportów
   useEffect(() => {
-    if (isMergedTransport && mergedData && mergedTransportsDetails.length > 0) {
+    if (isMergedTransport && mergedData) {
       const aggregated = getAggregatedMergedData();
       if (aggregated) {
         setFormData(prev => ({
@@ -478,7 +481,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
         }))
       }
     }
-  }, [isMergedTransport, mergedData, mergedTransportsDetails.length]) // Kontrolowane dependencies
+  }, [isMergedTransport, mergedTransportsDetails.length]) // Uproszczone dependencies
   
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -663,7 +666,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
               }</p>
             )}
             {isMergedTransport && aggregatedMergedData?.cargoDescription && (
-              <p><span className="font-medium">Opis ładunku:</span> {aggregatedMergedData.cargoDescription}</p>
+              <p><span className="font-medium">Opis ładunku:</span> {aggregatedMergedData?.cargoDescription}</p>
             )}
           </div>
           
@@ -689,7 +692,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
                 : (zamowienie.response?.deliveryPrice || 0)
             } PLN</p>
             {isMergedTransport && (
-              <p><span className="font-medium">Liczba połączonych transportów:</span> {aggregatedMergedData?.originalTransports.length || 1}</p>
+              <p><span className="font-medium">Liczba połączonych transportów:</span> {aggregatedMergedData?.originalTransports?.length || 1}</p>
             )}
             {isMergedTransport && aggregatedMergedData?.totalWeight && (
               <p><span className="font-medium">Łączna waga:</span> {aggregatedMergedData.totalWeight} kg</p>
@@ -702,7 +705,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
           <div className="mt-4 pt-3 border-t border-gray-200">
             <h4 className="font-bold text-sm mb-2 text-gray-800">Szczegóły wszystkich tras:</h4>
             
-            {mergedData.routeSequence && mergedData.routeSequence.length > 0 ? (
+            {mergedData?.routeSequence && mergedData.routeSequence.length > 0 ? (
               /* Wyświetl sekwencję trasy */
               <div className="mb-3 p-3 bg-blue-50 rounded border border-blue-200">
                 <h5 className="font-medium text-blue-800 mb-3 flex items-center">

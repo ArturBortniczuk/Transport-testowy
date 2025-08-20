@@ -257,33 +257,39 @@ export default function SpedycjaList({
     let baseDistance = null; // Podstawowa odległość punktu do punktu
     let routeDistance = null; // Rzeczywista odległość całej trasy (dla połączonych)
 
-    // 1. Pobierz podstawową odległość
+    // 1. Pobierz podstawową odległość z pól bazy danych
     if (transport.distanceKm && transport.distanceKm > 0) {
       baseDistance = transport.distanceKm;
     } else if (transport.distance_km && transport.distance_km > 0) {
       baseDistance = transport.distance_km;
     }
 
-    // 2. Jeśli transport jest połączony, pobierz rzeczywistą odległość trasy
-    if (transport.is_merged || transport.isMerged) {
-      try {
-        if (transport.response_data) {
-          const responseData = typeof transport.response_data === 'string' 
-            ? JSON.parse(transport.response_data) 
-            : transport.response_data;
-          
-          // Sprawdź różne pola rzeczywistej odległości trasy
+    // 2. Sprawdź response_data dla wszystkich transportów (nie tylko połączonych)
+    try {
+      if (transport.response_data) {
+        const responseData = typeof transport.response_data === 'string' 
+          ? JSON.parse(transport.response_data) 
+          : transport.response_data;
+        
+        // Dla transportów połączonych szukaj odległości trasy
+        if (transport.is_merged || transport.isMerged) {
           if (responseData.realRouteDistance) {
             routeDistance = responseData.realRouteDistance;
           } else if (responseData.totalDistance) {
             routeDistance = responseData.totalDistance;
-          } else if (responseData.distance) {
-            routeDistance = responseData.distance;
           }
         }
-      } catch (e) {
-        console.error('Błąd parsowania response_data dla odległości:', e);
+        
+        // Dla wszystkich transportów - sprawdź czy nie ma lepszej odległości podstawowej
+        if (!baseDistance && responseData.distance && responseData.distance > 0) {
+          baseDistance = responseData.distance;
+        }
+        if (!baseDistance && responseData.distanceKm && responseData.distanceKm > 0) {
+          baseDistance = responseData.distanceKm;
+        }
       }
+    } catch (e) {
+      console.error('Błąd parsowania response_data dla odległości:', e);
     }
 
     return {
