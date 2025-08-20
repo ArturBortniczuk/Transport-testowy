@@ -252,34 +252,123 @@ export default function SpedycjaList({
     };
   }
 
-  // Funkcja do pobierania odległości z odpowiedzi
-  const getDistanceFromResponse = (transport) => {
-    try {
-      // Sprawdź response_data
-      if (transport.response_data) {
-        const responseData = typeof transport.response_data === 'string' 
-          ? JSON.parse(transport.response_data) 
-          : transport.response_data;
-        
-        // Sprawdź różne pola odległości w odpowiedzi
-        if (responseData.distance) return responseData.distance;
-        if (responseData.totalDistance) return responseData.totalDistance;
-        if (responseData.distanceKm) return responseData.distanceKm;
-      }
-    } catch (e) {
-      console.error('Błąd parsowania response_data dla odległości:', e);
-    }
-    
-    // Sprawdź bezpośrednie pole distance_km z bazy
+  // Funkcja do pobierania odległości transportu - zwraca obiekt z podstawową i łączną odległością
+  const getTransportDistance = (transport) => {
+    let baseDistance = null; // Podstawowa odległość punktu do punktu
+    let routeDistance = null; // Rzeczywista odległość całej trasy (dla połączonych)
+
+    // 1. Pobierz podstawową odległość
     if (transport.distanceKm && transport.distanceKm > 0) {
-      return transport.distanceKm;
+      baseDistance = transport.distanceKm;
+    } else if (transport.distance_km && transport.distance_km > 0) {
+      baseDistance = transport.distance_km;
     }
-    
-    // Sprawdź alternatywne nazwy pól
-    if (transport.distance_km && transport.distance_km > 0) {
-      return transport.distance_km;
+
+    // 2. Jeśli transport jest połączony, pobierz rzeczywistą odległość trasy
+    if (transport.is_merged || transport.isMerged) {
+      try {
+        if (transport.response_data) {
+          const responseData = typeof transport.response_data === 'string' 
+            ? JSON.parse(transport.response_data) 
+            : transport.response_data;
+          
+          // Sprawdź różne pola rzeczywistej odległości trasy
+          if (responseData.realRouteDistance) {
+            routeDistance = responseData.realRouteDistance;
+          } else if (responseData.totalDistance) {
+            routeDistance = responseData.totalDistance;
+          } else if (responseData.distance) {
+            routeDistance = responseData.distance;
+          }
+        }
+      } catch (e) {
+        console.error('Błąd parsowania response_data dla odległości:', e);
+      }
     }
-    
+
+    return {
+      base: baseDistance,
+      route: routeDistance,
+      isMerged: transport.is_merged || transport.isMerged || false
+    };
+  }
+
+  // Funkcja do wyświetlania odległości w głównej kolumnie tabeli
+  const renderDistanceColumn = (distanceData) => {
+    if (!distanceData.base && !distanceData.route) {
+      return null;
+    }
+
+    if (distanceData.isMerged && distanceData.route && distanceData.base) {
+      // Transport połączony - pokaż format: "📍 335 km | 630 km trasa"
+      return (
+        <div className="text-xs text-gray-500 mt-1">
+          📍 {distanceData.base} km | {distanceData.route} km trasa
+        </div>
+      );
+    } else if (distanceData.route) {
+      return (
+        <div className="text-xs text-gray-500 mt-1">
+          📏 {distanceData.route} km
+        </div>
+      );
+    } else if (distanceData.base) {
+      return (
+        <div className="text-xs text-gray-500 mt-1">
+          📏 {distanceData.base} km
+        </div>
+      );
+    }
+
+    return null;
+  }
+
+  // Funkcja do wyświetlania odległości w rozwinięciu (szczegółowym widoku)
+  const renderDistanceDetails = (distanceData) => {
+    if (!distanceData.base && !distanceData.route) {
+      return null;
+    }
+
+    if (distanceData.isMerged && distanceData.route && distanceData.base) {
+      // Transport połączony - pokaż obie odległości
+      return (
+        <div className="flex items-start gap-1">
+          <MapPin size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
+          <div>
+            <span className="text-gray-500">Odległość:</span>
+            <div className="ml-1">
+              <div className="text-gray-900 font-medium">{distanceData.base} km (bezpośrednia)</div>
+              <div className="text-blue-600 font-medium">{distanceData.route} km (cała trasa)</div>
+            </div>
+          </div>
+        </div>
+      );
+    } else if (distanceData.route) {
+      return (
+        <div className="flex items-start gap-1">
+          <MapPin size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
+          <div>
+            <span className="text-gray-500">Odległość:</span>
+            <span className="ml-1 text-gray-900 font-medium">
+              {distanceData.route} km
+            </span>
+          </div>
+        </div>
+      );
+    } else if (distanceData.base) {
+      return (
+        <div className="flex items-start gap-1">
+          <MapPin size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
+          <div>
+            <span className="text-gray-500">Odległość:</span>
+            <span className="ml-1 text-gray-900 font-medium">
+              {distanceData.base} km
+            </span>
+          </div>
+        </div>
+      );
+    }
+
     return null;
   }
 
@@ -536,7 +625,7 @@ export default function SpedycjaList({
                   const statusInfo = getStatusInfo(zamowienie);
                   const responsibleInfo = getResponsiblePersonInfo(zamowienie);
                   const isMerged = isMergedTransport(zamowienie);
-                  const distance = getDistanceFromResponse(zamowienie);
+                  const distanceData = getTransportDistance(zamowienie);
                   
                   return (
                     <React.Fragment key={zamowienie.id}>
@@ -564,11 +653,7 @@ export default function SpedycjaList({
                                   Połączony
                                 </span>
                               )}
-                              {distance && (
-                                <div className="text-xs text-gray-500 mt-1">
-                                  📏 {distance} km
-                                </div>
-                              )}
+                              {renderDistanceColumn(distanceData)}
                             </div>
                           </div>
                         </td>
@@ -739,17 +824,7 @@ export default function SpedycjaList({
                                     </div>
                                   </div>
                                   
-                                  {distance && (
-                                    <div className="flex items-start gap-1">
-                                      <MapPin size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
-                                      <div>
-                                        <span className="text-gray-500">Odległość:</span>
-                                        <span className="ml-1 text-gray-900 font-medium">
-                                          {distance} km
-                                        </span>
-                                      </div>
-                                    </div>
-                                  )}
+                                  {renderDistanceDetails(distanceData)}
                                   
                                   {zamowienie.orderNumber && (
                                     <div className="flex items-start gap-1">

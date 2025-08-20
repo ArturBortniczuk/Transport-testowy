@@ -637,16 +637,24 @@ export default function ArchiwumSpedycjiPage() {
         'Numer auta': transport.response?.vehicleNumber || '',
         'Telefon': transport.response?.driverPhone || '',
         'Cena (PLN)': price,
-        'Odległość (km)': (() => {
+'Odległość podstawowa (km)': (() => {
+          const distanceData = getTransportDistance(transport);
+          return distanceData.base || '';
+        })(),
+        'Odległość trasy (km)': (() => {
+          const distanceData = getTransportDistance(transport);
+          return distanceData.route || '';
+        })(),
+        'Typ odległości': (() => {
           const distanceData = getTransportDistance(transport);
           if (distanceData.isMerged && distanceData.route && distanceData.base) {
-            return `${distanceData.base}km (bezpośr.) / ${distanceData.route}km (trasa)`;
+            return 'Połączony (obie odległości)';
           } else if (distanceData.route) {
-            return distanceData.route;
+            return 'Trasa rzeczywista';
           } else if (distanceData.base) {
-            return distanceData.base;
+            return 'Podstawowa';
           }
-          return '';
+          return 'Brak danych';
         })(),
         'Cena za km (PLN/km)': pricePerKm,
         'Kontakt załadunek': transport.loadingContact || '',
