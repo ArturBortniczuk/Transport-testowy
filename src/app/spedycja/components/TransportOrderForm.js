@@ -38,14 +38,6 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
   const getMergedData = () => {
     if (!isMergedTransport) return null
     
-    // Debug - sprawdźmy jakie dane mamy
-    console.log('🔍 Debug getMergedData:', {
-      zamowienie: zamowienie,
-      response_data: zamowienie?.response_data,
-      response: zamowienie?.response,
-      merged_transports: zamowienie?.merged_transports
-    });
-    
     try {
       // Sprawdź response_data
       if (zamowienie?.response_data) {
@@ -106,7 +98,18 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
     }
   }
   
-  const mergedData = getMergedData()
+  // Memoizuj wynik getMergedData żeby uniknąć nieskończonych wywołań
+  const [mergedData, setMergedData] = useState(null)
+  
+  // Oblicz mergedData tylko raz przy załadowaniu
+  useEffect(() => {
+    if (isMergedTransport) {
+      const data = getMergedData()
+      setMergedData(data)
+    } else {
+      setMergedData(null)
+    }
+  }, [isMergedTransport]) // Tylko przy zmianie stanu merged
   
   // State dla szczegółów połączonych transportów
   const [mergedTransportsDetails, setMergedTransportsDetails] = useState([]);
@@ -122,7 +125,6 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
     
     try {
       const transportIds = mergedData.originalTransports;
-      console.log('📡 Pobieranie szczegółów dla transportów:', transportIds);
       
       const transportPromises = transportIds.map(async (transportId) => {
         if (typeof transportId === 'object' && transportId.id) {
@@ -141,8 +143,6 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
       
       const details = await Promise.all(transportPromises);
       const validDetails = details.filter(detail => detail !== null);
-      
-      console.log('📋 Pobrane szczegóły transportów:', validDetails);
       setMergedTransportsDetails(validDetails);
     } catch (error) {
       console.error('Błąd pobierania szczegółów transportów:', error);
@@ -151,12 +151,12 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
     }
   };
   
-  // Pobierz szczegóły połączonych transportów
+  // Pobierz szczegóły połączonych transportów  
   useEffect(() => {
-    if (isMergedTransport && mergedData) {
+    if (isMergedTransport && mergedData?.originalTransports?.length > 0) {
       fetchMergedTransportsDetails();
     }
-  }, [isMergedTransport, mergedData?.originalTransports]);
+  }, [isMergedTransport, mergedData]); // Uproszczone dependency
   
   // Funkcja agregująca dane ze wszystkich połączonych transportów
   const getAggregatedMergedData = () => {
@@ -211,7 +211,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
             totalPrice += parseFloat(responseData.deliveryPrice) || 0;
           }
         } catch (e) {
-          console.warn('Błąd parsowania response_data dla transportu:', transport.id);
+          // Błąd parsowania response_data - ignoruj
         }
       }
     });
@@ -232,8 +232,59 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
   // Użyj zagregowanych danych zamiast podstawowych mergedData
   const aggregatedMergedData = getAggregatedMergedData();
   
-  // Funkcja do obliczania rzeczywistej odległości trasy dla połączonych transportów
+  // Funkcja do pobierania odległości trasy z wykorzystaniem istniejących danych
+  const getRouteDistanceFromData = () => {
+    // NAJPIERW: Sprawdź czy mamy już obliczoną odległość w response_data
+    try {
+      if (zamowienie?.response_data) {
+        const responseData = typeof zamowienie.response_data === 'string' 
+          ? JSON.parse(zamowienie.response_data) 
+          : zamowienie.response_data;
+        
+        // 1. Sprawdź realRouteDistance
+        if (responseData.realRouteDistance && responseData.realRouteDistance > 0) {
+          return responseData.realRouteDistance;
+        }
+        
+        // 2. Sprawdź totalDistance
+        if (responseData.totalDistance && responseData.totalDistance > 0) {
+          return responseData.totalDistance;
+        }
+        
+        // 3. Sprawdź distance
+        if (responseData.distance && responseData.distance > 0) {
+          return responseData.distance;
+        }
+      }
+    } catch (e) {
+      console.error('Błąd parsowania response_data dla odległości:', e);
+    }
+    
+    // DRUGIE: Sprawdź starsze pola w response
+    if (zamowienie?.response?.totalDistance && zamowienie.response.totalDistance > 0) {
+      return zamowienie.response.totalDistance;
+    }
+    if (zamowienie?.response?.mergedRouteDistance && zamowienie.response.mergedRouteDistance > 0) {
+      return zamowienie.response.mergedRouteDistance;
+    }
+    
+    // TRZECIE: Sprawdź mergedData
+    if (mergedData?.totalDistance && mergedData.totalDistance > 0) {
+      return mergedData.totalDistance;
+    }
+    
+    // OSTATNIE: Fallback do podstawowej odległości
+    return zamowienie.distanceKm || zamowienie.distance_km || 0;
+  }
+  
+  // Funkcja do obliczania rzeczywistej odległości trasy (tylko jeśli brak danych)
   const calculateRouteDistance = async () => {
+    // Najpierw sprawdź czy mamy już dane
+    const existingDistance = getRouteDistanceFromData();
+    if (existingDistance > 0) {
+      return existingDistance;
+    }
+    
     if (!isMergedTransport) {
       return zamowienie.distanceKm || 0;
     }
@@ -288,7 +339,6 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
       
       if (data.status === 'OK' && data.rows && data.rows[0] && data.rows[0].elements && data.rows[0].elements[0]) {
         const distanceKm = Math.round(data.rows[0].elements[0].distance.value / 1000);
-        console.log(`✅ Obliczono rzeczywistą odległość trasy: ${distanceKm} km`);
         return distanceKm;
       }
       
@@ -309,7 +359,6 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
       }
       
       if (totalDistance > 0) {
-        console.log(`✅ Obliczono odległość jako sumę segmentów: ${totalDistance} km`);
         return totalDistance;
       }
       
@@ -321,7 +370,6 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
     // Jeśli nie ma routeSequence, oblicz na podstawie rzeczywistych transportów
     if (aggregatedMergedData?.originalTransports?.length > 0) {
       try {
-        console.log('📍 Obliczanie odległości na podstawie transportów:', aggregatedMergedData.originalTransports);
         
         const waypoints = [];
         
@@ -345,7 +393,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
           waypoints.push(mainDeliveryAddress);
         }
         
-        console.log('🗺️ Punkty trasy:', waypoints);
+        // Punkty trasy przygotowane
         
         if (waypoints.length >= 2) {
           const origin = waypoints[0];
@@ -359,7 +407,6 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
           
           if (data.status === 'OK' && data.rows && data.rows[0] && data.rows[0].elements && data.rows[0].elements[0]) {
             const distanceKm = Math.round(data.rows[0].elements[0].distance.value / 1000);
-            console.log(`✅ Obliczono rzeczywistą odległość całej trasy: ${distanceKm} km`);
             return distanceKm;
           }
         }
@@ -401,25 +448,37 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
   // State dla rzeczywistej odległości
   const [calculatedRouteDistance, setCalculatedRouteDistance] = useState(0);
   
-  // Oblicz odległość przy załadowaniu komponentu
+  // Oblicz odległość przy załadowaniu komponentu - używamy prostej funkcji
   useEffect(() => {
-    if (isMergedTransport && (mergedData?.routeSequence || aggregatedMergedData?.originalTransports?.length > 0)) {
-      calculateRouteDistance().then(distance => {
-        setCalculatedRouteDistance(distance);
-      });
+    if (isMergedTransport) {
+      // Najpierw spróbuj pobrać istniejące dane
+      const existingDistance = getRouteDistanceFromData();
+      if (existingDistance > 0) {
+        setCalculatedRouteDistance(existingDistance);
+      } else if (mergedData?.routeSequence?.length > 0 || mergedTransportsDetails.length > 0) {
+        // Tylko jeśli brak danych, oblicz rzeczywistą odległość
+        calculateRouteDistance().then(distance => {
+          setCalculatedRouteDistance(distance);
+        });
+      }
+    } else {
+      setCalculatedRouteDistance(zamowienie.distanceKm || 0);
     }
-  }, [isMergedTransport, mergedData, aggregatedMergedData]);
+  }, [isMergedTransport, mergedData, mergedTransportsDetails.length]); // Specyficzne dependencies
   
   // Automatyczne wypełnienie danych dla połączonych transportów
   useEffect(() => {
-    if (isMergedTransport && aggregatedMergedData) {
-      setFormData(prev => ({
-        ...prev,
-        towar: aggregatedMergedData.cargoDescription || prev.towar,
-        waga: aggregatedMergedData.totalWeight ? aggregatedMergedData.totalWeight.toString() : prev.waga
-      }))
+    if (isMergedTransport && mergedData && mergedTransportsDetails.length > 0) {
+      const aggregated = getAggregatedMergedData();
+      if (aggregated) {
+        setFormData(prev => ({
+          ...prev,
+          towar: aggregated.cargoDescription || prev.towar,
+          waga: aggregated.totalWeight ? aggregated.totalWeight.toString() : prev.waga
+        }))
+      }
     }
-  }, [isMergedTransport, aggregatedMergedData])
+  }, [isMergedTransport, mergedData, mergedTransportsDetails.length]) // Kontrolowane dependencies
   
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -617,21 +676,11 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
             )}
             <p><span className="font-medium">Łączna odległość:</span> {
               (() => {
-                if (isMergedTransport && calculatedRouteDistance > 0) {
-                  return calculatedRouteDistance;
-                }
-                if (isMergedTransport && mergedData?.totalDistance) {
-                  return mergedData.totalDistance;
-                }
-                if (zamowienie.response?.totalDistance) {
-                  return zamowienie.response.totalDistance;
-                }
-                if (zamowienie.response?.mergedRouteDistance) {
-                  return zamowienie.response.mergedRouteDistance;
-                }
-                return zamowienie.distanceKm || 0;
+                // Używaj nowej funkcji getRouteDistanceFromData
+                const distance = calculatedRouteDistance > 0 ? calculatedRouteDistance : getRouteDistanceFromData();
+                return distance || 0;
               })()
-            } km {isMergedTransport && calculatedRouteDistance > 0 && (
+            } km {isMergedTransport && (calculatedRouteDistance > 0 || getRouteDistanceFromData() > 0) && (
               <span className="text-green-600 text-xs">(rzeczywista trasa)</span>
             )}</p>
             <p><span className="font-medium">Wartość transportu:</span> {
@@ -686,12 +735,11 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
                   <div>
                     <span className="text-gray-600">Łączna odległość trasy:</span>
                     <span className="ml-2 font-medium text-blue-700">{
-                      calculatedRouteDistance > 0 ? calculatedRouteDistance :
-                      (mergedData?.totalDistance || 
-                      zamowienie.response?.totalDistance || 
-                      zamowienie.response?.mergedRouteDistance || 
-                      zamowienie.distanceKm || 0)
-                    } km {calculatedRouteDistance > 0 && (
+                      (() => {
+                        const distance = calculatedRouteDistance > 0 ? calculatedRouteDistance : getRouteDistanceFromData();
+                        return distance || 0;
+                      })()
+                    } km {(calculatedRouteDistance > 0 || getRouteDistanceFromData() > 0) && (
                       <span className="text-green-500 text-xs">(rzeczywista)</span>
                     )}</span>
                   </div>
