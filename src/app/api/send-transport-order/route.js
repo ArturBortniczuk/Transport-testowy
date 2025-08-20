@@ -273,6 +273,22 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
   const getAllLoadingPlaces = () => {
     const places = [];
     
+    // Jeśli mamy routeSequence, użyj jej do generowania miejsc załadunku
+    if (responseData.routeSequence && responseData.routeSequence.length > 0) {
+      const loadingPoints = responseData.routeSequence.filter(point => point.type === 'loading');
+      
+      loadingPoints.forEach((point, index) => {
+        places.push({
+          address: `${point.city || 'Brak miejscowości'}, ${point.postalCode || 'Brak kodu'}<br>${point.address || 'Brak adresu'}<br>${point.company || 'Brak nazwy firmy'}`,
+          contact: point.contact || 'Brak kontaktu',
+          date: dataZaladunku
+        });
+      });
+      
+      return places;
+    }
+    
+    // Fallback - stary sposób dla pojedynczych transportów
     // Główne miejsce załadunku
     if (spedycja.location === 'Odbiory własne' && producerAddress) {
       places.push({
@@ -307,7 +323,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       });
     }
     
-    // Dodatkowe miejsca załadunku z połączonych transportów
+    // Dodatkowe miejsca załadunku z połączonych transportów (stary sposób)
     if (mergedTransports && mergedTransports.originalTransports && responseData.routeConfiguration) {
       mergedTransports.originalTransports.forEach(transport => {
         const config = responseData.routeConfiguration[transport.id];
@@ -354,6 +370,22 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
   const getAllUnloadingPlaces = () => {
     const places = [];
     
+    // Jeśli mamy routeSequence, użyj jej do generowania miejsc rozładunku
+    if (responseData.routeSequence && responseData.routeSequence.length > 0) {
+      const unloadingPoints = responseData.routeSequence.filter(point => point.type === 'unloading');
+      
+      unloadingPoints.forEach((point, index) => {
+        places.push({
+          address: `${point.city || 'Brak miejscowości'}, ${point.postalCode || 'Brak kodu'}<br>${point.address || 'Brak adresu'}<br>${point.company || 'Brak nazwy firmy'}`,
+          contact: point.contact || 'Brak kontaktu',
+          date: dataRozladunku
+        });
+      });
+      
+      return places;
+    }
+    
+    // Fallback - stary sposób dla pojedynczych transportów
     // Główne miejsce rozładunku
     places.push({
       address: formatAddressNice(delivery, delivery.pinLocation),
@@ -361,7 +393,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       date: dataRozladunku
     });
     
-    // Dodatkowe miejsca rozładunku z połączonych transportów
+    // Dodatkowe miejsca rozładunku z połączonych transportów (stary sposób)
     if (mergedTransports && mergedTransports.originalTransports && responseData.routeConfiguration) {
       mergedTransports.originalTransports.forEach(transport => {
         const config = responseData.routeConfiguration[transport.id];
