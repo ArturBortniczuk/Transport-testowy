@@ -230,6 +230,81 @@ export default function ArchiwumSpedycjiPage() {
     return transport.mpk || '';
   }
 
+  // Funkcja do pobierania odległości transportu - zwraca obiekt z podstawową i łączną odległością
+  const getTransportDistance = (transport) => {
+    let baseDistance = null; // Podstawowa odległość punktu do punktu
+    let routeDistance = null; // Rzeczywista odległość całej trasy (dla połączonych)
+
+    // 1. Pobierz podstawową odległość
+    if (transport.distanceKm && transport.distanceKm > 0) {
+      baseDistance = transport.distanceKm;
+    } else if (transport.distance_km && transport.distance_km > 0) {
+      baseDistance = transport.distance_km;
+    }
+
+    // 2. Jeśli transport jest połączony, pobierz rzeczywistą odległość trasy
+    if (transport.is_merged || transport.isMerged) {
+      try {
+        if (transport.response_data) {
+          const responseData = typeof transport.response_data === 'string' 
+            ? JSON.parse(transport.response_data) 
+            : transport.response_data;
+          
+          // Sprawdź różne pola rzeczywistej odległości trasy
+          if (responseData.realRouteDistance) {
+            routeDistance = responseData.realRouteDistance;
+          } else if (responseData.totalDistance) {
+            routeDistance = responseData.totalDistance;
+          } else if (responseData.distance) {
+            routeDistance = responseData.distance;
+          }
+        }
+      } catch (e) {
+        console.error('Błąd parsowania response_data dla odległości:', e);
+      }
+    }
+
+    return {
+      base: baseDistance,
+      route: routeDistance,
+      isMerged: transport.is_merged || transport.isMerged || false
+    };
+  }
+
+  // Funkcja do wyświetlania odległości w rozwinięciu (szczegółowym widoku)
+  const renderDistanceInfo = (distanceData) => {
+    if (!distanceData.base && !distanceData.route) {
+      return null;
+    }
+
+    if (distanceData.isMerged && distanceData.route && distanceData.base) {
+      // Transport połączony - pokaż obie odległości
+      return (
+        <div>
+          <span className="font-medium">Odległość:</span>
+          <div className="ml-1">
+            <div>{distanceData.base} km (bezpośrednia)</div>
+            <div className="text-blue-600 font-medium">{distanceData.route} km (cała trasa)</div>
+          </div>
+        </div>
+      );
+    } else if (distanceData.route) {
+      return (
+        <div>
+          <span className="font-medium">Odległość:</span> {distanceData.route} km
+        </div>
+      );
+    } else if (distanceData.base) {
+      return (
+        <div>
+          <span className="font-medium">Odległość:</span> {distanceData.base} km
+        </div>
+      );
+    }
+
+    return null;
+  }
+
   // Funkcja pomocnicza do formatowania adresu
   const formatAddress = (address) => {
     if (!address) return 'Brak danych';
@@ -562,7 +637,17 @@ export default function ArchiwumSpedycjiPage() {
         'Numer auta': transport.response?.vehicleNumber || '',
         'Telefon': transport.response?.driverPhone || '',
         'Cena (PLN)': price,
-        'Odległość (km)': distanceKm,
+        'Odległość (km)': (() => {
+          const distanceData = getTransportDistance(transport);
+          if (distanceData.isMerged && distanceData.route && distanceData.base) {
+            return `${distanceData.base}km (bezpośr.) / ${distanceData.route}km (trasa)`;
+          } else if (distanceData.route) {
+            return distanceData.route;
+          } else if (distanceData.base) {
+            return distanceData.base;
+          }
+          return '';
+        })(),
         'Cena za km (PLN/km)': pricePerKm,
         'Kontakt załadunek': transport.loadingContact || '',
         'Kontakt rozładunek': transport.unloadingContact || '',
@@ -1604,17 +1689,21 @@ export default function ArchiwumSpedycjiPage() {
                             
                             return (
                               <div className="space-y-3 text-sm">
-                                <div>
-                                  <span className="font-medium text-gray-700">Odległość:</span>
-                                  <div className="font-semibold text-gray-900">
-                                    {distance} km
-                                    {isMerged && (
-                                      <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                {(() => {
+                                  const distanceData = getTransportDistance(transport);
+                                  return renderDistanceInfo(distanceData);
+                                })()}
+                                {(() => {
+                                  const distanceData = getTransportDistance(transport);
+                                  if (distanceData.isMerged) {
+                                    return (
+                                      <div className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded inline-block">
                                         Trasa łączona
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                })()}
                                 <div>
                                   <span className="font-medium text-gray-700">Cena transportu:</span>
                                   <div className="font-semibold text-gray-900">
