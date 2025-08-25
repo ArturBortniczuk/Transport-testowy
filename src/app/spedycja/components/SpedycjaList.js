@@ -225,12 +225,25 @@ export default function SpedycjaList({
 
   // Funkcja do sprawdzania czy transport jest już połączony
   const isMergedTransport = (zamowienie) => {
+    console.log('🔍 DEBUG isMergedTransport dla ID:', zamowienie.id);
+    console.log('📋 Pełne dane zamówienia:', zamowienie);
+    
     try {
       const responseData = zamowienie.response_data ? 
         (typeof zamowienie.response_data === 'string' ? JSON.parse(zamowienie.response_data) : zamowienie.response_data) 
         : null;
-      return responseData?.isMerged || false;
+      
+      console.log('📊 Response data:', responseData);
+      console.log('🔗 isMerged z response_data:', responseData?.isMerged);
+      console.log('🔗 is_merged z pola:', zamowienie.is_merged);
+      console.log('🔗 merged_transports istnieje:', !!zamowienie.merged_transports);
+      
+      const result = responseData?.isMerged || zamowienie.is_merged || false;
+      console.log('✅ Wynik isMergedTransport:', result);
+      
+      return result;
     } catch (e) {
+      console.error('❌ Błąd w isMergedTransport:', e);
       return false;
     }
   }
@@ -770,6 +783,35 @@ export default function SpedycjaList({
                       {expandedId === zamowienie.id && (
                         <tr>
                           <td colSpan="6" className="px-8 py-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-l-blue-400">
+                            {/* DEBUG: Sprawdź co mamy w danych - DODAJ TO PRZED LINIĄ 787 */}
+                            {expandedId === zamowienie.id && (
+                              <div className="mb-4 p-4 bg-yellow-100 border border-yellow-300 rounded">
+                                <strong>🔍 DEBUG INFO dla ID {zamowienie.id}:</strong>
+                                <div>isMerged: {isMergedTransport(zamowienie) ? 'TAK ✅' : 'NIE ❌'}</div>
+                                <div>Posiada merged_transports: {zamowienie.merged_transports ? 'TAK ✅' : 'NIE ❌'}</div>
+                                <div>is_merged pole: {zamowienie.is_merged ? 'TAK ✅' : 'NIE ❌'}</div>
+                                <div>Response data isMerged: {(() => {
+                                  try {
+                                    const resp = zamowienie.response_data ? 
+                                      (typeof zamowienie.response_data === 'string' ? JSON.parse(zamowienie.response_data) : zamowienie.response_data) 
+                                      : {};
+                                    return resp.isMerged ? 'TAK ✅' : 'NIE ❌';
+                                  } catch(e) { return 'ERROR ⚠️' }
+                                })()}</div>
+                                <div className="mt-2 text-xs">
+                                  <strong>merged_transports data:</strong>
+                                  <pre className="bg-white p-2 rounded text-xs overflow-auto max-h-32">
+                                    {JSON.stringify(zamowienie.merged_transports, null, 2)}
+                                  </pre>
+                                </div>
+                                <div className="mt-2 text-xs">
+                                  <strong>response_data:</strong>
+                                  <pre className="bg-white p-2 rounded text-xs overflow-auto max-h-32">
+                                    {JSON.stringify(zamowienie.response_data, null, 2)}
+                                  </pre>
+                                </div>
+                              </div>
+                            )}
                             {/* Panel podsumowania transportów połączonych */}
                             {isMergedTransport(zamowienie) && zamowienie.merged_transports && (
                               <MergedTransportSummary 
