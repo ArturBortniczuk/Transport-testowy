@@ -784,52 +784,51 @@ export default function SpedycjaList({
                         <tr>
                           <td colSpan="6" className="px-8 py-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-l-blue-400">
                             {/* Panel podsumowania transportów połączonych */}
-                            {isMergedTransport(zamowienie) && zamowienie.merged_transports && (
-                              {isMergedTransport(zamowienie) && (
-                                <MergedTransportSummary 
-                                  transport={zamowienie} 
-                                  mergedData={(() => {
-                                    // Użyj danych z response_data zamiast merged_transports
-                                    try {
-                                      const responseData = typeof zamowienie.response_data === 'string' 
-                                        ? JSON.parse(zamowienie.response_data) 
-                                        : zamowienie.response_data;
+                            {isMergedTransport(zamowienie) && (
+                              <MergedTransportSummary 
+                                transport={zamowienie} 
+                                mergedData={(() => {
+                                  // Użyj danych z response_data zamiast merged_transports
+                                  try {
+                                    const responseData = typeof zamowienie.response_data === 'string' 
+                                      ? JSON.parse(zamowienie.response_data) 
+                                      : zamowienie.response_data;
+                                    
+                                    if (responseData && responseData.routeSequence) {
+                                      // Przekształć routeSequence na format oczekiwany przez komponent
+                                      const originalTransports = responseData.mergedTransportIds?.map(id => {
+                                        const routePoint = responseData.routeSequence.find(point => point.transportId === id);
+                                        return routePoint ? {
+                                          id: id,
+                                          orderNumber: routePoint.transport.orderNumber,
+                                          mpk: routePoint.transport.mpk,
+                                          route: `${routePoint.transport.location.replace('Magazyn ', '')} → ${routePoint.transport.delivery.city}`,
+                                          costAssigned: responseData.costBreakdown?.[id] || 0,
+                                          distance: routePoint.transport.distanceKm || 0,
+                                          clientName: routePoint.transport.clientName,
+                                          documents: routePoint.transport.documents
+                                        } : null;
+                                      }).filter(Boolean) || [];
                                       
-                                      if (responseData && responseData.routeSequence) {
-                                        // Przekształć routeSequence na format oczekiwany przez komponent
-                                        const originalTransports = responseData.mergedTransportIds?.map(id => {
-                                          const routePoint = responseData.routeSequence.find(point => point.transportId === id);
-                                          return routePoint ? {
-                                            id: id,
-                                            orderNumber: routePoint.transport.orderNumber,
-                                            mpk: routePoint.transport.mpk,
-                                            route: `${routePoint.transport.location.replace('Magazyn ', '')} → ${routePoint.transport.delivery.city}`,
-                                            costAssigned: responseData.costBreakdown?.[id] || 0,
-                                            distance: routePoint.transport.distanceKm || 0,
-                                            clientName: routePoint.transport.clientName,
-                                            documents: routePoint.transport.documents
-                                          } : null;
-                                        }).filter(Boolean) || [];
-                                        
-                                        return {
-                                          originalTransports: originalTransports,
-                                          totalDistance: responseData.distance || 0,
-                                          totalValue: responseData.totalDeliveryPrice || 0,
-                                          routeSequence: responseData.routeSequence
-                                        };
-                                      }
-                                      
-                                      // Fallback do starych danych merged_transports
-                                      return typeof zamowienie.merged_transports === 'string' 
-                                        ? JSON.parse(zamowienie.merged_transports) 
-                                        : zamowienie.merged_transports;
-                                    } catch (e) {
-                                      console.error('Błąd przetwarzania danych merged transport:', e);
-                                      return null;
+                                      return {
+                                        originalTransports: originalTransports,
+                                        totalDistance: responseData.distance || 0,
+                                        totalValue: responseData.totalDeliveryPrice || 0,
+                                        routeSequence: responseData.routeSequence
+                                      };
                                     }
-                                  })()} 
-                                />
-                              )}
+                                    
+                                    // Fallback do starych danych merged_transports
+                                    return typeof zamowienie.merged_transports === 'string' 
+                                      ? JSON.parse(zamowienie.merged_transports) 
+                                      : zamowienie.merged_transports;
+                                  } catch (e) {
+                                    console.error('Błąd przetwarzania danych merged transport:', e);
+                                    return null;
+                                  }
+                                })()} 
+                              />
+                            )}
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                               
