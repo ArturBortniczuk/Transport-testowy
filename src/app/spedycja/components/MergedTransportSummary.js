@@ -171,25 +171,6 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
       {/* Siatka z podsumowaniem */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         
-        {/* MPK */}
-        <div className="bg-white rounded-lg p-4 shadow-sm border border-purple-200">
-          <div className="flex items-center gap-2 mb-3">
-            <Hash size={18} className="text-purple-600" />
-            <h4 className="font-semibold text-gray-800">Numery MPK</h4>
-          </div>
-          <div className="space-y-1">
-            {allMPKs.length > 0 ? (
-              allMPKs.map((mpk, index) => (
-                <div key={index} className="text-sm bg-gray-50 px-2 py-1 rounded border">
-                  {mpk}
-                </div>
-              ))
-            ) : (
-              <div className="text-sm text-gray-500">Brak danych</div>
-            )}
-          </div>
-        </div>
-
         {/* Dokumenty */}
         <div className="bg-white rounded-lg p-4 shadow-sm border border-purple-200">
           <div className="flex items-center gap-2 mb-3">
@@ -228,47 +209,40 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
           </div>
         </div>
 
-        {/* Wartość transportu */}
+        {/* Wartość i Szczegóły transportu */}
         <div className="bg-white rounded-lg p-4 shadow-sm border border-purple-200">
           <div className="flex items-center gap-2 mb-3">
             <Calculator size={18} className="text-purple-600" />
-            <h4 className="font-semibold text-gray-800">Wartość</h4>
+            <h4 className="font-semibold text-gray-800">Podsumowanie</h4>
           </div>
-          <div className="text-2xl font-bold text-green-600">
-            {totalValue > 0 ? `${totalValue.toLocaleString()} PLN` : 'Brak danych'}
-          </div>
-        </div>
-
-        {/* Status */}
-        <div className="bg-white rounded-lg p-4 shadow-sm border border-purple-200">
-          <div className="flex items-center gap-2 mb-3">
-            <Clock size={18} className="text-purple-600" />
-            <h4 className="font-semibold text-gray-800">Status</h4>
-          </div>
-          <div className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-            transport.status === 'completed' 
-              ? 'bg-green-100 text-green-800' 
-              : transport.status === 'new'
-              ? 'bg-blue-100 text-blue-800'
-              : 'bg-yellow-100 text-yellow-800'
-          }`}>
-            {transport.status === 'completed' ? 'Zrealizowane' : 
-             transport.status === 'new' ? 'Nowe' : transport.status}
-          </div>
-        </div>
-
-        {/* Informacje dodatkowe */}
-        <div className="bg-white rounded-lg p-4 shadow-sm border border-purple-200">
-          <div className="flex items-center gap-2 mb-3">
-            <Package size={18} className="text-purple-600" />
-            <h4 className="font-semibold text-gray-800">Szczegóły</h4>
-          </div>
-          <div className="space-y-1 text-sm">
-            <div>Tras połączonych: <span className="font-medium">{mergedData.originalTransports.length}</span></div>
-            <div>Główny nr: <span className="font-medium">{transport.orderNumber}</span></div>
-            {transport.responsiblePerson && (
-              <div>Odpowiedzialny: <span className="font-medium">{transport.responsiblePerson}</span></div>
-            )}
+          <div className="space-y-3">
+            <div>
+              <div className="text-2xl font-bold text-green-600">
+                {totalValue > 0 ? `${totalValue.toLocaleString()} PLN` : 'Brak danych'}
+              </div>
+              <div className="text-xs text-gray-500">łączna wartość</div>
+            </div>
+            
+            <div className="pt-2 border-t border-gray-200 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Tras połączonych:</span>
+                <span className="font-medium">{allRoutes.length}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Główny nr:</span>
+                <span className="font-medium font-mono">{transport.orderNumber}</span>
+              </div>
+              {transport.responsiblePerson && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Odpowiedzialny:</span>
+                  <span className="font-medium text-xs">{transport.responsiblePerson}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-gray-600">Odległość trasy:</span>
+                <span className="font-medium text-green-600">{realDistance} km</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
