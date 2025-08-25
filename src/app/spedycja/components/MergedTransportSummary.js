@@ -36,6 +36,37 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
     return Array.from(values).filter(Boolean);
   };
 
+// Funkcja do zbierania wszystkich odpowiedzialnych osób
+const collectAllResponsible = () => {
+  const responsible = new Set();
+  
+  // Główny transport
+  if (transport.responsiblePerson) {
+    responsible.add(transport.responsiblePerson);
+  }
+  
+  // Transporty połączone - sprawdź w routeSequence
+  if (mergedData.routeSequence) {
+    mergedData.routeSequence.forEach(point => {
+      if (point.transport && point.transport.responsiblePerson) {
+        responsible.add(point.transport.responsiblePerson);
+      }
+    });
+  }
+  
+  // Fallback do originalTransports
+  if (mergedData.originalTransports) {
+    mergedData.originalTransports.forEach(originalTransport => {
+      if (originalTransport.responsiblePerson) {
+        responsible.add(originalTransport.responsiblePerson);
+      }
+    });
+  }
+  
+  return Array.from(responsible).filter(Boolean);
+};
+
+
   // Funkcja do zbierania tras
   const getAllRoutes = () => {
     const routes = [];
@@ -216,37 +247,43 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
             <h4 className="font-semibold text-gray-800">Podsumowanie</h4>
           </div>
           <div className="space-y-3">
+            {/* Wartość finansowa */}
             <div>
               <div className="text-2xl font-bold text-green-600">
                 {totalValue > 0 ? `${totalValue.toLocaleString()} PLN` : 'Brak danych'}
               </div>
-              <div className="text-xs text-gray-500">łączna wartość</div>
+              <div className="text-xs text-gray-500">łączna wartość transportu</div>
             </div>
             
+            {/* Szczegóły */}
             <div className="pt-2 border-t border-gray-200 space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-600">Tras połączonych:</span>
                 <span className="font-medium">{allRoutes.length}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Główny nr:</span>
-                <span className="font-medium font-mono">{transport.orderNumber}</span>
-              </div>
-              {transport.responsiblePerson && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Odpowiedzialny:</span>
-                  <span className="font-medium text-xs">{transport.responsiblePerson}</span>
+              
+              {/* Wszyscy odpowiedzialni */}
+              <div>
+                <span className="text-gray-600">Odpowiedzialni:</span>
+                <div className="mt-1 space-y-1">
+                  {(() => {
+                    const allResponsible = collectAllResponsible();
+                    return allResponsible.length > 0 ? (
+                      allResponsible.map((person, index) => (
+                        <div key={index} className="text-xs bg-blue-50 text-blue-800 px-2 py-1 rounded border">
+                          {person}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-xs text-gray-500">Brak danych</div>
+                    );
+                  })()}
                 </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-gray-600">Odległość trasy:</span>
-                <span className="font-medium text-green-600">{realDistance} km</span>
               </div>
             </div>
           </div>
         </div>
       </div>
-
       {/* Szczegółowe trasy */}
       <div className="mt-6 bg-white rounded-lg p-4 shadow-sm border border-purple-200">
         <div className="flex items-center gap-2 mb-4">
