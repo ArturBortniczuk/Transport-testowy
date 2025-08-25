@@ -2,6 +2,8 @@
 import React, { useState } from 'react'
 import { format } from 'date-fns'
 import { pl } from 'date-fns/locale'
+import MergedTransportSummary from './MergedTransportSummary'
+import TransportConnectionBadge from './TransportConnectionBadge'
 import { generateCMR } from '@/lib/utils/generateCMR'
 import { Truck, Package, MapPin, Phone, FileText, Calendar, DollarSign, User, Clipboard, ArrowRight, ChevronDown, ChevronUp, AlertCircle, Edit, Pencil, Building, ShoppingBag, Weight, Bot, Link as LinkIcon, Unlink, Copy, ExternalLink, CheckCircle, Clock, Container } from 'lucide-react'
 import MultiTransportResponseForm from './MultiTransportResponseForm'
@@ -272,7 +274,7 @@ export default function SpedycjaList({
           : transport.response_data;
         
         // Dla transportów połączonych szukaj odległości trasy
-        if (transport.is_merged || transport.isMerged) {
+        if (transport.is_merged || transport.isMerged || responseData.isMerged) {
           if (responseData.realRouteDistance) {
             routeDistance = responseData.realRouteDistance;
           } else if (responseData.totalDistance) {
@@ -309,13 +311,13 @@ export default function SpedycjaList({
       // Transport połączony - pokaż format: "📍 335 km | 630 km trasa"
       return (
         <div className="text-xs text-gray-500 mt-1">
-          📍 {distanceData.base} km | {distanceData.route} km trasa
+          📍 {distanceData.base} km | <span className="font-semibold text-green-600">{distanceData.route} km trasa</span>
         </div>
       );
     } else if (distanceData.route) {
       return (
         <div className="text-xs text-gray-500 mt-1">
-          📏 {distanceData.route} km
+          📏 <span className="font-semibold text-green-600">{distanceData.route} km</span>
         </div>
       );
     } else if (distanceData.base) {
@@ -344,7 +346,7 @@ export default function SpedycjaList({
             <span className="text-gray-500">Odległość:</span>
             <div className="ml-1">
               <div className="text-gray-900 font-medium">{distanceData.base} km (bezpośrednia)</div>
-              <div className="text-blue-600 font-medium">{distanceData.route} km (cała trasa)</div>
+              <div className="text-green-600 font-bold">{distanceData.route} km (rzeczywista trasa)</div>
             </div>
           </div>
         </div>
@@ -355,8 +357,8 @@ export default function SpedycjaList({
           <MapPin size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
           <div>
             <span className="text-gray-500">Odległość:</span>
-            <span className="ml-1 text-gray-900 font-medium">
-              {distanceData.route} km
+            <span className="ml-1 text-green-600 font-bold">
+              {distanceData.route} km (rzeczywista trasa)
             </span>
           </div>
         </div>
@@ -377,6 +379,7 @@ export default function SpedycjaList({
 
     return null;
   }
+
 
   // Funkcja do pobierania statusu transportu
   const getStatusInfo = (transport) => {
@@ -653,12 +656,8 @@ export default function SpedycjaList({
                               <div className="font-semibold text-gray-900 text-sm">
                                 {getLoadingCity(zamowienie)} → {getDeliveryCity(zamowienie)}
                               </div>
-                              {isMerged && (
-                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200 mt-1">
-                                  <LinkIcon size={10} className="mr-1" />
-                                  Połączony
-                                </span>
-                              )}
+                              {/* Badge dla transportów połączonych */}
+                              <TransportConnectionBadge transport={zamowienie} />
                               {renderDistanceColumn(distanceData)}
                             </div>
                           </div>
@@ -771,6 +770,17 @@ export default function SpedycjaList({
                       {expandedId === zamowienie.id && (
                         <tr>
                           <td colSpan="6" className="px-8 py-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-l-blue-400">
+                            {/* Panel podsumowania transportów połączonych */}
+                            {isMergedTransport(zamowienie) && zamowienie.merged_transports && (
+                              <MergedTransportSummary 
+                                transport={zamowienie} 
+                                mergedData={typeof zamowienie.merged_transports === 'string' 
+                                  ? JSON.parse(zamowienie.merged_transports) 
+                                  : zamowienie.merged_transports
+                                } 
+                              />
+                            )}
+                            
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                               
                               {/* Sekcja 1: Informacje podstawowe */}
