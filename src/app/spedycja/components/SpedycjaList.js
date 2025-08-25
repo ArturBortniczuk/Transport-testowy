@@ -783,45 +783,53 @@ export default function SpedycjaList({
                       {expandedId === zamowienie.id && (
                         <tr>
                           <td colSpan="6" className="px-8 py-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-l-blue-400">
-                            {/* DEBUG: Sprawdź co mamy w danych - DODAJ TO PRZED LINIĄ 787 */}
-                            {expandedId === zamowienie.id && (
-                              <div className="mb-4 p-4 bg-yellow-100 border border-yellow-300 rounded">
-                                <strong>🔍 DEBUG INFO dla ID {zamowienie.id}:</strong>
-                                <div>isMerged: {isMergedTransport(zamowienie) ? 'TAK ✅' : 'NIE ❌'}</div>
-                                <div>Posiada merged_transports: {zamowienie.merged_transports ? 'TAK ✅' : 'NIE ❌'}</div>
-                                <div>is_merged pole: {zamowienie.is_merged ? 'TAK ✅' : 'NIE ❌'}</div>
-                                <div>Response data isMerged: {(() => {
-                                  try {
-                                    const resp = zamowienie.response_data ? 
-                                      (typeof zamowienie.response_data === 'string' ? JSON.parse(zamowienie.response_data) : zamowienie.response_data) 
-                                      : {};
-                                    return resp.isMerged ? 'TAK ✅' : 'NIE ❌';
-                                  } catch(e) { return 'ERROR ⚠️' }
-                                })()}</div>
-                                <div className="mt-2 text-xs">
-                                  <strong>merged_transports data:</strong>
-                                  <pre className="bg-white p-2 rounded text-xs overflow-auto max-h-32">
-                                    {JSON.stringify(zamowienie.merged_transports, null, 2)}
-                                  </pre>
-                                </div>
-                                <div className="mt-2 text-xs">
-                                  <strong>response_data:</strong>
-                                  <pre className="bg-white p-2 rounded text-xs overflow-auto max-h-32">
-                                    {JSON.stringify(zamowienie.response_data, null, 2)}
-                                  </pre>
-                                </div>
-                              </div>
-                            )}
                             {/* Panel podsumowania transportów połączonych */}
                             {isMergedTransport(zamowienie) && zamowienie.merged_transports && (
-                              <MergedTransportSummary 
-                                transport={zamowienie} 
-                                mergedData={typeof zamowienie.merged_transports === 'string' 
-                                  ? JSON.parse(zamowienie.merged_transports) 
-                                  : zamowienie.merged_transports
-                                } 
-                              />
-                            )}
+                              {isMergedTransport(zamowienie) && (
+                                <MergedTransportSummary 
+                                  transport={zamowienie} 
+                                  mergedData={(() => {
+                                    // Użyj danych z response_data zamiast merged_transports
+                                    try {
+                                      const responseData = typeof zamowienie.response_data === 'string' 
+                                        ? JSON.parse(zamowienie.response_data) 
+                                        : zamowienie.response_data;
+                                      
+                                      if (responseData && responseData.routeSequence) {
+                                        // Przekształć routeSequence na format oczekiwany przez komponent
+                                        const originalTransports = responseData.mergedTransportIds?.map(id => {
+                                          const routePoint = responseData.routeSequence.find(point => point.transportId === id);
+                                          return routePoint ? {
+                                            id: id,
+                                            orderNumber: routePoint.transport.orderNumber,
+                                            mpk: routePoint.transport.mpk,
+                                            route: `${routePoint.transport.location.replace('Magazyn ', '')} → ${routePoint.transport.delivery.city}`,
+                                            costAssigned: responseData.costBreakdown?.[id] || 0,
+                                            distance: routePoint.transport.distanceKm || 0,
+                                            clientName: routePoint.transport.clientName,
+                                            documents: routePoint.transport.documents
+                                          } : null;
+                                        }).filter(Boolean) || [];
+                                        
+                                        return {
+                                          originalTransports: originalTransports,
+                                          totalDistance: responseData.distance || 0,
+                                          totalValue: responseData.totalDeliveryPrice || 0,
+                                          routeSequence: responseData.routeSequence
+                                        };
+                                      }
+                                      
+                                      // Fallback do starych danych merged_transports
+                                      return typeof zamowienie.merged_transports === 'string' 
+                                        ? JSON.parse(zamowienie.merged_transports) 
+                                        : zamowienie.merged_transports;
+                                    } catch (e) {
+                                      console.error('Błąd przetwarzania danych merged transport:', e);
+                                      return null;
+                                    }
+                                  })()} 
+                                />
+                              )}
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                               
