@@ -40,29 +40,54 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
   const getAllRoutes = () => {
     const routes = [];
     
-    // Główny transport - trasa
-    const mainRoute = getTransportRoute(transport);
-    if (mainRoute) {
-      routes.push({
-        id: transport.id,
-        orderNumber: transport.orderNumber,
-        route: mainRoute,
-        mpk: transport.mpk
+    // Jeśli mamy routeSequence z response_data, użyj tego
+    if (mergedData.routeSequence) {
+      const uniqueTransports = new Map();
+      
+      // Zbierz unikalne transporty z ich punktami
+      mergedData.routeSequence.forEach(point => {
+        if (!uniqueTransports.has(point.transportId)) {
+          uniqueTransports.set(point.transportId, {
+            id: point.transportId,
+            orderNumber: point.transport.orderNumber,
+            mpk: point.transport.mpk,
+            loading: null,
+            unloading: null
+          });
+        }
+        
+        const transportData = uniqueTransports.get(point.transportId);
+        if (point.type === 'loading') {
+          transportData.loading = point.city;
+        } else if (point.type === 'unloading') {
+          transportData.unloading = point.city;
+        }
       });
+      
+      // Przekształć na trasy
+      uniqueTransports.forEach(transportData => {
+        if (transportData.loading && transportData.unloading) {
+          routes.push({
+            id: transportData.id,
+            orderNumber: transportData.orderNumber,
+            route: `${transportData.loading} → ${transportData.unloading}`,
+            mpk: transportData.mpk
+          });
+        }
+      });
+      
+      return routes;
     }
     
-    // Transporty połączone
-    mergedData.originalTransports.forEach(originalTransport => {
-      const route = getTransportRoute(originalTransport);
-      if (route) {
-        routes.push({
-          id: originalTransport.id,
-          orderNumber: originalTransport.orderNumber,
-          route: route,
-          mpk: originalTransport.mpk
-        });
-      }
-    });
+    // Fallback do starej metody
+    if (mergedData.originalTransports) {
+      return mergedData.originalTransports.map(t => ({
+        id: t.id,
+        orderNumber: t.orderNumber,
+        route: t.route || 'Nie podano',
+        mpk: t.mpk
+      }));
+    }
     
     return routes;
   };
@@ -93,7 +118,8 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
         ? JSON.parse(transport.response_data) 
         : transport.response_data;
       
-      return responseData?.realRouteDistance || responseData?.totalDistance || 0;
+      // Sprawdź różne pola odległości
+      return responseData?.distance || responseData?.realRouteDistance || responseData?.totalDistance || mergedData?.totalDistance || 0;
     } catch (e) {
       return 0;
     }
@@ -106,7 +132,8 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
         ? JSON.parse(transport.response_data) 
         : transport.response_data;
       
-      return responseData?.deliveryPrice || 0;
+      // Użyj totalDeliveryPrice zamiast deliveryPrice
+      return responseData?.totalDeliveryPrice || mergedData?.totalValue || responseData?.deliveryPrice || 0;
     } catch (e) {
       return 0;
     }
