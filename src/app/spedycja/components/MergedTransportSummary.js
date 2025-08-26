@@ -185,7 +185,7 @@ const collectAllResponsible = () => {
           <div>
             <h3 className="text-xl font-bold text-purple-800">
               Transport Połączony
-            <h3>
+            </h3>
           </div>
         </div>
         <div className="text-right">
