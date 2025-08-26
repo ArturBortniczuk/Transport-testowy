@@ -186,13 +186,19 @@ const collectAllResponsible = () => {
             <h3 className="text-xl font-bold text-purple-800">
               Transport Połączony
             </h3>
+<<<<<<< HEAD
+=======
+            <p className="text-purple-600 text-sm">
+              {totalTransports} tras w jednym zleceniu
+            </p>
+>>>>>>> parent of ea8761a (sdsfg)
           </div>
         </div>
         <div className="text-right">
           <div className="text-2xl font-bold text-purple-800">
             {realDistance > 0 ? `${realDistance} km` : 'Brak danych'}
           </div>
-          <div className="text-sm text-purple-600">odległość</div>
+          <div className="text-sm text-purple-600">rzeczywista trasa</div>
         </div>
       </div>
 
