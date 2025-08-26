@@ -186,12 +186,6 @@ const collectAllResponsible = () => {
             <h3 className="text-xl font-bold text-purple-800">
               Transport Połączony
             </h3>
-<<<<<<< HEAD
-=======
-            <p className="text-purple-600 text-sm">
-              {totalTransports} tras w jednym zleceniu
-            </p>
->>>>>>> parent of ea8761a (sdsfg)
           </div>
         </div>
         <div className="text-right">
