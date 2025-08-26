@@ -794,28 +794,44 @@ export default function SpedycjaList({
                                       ? JSON.parse(zamowienie.response_data) 
                                       : zamowienie.response_data;
                                     
-                                    if (responseData && responseData.routeSequence) {
-                                      // Przekształć routeSequence na format oczekiwany przez komponent
-                                      const originalTransports = responseData.mergedTransportIds?.map(id => {
-                                        const routePoint = responseData.routeSequence.find(point => point.transportId === id);
-                                        return routePoint ? {
-                                          id: id,
-                                          orderNumber: routePoint.transport.orderNumber,
-                                          mpk: routePoint.transport.mpk,
-                                          route: `${routePoint.transport.location.replace('Magazyn ', '')} → ${routePoint.transport.delivery.city}`,
-                                          costAssigned: responseData.costBreakdown?.[id] || 0,
-                                          distance: routePoint.transport.distanceKm || 0,
-                                          clientName: routePoint.transport.clientName,
-                                          documents: routePoint.transport.documents
-                                        } : null;
-                                      }).filter(Boolean) || [];
+                                    // Jeśli to transport drugorzędny (nie ma pełnych danych), znajdź główny transport
+                                    if (responseData && !responseData.isMainMerged && responseData.mergedTransportIds) {
+                                      console.log('🔍 Transport drugorzędny - szukam danych głównego transportu');
                                       
-                                      return {
-                                        originalTransports: originalTransports,
-                                        totalDistance: responseData.distance || 0,
-                                        totalValue: responseData.totalDeliveryPrice || 0,
-                                        routeSequence: responseData.routeSequence
-                                      };
+                                      // Znajdź główny transport w liście zamówień
+                                      const mainTransportId = responseData.mergedTransportIds.find(id => id !== zamowienie.id);
+                                      const mainTransport = zamowienia.find(z => z.id === mainTransportId);
+                                      
+                                      if (mainTransport && mainTransport.response_data) {
+                                        console.log('✅ Znaleziono główny transport:', mainTransportId);
+                                        const mainResponseData = typeof mainTransport.response_data === 'string' 
+                                          ? JSON.parse(mainTransport.response_data) 
+                                          : mainTransport.response_data;
+                                        
+                                        // Użyj danych z głównego transportu
+                                        if (mainResponseData.routeSequence) {
+                                          const originalTransports = mainResponseData.mergedTransportIds?.map(id => {
+                                            const routePoint = mainResponseData.routeSequence.find(point => point.transportId === id);
+                                            return routePoint ? {
+                                              id: id,
+                                              orderNumber: routePoint.transport.orderNumber,
+                                              mpk: routePoint.transport.mpk,
+                                              route: `${routePoint.transport.location.replace('Magazyn ', '')} → ${routePoint.transport.delivery.city}`,
+                                              costAssigned: mainResponseData.costBreakdown?.[id] || 0,
+                                              distance: routePoint.transport.distanceKm || 0,
+                                              clientName: routePoint.transport.clientName,
+                                              documents: routePoint.transport.documents
+                                            } : null;
+                                          }).filter(Boolean) || [];
+                                          
+                                          return {
+                                            originalTransports: originalTransports,
+                                            totalDistance: mainResponseData.distance || 0,
+                                            totalValue: mainResponseData.totalDeliveryPrice || 0,
+                                            routeSequence: mainResponseData.routeSequence
+                                          };
+                                        }
+                                      }
                                     }
                                     
                                     // Fallback do starych danych merged_transports
