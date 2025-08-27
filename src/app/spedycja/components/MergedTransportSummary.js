@@ -164,17 +164,40 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
     return allTransports;
   };
 
-  // Funkcja pomocnicza do formatowania trasy
+  // Funkcja pomocnicza do formatowania trasy - NAPRAWIONA
   const getTransportRoute = (transportItem) => {
-    if (!transportItem) return '';
+    if (!transportItem) return 'Brak danych';
     
-    const start = transportItem.location === 'Odbiory własne' && transportItem.producerAddress 
-      ? transportItem.producerAddress.city 
-      : (transportItem.location || '').replace('Magazyn ', '');
+    console.log(`=== getTransportRoute dla transport ${transportItem.id} ===`);
+    console.log('Transport data:', transportItem);
     
-    const end = transportItem.delivery?.city || transportItem.delivery_data?.city || 'Brak danych';
+    let start = 'Brak danych';
+    let end = 'Brak danych';
     
-    return `${start} → ${end}`;
+    // Określ punkt początkowy
+    if (transportItem.location === 'Odbiory własne' && transportItem.producerAddress) {
+      start = transportItem.producerAddress.city || transportItem.producerAddress;
+    } else if (transportItem.location) {
+      start = transportItem.location.replace('Magazyn ', '');
+    }
+    
+    // Określ punkt końcowy
+    if (transportItem.delivery_data) {
+      try {
+        const deliveryData = typeof transportItem.delivery_data === 'string' 
+          ? JSON.parse(transportItem.delivery_data) 
+          : transportItem.delivery_data;
+        end = deliveryData.city || deliveryData.address || 'Brak danych';
+      } catch (e) {
+        console.log('Błąd parsowania delivery_data:', e);
+      }
+    } else if (transportItem.delivery) {
+      end = transportItem.delivery.city || transportItem.delivery.address || 'Brak danych';
+    }
+    
+    const route = `${start} → ${end}`;
+    console.log(`Wygenerowana trasa: "${route}"`);
+    return route;
   };
 
   // Funkcja do zbierania wszystkich unikalnych wartości z pola
@@ -203,42 +226,83 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
       console.log(`Transport ${transportData.id}:`, {
         responsiblePerson: transportData.responsiblePerson,
         createdBy: transportData.createdBy,
-        responsible_person: transportData.responsible_person
+        responsible_person: transportData.responsible_person,
+        created_by: transportData.created_by,
+        wszystkieDane: transportData
       });
       
       // Sprawdź różne możliwe pola z osobami odpowiedzialnymi
-      if (transportData.responsiblePerson) {
-        responsible.add(transportData.responsiblePerson);
-        console.log('Dodano odpowiedzialnego:', transportData.responsiblePerson);
+      if (transportData.responsiblePerson && transportData.responsiblePerson.trim()) {
+        responsible.add(transportData.responsiblePerson.trim());
+        console.log('✅ Dodano responsiblePerson:', transportData.responsiblePerson);
       }
       
       // Backup - sprawdź inne możliwe pola
-      if (transportData.responsible_person) {
-        responsible.add(transportData.responsible_person);
-        console.log('Dodano responsible_person:', transportData.responsible_person);
+      if (transportData.responsible_person && transportData.responsible_person.trim()) {
+        responsible.add(transportData.responsible_person.trim());
+        console.log('✅ Dodano responsible_person:', transportData.responsible_person);
       }
       
-      if (transportData.createdBy) {
-        responsible.add(transportData.createdBy);
-        console.log('Dodano createdBy:', transportData.createdBy);
+      if (transportData.createdBy && transportData.createdBy.trim()) {
+        responsible.add(transportData.createdBy.trim());
+        console.log('✅ Dodano createdBy:', transportData.createdBy);
+      }
+      
+      if (transportData.created_by && transportData.created_by.trim()) {
+        responsible.add(transportData.created_by.trim());
+        console.log('✅ Dodano created_by:', transportData.created_by);
+      }
+      
+      // Sprawdź też w oryginalnych danych z bazy
+      if (!responsible.size && transportData.responsibleEmail) {
+        // Spróbuj wyciągnąć imię z email
+        const emailName = transportData.responsibleEmail.split('@')[0];
+        if (emailName) {
+          responsible.add(emailName);
+          console.log('✅ Dodano z emaila:', emailName);
+        }
       }
     });
     
     const result = Array.from(responsible).filter(Boolean);
-    console.log('Finalne osoby odpowiedzialne:', result);
+    console.log('🎯 Finalne osoby odpowiedzialne:', result);
+    
+    // Jeśli nadal brak, spróbuj z oryginalnego transportu
+    if (result.length === 0) {
+      console.log('⚠️ Brak osób odpowiedzialnych, sprawdzam oryginalny transport...');
+      if (transport.responsible_person) {
+        result.push(transport.responsible_person);
+        console.log('✅ Dodano z oryginalnego transport.responsible_person:', transport.responsible_person);
+      }
+      if (transport.created_by) {
+        result.push(transport.created_by);
+        console.log('✅ Dodano z oryginalnego transport.created_by:', transport.created_by);
+      }
+    }
     
     return result;
   };
 
-  // Funkcja do zbierania tras
+  // Funkcja do zbierania tras - NAPRAWIONA
   const getAllRoutes = () => {
     const allTransports = getAllTransportsData();
-    return allTransports.map(transportData => ({
-      id: transportData.id,
-      orderNumber: transportData.orderNumber,
-      route: transportData.route || 'Nie podano',
-      mpk: transportData.mpk
-    }));
+    console.log('=== DEBUG getAllRoutes ===');
+    console.log('Wszystkie transporty dla tras:', allTransports);
+    
+    const routes = allTransports.map(transportData => {
+      const route = transportData.route || getTransportRoute(transportData) || 'Nie podano';
+      console.log(`Transport ${transportData.id}: trasa "${route}"`);
+      
+      return {
+        id: transportData.id,
+        orderNumber: transportData.orderNumber,
+        route: route,
+        mpk: transportData.mpk
+      };
+    });
+    
+    console.log('🎯 Finalne trasy:', routes);
+    return routes;
   };
 
   // NOWA FUNKCJA: Oblicz łączną odległość wszystkich transportów
@@ -422,7 +486,7 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
     return null;
   }
 
-  // Pobieranie danych
+  // Pobieranie danych z debugowaniem
   const allMPKs = collectUniqueValues('mpk');
   const allDocuments = collectUniqueValues('documents');
   const allClients = collectUniqueValues('clientName');
@@ -430,6 +494,14 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
   const allRoutes = getAllRoutes();
   const realDistance = getRealDistance();
   const totalValue = getTotalValue();
+
+  console.log('=== FINALNE DANE DO WYŚWIETLENIA ===');
+  console.log('Odległość (realDistance):', realDistance);
+  console.log('Wartość (totalValue):', totalValue);
+  console.log('Liczba tras (allRoutes):', allRoutes.length);
+  console.log('Liczba odpowiedzialnych (allResponsible):', allResponsible.length);
+  console.log('Wszystkie trasy:', allRoutes);
+  console.log('Wszystkie odpowiedzialni:', allResponsible);
 
   return (
     <div className="mb-6 bg-gradient-to-br from-purple-50 to-indigo-100 border-2 border-purple-200 rounded-xl p-6 shadow-lg">
