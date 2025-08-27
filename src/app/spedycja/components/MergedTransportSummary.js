@@ -6,7 +6,8 @@ import {
   Users, 
   Calculator, 
   Route,
-  Hash
+  Hash,
+  DollarSign
 } from 'lucide-react';
 
 const MergedTransportSummary = ({ transport, mergedData }) => {
@@ -46,7 +47,9 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
       responsiblePerson: transport.responsible_person,
       location: transport.location,
       delivery_data: transport.delivery_data,
-      route: getTransportRoute(transport)
+      route: getTransportRoute(transport),
+      distance_km: transport.distance_km,
+      distanceKm: transport.distanceKm
     });
 
     // Sprawdź różne źródła danych o połączonych transportach
@@ -58,46 +61,22 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
           ? JSON.parse(transport.response_data) 
           : transport.response_data;
         
-        // Jeśli mamy routeSequence, wyciągnij z niego transporty
-        if (responseData.routeSequence && Array.isArray(responseData.routeSequence)) {
-          const uniqueTransportIds = new Set();
-          
-          responseData.routeSequence.forEach(point => {
-            if (point.transportId && point.transport && !uniqueTransportIds.has(point.transportId)) {
-              uniqueTransportIds.add(point.transportId);
-              
-              // Dodaj tylko jeśli to nie główny transport
-              if (point.transportId !== transport.id) {
-                allTransports.push({
-                  id: point.transportId,
-                  orderNumber: point.transport.orderNumber,
-                  mpk: point.transport.mpk,
-                  documents: point.transport.documents,
-                  clientName: point.transport.clientName || point.transport.client_name,
-                  responsiblePerson: point.transport.responsiblePerson || point.transport.responsible_person,
-                  location: point.transport.location,
-                  delivery_data: point.transport.delivery || point.transport.delivery_data,
-                  route: `${point.transport.location?.replace('Magazyn ', '') || point.city} → ${point.transport.delivery?.city || point.transport.delivery_data?.city || ''}`
-                });
-              }
-            }
-          });
-        }
-        
-        // Alternatywnie, jeśli mamy mergedTransportIds z dodatkowymi danymi
-        else if (responseData.mergedTransportIds && Array.isArray(responseData.mergedTransportIds)) {
-          responseData.mergedTransportIds.forEach(transportData => {
-            if (transportData && typeof transportData === 'object' && transportData.id !== transport.id) {
+        // Sprawdź czy są oryginalne transporty w response_data
+        if (responseData.originalTransports && Array.isArray(responseData.originalTransports)) {
+          responseData.originalTransports.forEach(originalTransport => {
+            if (!allTransports.find(t => t.id === originalTransport.id)) {
               allTransports.push({
-                id: transportData.id,
-                orderNumber: transportData.orderNumber,
-                mpk: transportData.mpk,
-                documents: transportData.documents,
-                clientName: transportData.clientName || transportData.client_name,
-                responsiblePerson: transportData.responsiblePerson || transportData.responsible_person,
-                location: transportData.location,
-                delivery_data: transportData.delivery || transportData.delivery_data,
-                route: transportData.route || `${transportData.location?.replace('Magazyn ', '') || ''} → ${transportData.delivery?.city || transportData.delivery_data?.city || ''}`
+                id: originalTransport.id,
+                orderNumber: originalTransport.orderNumber || originalTransport.order_number,
+                mpk: originalTransport.mpk,
+                documents: originalTransport.documents,
+                clientName: originalTransport.clientName || originalTransport.client_name,
+                responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
+                location: originalTransport.location,
+                delivery_data: originalTransport.delivery_data,
+                route: originalTransport.route || getTransportRoute(originalTransport),
+                distance_km: originalTransport.distance_km || originalTransport.distanceKm,
+                distanceKm: originalTransport.distanceKm || originalTransport.distance_km
               });
             }
           });
@@ -114,14 +93,16 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
         if (!allTransports.find(t => t.id === originalTransport.id)) {
           allTransports.push({
             id: originalTransport.id,
-            orderNumber: originalTransport.orderNumber,
+            orderNumber: originalTransport.orderNumber || originalTransport.order_number,
             mpk: originalTransport.mpk,
             documents: originalTransport.documents,
             clientName: originalTransport.clientName || originalTransport.client_name,
             responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
             location: originalTransport.location,
             delivery_data: originalTransport.delivery_data,
-            route: originalTransport.route
+            route: originalTransport.route,
+            distance_km: originalTransport.distance_km || originalTransport.distanceKm,
+            distanceKm: originalTransport.distanceKm || originalTransport.distance_km
           });
         }
       });
@@ -140,14 +121,16 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
             if (!allTransports.find(t => t.id === originalTransport.id)) {
               allTransports.push({
                 id: originalTransport.id,
-                orderNumber: originalTransport.orderNumber,
+                orderNumber: originalTransport.orderNumber || originalTransport.order_number,
                 mpk: originalTransport.mpk,
                 documents: originalTransport.documents,
                 clientName: originalTransport.clientName || originalTransport.client_name,
                 responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
                 location: originalTransport.location,
                 delivery_data: originalTransport.delivery_data,
-                route: originalTransport.route
+                route: originalTransport.route,
+                distance_km: originalTransport.distance_km || originalTransport.distanceKm,
+                distanceKm: originalTransport.distanceKm || originalTransport.distance_km
               });
             }
           });
@@ -212,7 +195,7 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
     }));
   };
 
-  // Oblicz odległość rzeczywistą
+  // NOWA FUNKCJA: Oblicz łączną odległość wszystkich transportów
   const getRealDistance = () => {
     try {
       const effectiveTransport = getEffectiveTransportData();
@@ -220,60 +203,51 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
       console.log('=== DEBUG ODLEGŁOŚĆ ===');
       console.log('Transport ID:', transport.id);
       console.log('Effective transport ID:', effectiveTransport.id);
-      console.log('Is loading main transport:', isLoadingMainTransport);
       
-      // Sprawdź w response_data
+      // 1. Sprawdź w response_data czy jest już obliczona łączna odległość
       if (effectiveTransport.response_data) {
         const responseData = typeof effectiveTransport.response_data === 'string' 
           ? JSON.parse(effectiveTransport.response_data) 
           : effectiveTransport.response_data;
         
-        console.log('Effective response_data:', responseData);
-        console.log('distance:', responseData.distance);
-        console.log('realRouteDistance:', responseData.realRouteDistance);
-        console.log('totalDistance:', responseData.totalDistance);
+        console.log('Response_data dla odległości:', responseData);
         
-        // Użyj danych z efektywnego transportu (głównego dla transportu dodatkowego)
-        if (responseData.distance) {
-          console.log('Zwracam distance:', responseData.distance);
-          return responseData.distance;
-        }
-        if (responseData.realRouteDistance) {
+        // Sprawdź różne pola z obliczoną odległością trasy
+        if (responseData.realRouteDistance && responseData.realRouteDistance > 0) {
           console.log('Zwracam realRouteDistance:', responseData.realRouteDistance);
           return responseData.realRouteDistance;
         }
-        if (responseData.totalDistance) {
+        if (responseData.totalDistance && responseData.totalDistance > 0) {
           console.log('Zwracam totalDistance:', responseData.totalDistance);
           return responseData.totalDistance;
         }
+        if (responseData.distance && responseData.distance > 0) {
+          console.log('Zwracam distance:', responseData.distance);
+          return responseData.distance;
+        }
       }
       
-      // Sprawdź w mergedData przekazanych z rodzica
-      if (mergedData?.totalDistance) {
+      // 2. Sprawdź w mergedData przekazanych z rodzica
+      if (mergedData?.totalDistance && mergedData.totalDistance > 0) {
         console.log('Zwracam mergedData.totalDistance:', mergedData.totalDistance);
         return mergedData.totalDistance;
       }
       
-      // Sprawdź w merged_transports
-      if (effectiveTransport.merged_transports) {
-        const mergedTransportsData = typeof effectiveTransport.merged_transports === 'string' 
-          ? JSON.parse(effectiveTransport.merged_transports) 
-          : effectiveTransport.merged_transports;
-        console.log('merged_transports data:', mergedTransportsData);
-        if (mergedTransportsData?.totalDistance) {
-          console.log('Zwracam merged_transports totalDistance:', mergedTransportsData.totalDistance);
-          return mergedTransportsData.totalDistance;
-        }
-      }
+      // 3. Jeśli nie ma obliczonej odległości, spróbuj zsumować odległości poszczególnych transportów
+      const allTransports = getAllTransportsData();
+      let totalDistance = 0;
       
-      // Sprawdź podstawowe pola odległości transportu
-      if (effectiveTransport.distance_km) {
-        console.log('Zwracam distance_km:', effectiveTransport.distance_km);
-        return effectiveTransport.distance_km;
-      }
-      if (effectiveTransport.distanceKm) {
-        console.log('Zwracam distanceKm:', effectiveTransport.distanceKm);
-        return effectiveTransport.distanceKm;
+      console.log('Wszystkie transporty do sumowania odległości:', allTransports);
+      
+      allTransports.forEach(transportData => {
+        const distance = transportData.distance_km || transportData.distanceKm || 0;
+        console.log(`Transport ${transportData.id}: odległość ${distance} km`);
+        totalDistance += parseFloat(distance) || 0;
+      });
+      
+      if (totalDistance > 0) {
+        console.log('Zsumowano odległości transportów:', totalDistance);
+        return Math.round(totalDistance);
       }
       
       console.log('Nie znaleziono odległości, zwracam 0');
@@ -284,7 +258,7 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
     }
   };
 
-  // Oblicz łączną wartość transportu
+  // NOWA FUNKCJA: Oblicz łączną wartość wszystkich transportów
   const getTotalValue = () => {
     try {
       const effectiveTransport = getEffectiveTransportData();
@@ -293,55 +267,52 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
       console.log('Transport ID:', transport.id);
       console.log('Effective transport ID:', effectiveTransport.id);
       
-      // Sprawdź w response_data
+      // 1. Sprawdź w response_data czy jest już obliczona łączna wartość
       if (effectiveTransport.response_data) {
         const responseData = typeof effectiveTransport.response_data === 'string' 
           ? JSON.parse(effectiveTransport.response_data) 
           : effectiveTransport.response_data;
         
-        console.log('Effective response data dla wartości:', responseData);
-        console.log('totalDeliveryPrice:', responseData.totalDeliveryPrice);
-        console.log('totalPrice:', responseData.totalPrice);
-        console.log('deliveryPrice:', responseData.deliveryPrice);
+        console.log('Response data dla wartości:', responseData);
         
-        // Użyj danych z efektywnego transportu (głównego dla transportu dodatkowego)
-        if (responseData.totalDeliveryPrice) {
+        // Sprawdź różne pola z obliczoną wartością
+        if (responseData.totalDeliveryPrice && responseData.totalDeliveryPrice > 0) {
           console.log('Zwracam totalDeliveryPrice:', responseData.totalDeliveryPrice);
           return responseData.totalDeliveryPrice;
         }
-        if (responseData.totalPrice) {
+        if (responseData.totalPrice && responseData.totalPrice > 0) {
           console.log('Zwracam totalPrice:', responseData.totalPrice);
           return responseData.totalPrice;
         }
-        if (responseData.deliveryPrice) {
+        if (responseData.deliveryPrice && responseData.deliveryPrice > 0) {
           console.log('Zwracam deliveryPrice:', responseData.deliveryPrice);
           return responseData.deliveryPrice;
         }
       }
       
-      // Sprawdź w mergedData przekazanych z rodzica
-      if (mergedData?.totalValue) {
+      // 2. Sprawdź w mergedData przekazanych z rodzica
+      if (mergedData?.totalValue && mergedData.totalValue > 0) {
         console.log('Zwracam mergedData.totalValue:', mergedData.totalValue);
         return mergedData.totalValue;
       }
       
-      // Sprawdź w merged_transports
+      // 3. Sprawdź w merged_transports
       if (effectiveTransport.merged_transports) {
         const mergedTransportsData = typeof effectiveTransport.merged_transports === 'string' 
           ? JSON.parse(effectiveTransport.merged_transports) 
           : effectiveTransport.merged_transports;
-        if (mergedTransportsData?.totalMergedCost) {
+        if (mergedTransportsData?.totalMergedCost && mergedTransportsData.totalMergedCost > 0) {
           console.log('Zwracam totalMergedCost:', mergedTransportsData.totalMergedCost);
           return mergedTransportsData.totalMergedCost;
         }
-        if (mergedTransportsData?.totalValue) {
+        if (mergedTransportsData?.totalValue && mergedTransportsData.totalValue > 0) {
           console.log('Zwracam merged totalValue:', mergedTransportsData.totalValue);
           return mergedTransportsData.totalValue;
         }
       }
       
-      // Sprawdź w response (stary format)
-      if (effectiveTransport.response?.deliveryPrice) {
+      // 4. Sprawdź w response (stary format)
+      if (effectiveTransport.response?.deliveryPrice && effectiveTransport.response.deliveryPrice > 0) {
         console.log('Zwracam response.deliveryPrice:', effectiveTransport.response.deliveryPrice);
         return effectiveTransport.response.deliveryPrice;
       }
@@ -386,127 +357,119 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
             <h3 className="text-xl font-bold text-purple-800">
               Transport Połączony
             </h3>
+            <p className="text-purple-600 text-sm">
+              {allRoutes.length} tras w jednym zleceniu
+            </p>
           </div>
         </div>
         <div className="text-right">
           <div className="text-2xl font-bold text-purple-800">
             {realDistance > 0 ? `${realDistance} km` : 'Brak danych'}
           </div>
-          <div className="text-sm text-purple-600">rzeczywista trasa</div>
+          <p className="text-purple-600 text-sm">Łączna odległość</p>
         </div>
       </div>
 
-      {/* Siatka z podsumowaniem */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        
-        {/* Dokumenty */}
-        <div className="bg-white rounded-lg p-4 shadow-sm border border-purple-200">
-          <div className="flex items-center gap-2 mb-3">
-            <FileText size={18} className="text-purple-600" />
-            <h4 className="font-semibold text-gray-800">Dokumenty</h4>
+      {/* Główne informacje w kafelkach */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {/* Łączna wartość */}
+        <div className="bg-white rounded-lg p-4 shadow-sm border border-purple-100">
+          <div className="flex items-center gap-2 mb-2">
+            <DollarSign size={18} className="text-green-600" />
+            <h4 className="font-semibold text-gray-800">Łączna wartość</h4>
           </div>
-          <div className="space-y-1">
-            {allDocuments.length > 0 ? (
-              allDocuments.map((doc, index) => (
-                <div key={index} className="text-sm bg-gray-50 px-2 py-1 rounded border">
-                  {doc}
-                </div>
-              ))
-            ) : (
-              <div className="text-sm text-gray-500">Brak danych</div>
-            )}
+          <div className="text-2xl font-bold text-green-600">
+            {totalValue > 0 ? `${totalValue.toLocaleString()} PLN` : 'Brak danych'}
           </div>
         </div>
 
-        {/* Klienci */}
-        <div className="bg-white rounded-lg p-4 shadow-sm border border-purple-200">
-          <div className="flex items-center gap-2 mb-3">
-            <Users size={18} className="text-purple-600" />
+        {/* Liczba klientów */}
+        <div className="bg-white rounded-lg p-4 shadow-sm border border-purple-100">
+          <div className="flex items-center gap-2 mb-2">
+            <Users size={18} className="text-blue-600" />
             <h4 className="font-semibold text-gray-800">Klienci</h4>
           </div>
-          <div className="space-y-1">
-            {allClients.length > 0 ? (
-              allClients.map((client, index) => (
-                <div key={index} className="text-sm bg-gray-50 px-2 py-1 rounded border">
-                  {client}
-                </div>
-              ))
-            ) : (
-              <div className="text-sm text-gray-500">Brak danych</div>
-            )}
+          <div className="text-2xl font-bold text-blue-600">
+            {allClients.length}
+          </div>
+          <div className="text-xs text-gray-500">
+            {allClients.slice(0, 2).join(', ')}
+            {allClients.length > 2 && '...'}
           </div>
         </div>
 
-        {/* Wartość i Szczegóły transportu */}
-        <div className="bg-white rounded-lg p-4 shadow-sm border border-purple-200">
-          <div className="flex items-center gap-2 mb-3">
-            <Calculator size={18} className="text-purple-600" />
-            <h4 className="font-semibold text-gray-800">Podsumowanie</h4>
+        {/* Dokumenty */}
+        <div className="bg-white rounded-lg p-4 shadow-sm border border-purple-100">
+          <div className="flex items-center gap-2 mb-2">
+            <FileText size={18} className="text-orange-600" />
+            <h4 className="font-semibold text-gray-800">Dokumenty</h4>
           </div>
-          <div className="space-y-3">
-            {/* Wartość finansowa */}
-            <div>
-              <div className="text-2xl font-bold text-green-600">
-                {totalValue > 0 ? `${totalValue.toLocaleString()} PLN` : 'Brak danych'}
-              </div>
-              <div className="text-xs text-gray-500">łączna wartość transportu</div>
-            </div>
-            
-            {/* Szczegóły */}
-            <div className="pt-2 border-t border-gray-200 space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Tras połączonych:</span>
-                <span className="font-medium">{allRoutes.length}</span>
-              </div>
-              
-              {/* Wszyscy odpowiedzialni */}
-              <div>
-                <span className="text-gray-600">Odpowiedzialni:</span>
-                <div className="mt-1 space-y-1">
-                  {allResponsible.length > 0 ? (
-                    allResponsible.map((person, index) => (
-                      <div key={index} className="text-xs bg-blue-50 text-blue-800 px-2 py-1 rounded border">
-                        {person}
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-xs text-gray-500">Brak danych</div>
-                  )}
-                </div>
-              </div>
-            </div>
+          <div className="text-2xl font-bold text-orange-600">
+            {allDocuments.length}
+          </div>
+          <div className="text-xs text-gray-500">
+            {allDocuments.slice(0, 2).join(', ')}
+            {allDocuments.length > 2 && '...'}
+          </div>
+        </div>
+
+        {/* MPK */}
+        <div className="bg-white rounded-lg p-4 shadow-sm border border-purple-100">
+          <div className="flex items-center gap-2 mb-2">
+            <Hash size={18} className="text-purple-600" />
+            <h4 className="font-semibold text-gray-800">MPK</h4>
+          </div>
+          <div className="text-sm font-bold text-purple-600">
+            {allMPKs.slice(0, 3).join(', ')}
+            {allMPKs.length > 3 && '...'}
           </div>
         </div>
       </div>
 
-      {/* Szczegółowe trasy */}
-      <div className="mt-6 bg-white rounded-lg p-4 shadow-sm border border-purple-200">
-        <div className="flex items-center gap-2 mb-4">
+      {/* Lista tras */}
+      <div className="bg-white rounded-lg p-4 border border-purple-100">
+        <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
           <MapPin size={18} className="text-purple-600" />
-          <h4 className="font-semibold text-gray-800">Wszystkie trasy w zleceniu</h4>
-        </div>
+          Wszystkie trasy w zleceniu
+        </h4>
         <div className="space-y-2">
-          {allRoutes.map((routeItem, index) => (
-            <div 
-              key={routeItem.id}
-              className="flex items-center justify-between p-3 bg-gray-50 rounded border"
-            >
+          {allRoutes.map((route, index) => (
+            <div key={route.id} className="flex items-center justify-between py-2 px-3 bg-purple-50 rounded-lg">
               <div className="flex items-center gap-3">
-                <div className="w-6 h-6 bg-purple-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                <div className="bg-purple-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
                   {index + 1}
                 </div>
                 <div>
-                  <div className="font-medium text-gray-900">{routeItem.route}</div>
-                  <div className="text-xs text-gray-500">Nr: {routeItem.orderNumber}</div>
+                  <div className="font-medium text-gray-800">{route.route}</div>
+                  <div className="text-xs text-gray-500">Zlecenie: {route.orderNumber}</div>
                 </div>
               </div>
-              <div className="text-sm text-gray-600">
-                {routeItem.mpk && `MPK: ${routeItem.mpk}`}
-              </div>
+              {route.mpk && (
+                <div className="text-xs bg-purple-200 text-purple-800 px-2 py-1 rounded">
+                  MPK: {route.mpk}
+                </div>
+              )}
             </div>
           ))}
         </div>
       </div>
+
+      {/* Odpowiedzialni */}
+      {allResponsible.length > 0 && (
+        <div className="mt-4 bg-white rounded-lg p-4 border border-purple-100">
+          <h4 className="font-semibold text-gray-800 mb-2 flex items-center gap-2">
+            <Users size={18} className="text-purple-600" />
+            Osoby odpowiedzialne
+          </h4>
+          <div className="flex flex-wrap gap-2">
+            {allResponsible.map((person, index) => (
+              <div key={index} className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm">
+                {person}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
