@@ -10,9 +10,63 @@ import {
 } from 'lucide-react';
 
 const MergedTransportSummary = ({ transport, mergedData }) => {
+  const [mainTransportData, setMainTransportData] = React.useState(null);
+  const [isLoadingMainTransport, setIsLoadingMainTransport] = React.useState(false);
+
   if (!transport) {
     return null;
   }
+
+  // Sprawdź czy to transport dodatkowy i pobierz dane głównego transportu
+  React.useEffect(() => {
+    const fetchMainTransportData = async () => {
+      try {
+        if (transport.response_data) {
+          const responseData = typeof transport.response_data === 'string' 
+            ? JSON.parse(transport.response_data) 
+            : transport.response_data;
+          
+          if (responseData.isSecondaryMerged && responseData.mainTransportId) {
+            setIsLoadingMainTransport(true);
+            console.log('Pobieranie danych głównego transportu ID:', responseData.mainTransportId);
+            
+            const response = await fetch(`/api/spedycje/${responseData.mainTransportId}`);
+            if (response.ok) {
+              const data = await response.json();
+              if (data.success) {
+                console.log('Pobrano dane głównego transportu:', data.spedycja);
+                setMainTransportData(data.spedycja);
+              }
+            }
+            setIsLoadingMainTransport(false);
+          }
+        }
+      } catch (error) {
+        console.error('Błąd pobierania danych głównego transportu:', error);
+        setIsLoadingMainTransport(false);
+      }
+    };
+
+    fetchMainTransportData();
+  }, [transport.id]);
+
+  // Funkcja do pobrania właściwych danych transportu (głównego lub obecnego)
+  const getEffectiveTransportData = () => {
+    // Sprawdź czy to transport dodatkowy
+    if (transport.response_data) {
+      const responseData = typeof transport.response_data === 'string' 
+        ? JSON.parse(transport.response_data) 
+        : transport.response_data;
+      
+      if (responseData.isSecondaryMerged && mainTransportData) {
+        // Użyj danych z głównego transportu
+        return mainTransportData;
+      }
+    }
+    
+    // Użyj danych obecnego transportu (transport główny lub brak danych głównego)
+    return transport;
+  };
 
   // Funkcja do pobierania wszystkich danych transportów (zarówno głównego jak i połączonych)
   const getAllTransportsData = () => {
@@ -194,83 +248,28 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
     }));
   };
 
-  // Funkcja do pobierania głównego transportu (jeśli obecny transport jest dodatkowy)
-  const getMainTransportData = async () => {
-    try {
-      // Sprawdź czy to transport dodatkowy
-      if (transport.response_data) {
-        const responseData = typeof transport.response_data === 'string' 
-          ? JSON.parse(transport.response_data) 
-          : transport.response_data;
-        
-        if (responseData.isSecondaryMerged && responseData.mainTransportId) {
-          // To jest transport dodatkowy - powinniśmy pobrać dane z głównego
-          console.log('Transport dodatkowy - szukam głównego ID:', responseData.mainTransportId);
-          return null; // Na razie zwracamy null, żeby użyć obecnej logiki
-        }
-      }
-      
-      // Sprawdź też w merged_transports
-      if (transport.merged_transports) {
-        const mergedData = typeof transport.merged_transports === 'string' 
-          ? JSON.parse(transport.merged_transports) 
-          : transport.merged_transports;
-        
-        if (mergedData.isSecondary && mergedData.mainTransportId) {
-          console.log('Transport dodatkowy (merged_transports) - główny ID:', mergedData.mainTransportId);
-          return null; // Na razie zwracamy null
-        }
-      }
-    } catch (e) {
-      console.error('Błąd sprawdzania głównego transportu:', e);
-    }
-    return null;
-  };
-
   // Oblicz odległość rzeczywistą
   const getRealDistance = () => {
     try {
-      // DEBUGOWANIE - usuń to po naprawieniu
+      const effectiveTransport = getEffectiveTransportData();
+      
       console.log('=== DEBUG ODLEGŁOŚĆ ===');
       console.log('Transport ID:', transport.id);
+      console.log('Effective transport ID:', effectiveTransport.id);
+      console.log('Is loading main transport:', isLoadingMainTransport);
       
       // Sprawdź w response_data
-      if (transport.response_data) {
-        const responseData = typeof transport.response_data === 'string' 
-          ? JSON.parse(transport.response_data) 
-          : transport.response_data;
+      if (effectiveTransport.response_data) {
+        const responseData = typeof effectiveTransport.response_data === 'string' 
+          ? JSON.parse(effectiveTransport.response_data) 
+          : effectiveTransport.response_data;
         
-        console.log('Parsed response_data:', responseData);
-        console.log('isSecondaryMerged:', responseData.isSecondaryMerged);
-        console.log('isMainMerged:', responseData.isMainMerged);
-        
-        // Jeśli to transport dodatkowy, użyj odległości z routeSequence lub nie pokazuj odległości indywidualnej
-        if (responseData.isSecondaryMerged) {
-          // Dla transportu dodatkowego - sprawdź czy mamy routeSequence z pełną trasą
-          if (responseData.routeSequence && Array.isArray(responseData.routeSequence)) {
-            console.log('RouteSequence:', responseData.routeSequence);
-            // Spróbuj znaleźć całkowitą odległość w routeSequence
-            // Na razie zwróć pierwszą dostępną odległość z głównego transportu
-            const mainPoint = responseData.routeSequence.find(point => 
-              point.transport && point.transport.id !== transport.id
-            );
-            if (mainPoint?.distance) {
-              console.log('Znaleziono odległość w routeSequence:', mainPoint.distance);
-              return mainPoint.distance;
-            }
-          }
-          
-          // Jeśli nie ma routeSequence, użyj domyślnej wartości głównego transportu
-          // To powinno być 709 dla obu transportów
-          console.log('Transport dodatkowy - używam stałej wartości 709');
-          return 709; // Hardcoded dla tego przypadku - lepiej byłoby pobrać z głównego transportu
-        }
-        
-        // Dla głównego transportu - używaj normalnej logiki
+        console.log('Effective response_data:', responseData);
+        console.log('distance:', responseData.distance);
         console.log('realRouteDistance:', responseData.realRouteDistance);
         console.log('totalDistance:', responseData.totalDistance);
-        console.log('distance:', responseData.distance);
         
+        // Użyj danych z efektywnego transportu (głównego dla transportu dodatkowego)
         if (responseData.distance) {
           console.log('Zwracam distance:', responseData.distance);
           return responseData.distance;
@@ -292,10 +291,10 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
       }
       
       // Sprawdź w merged_transports
-      if (transport.merged_transports) {
-        const mergedTransportsData = typeof transport.merged_transports === 'string' 
-          ? JSON.parse(transport.merged_transports) 
-          : transport.merged_transports;
+      if (effectiveTransport.merged_transports) {
+        const mergedTransportsData = typeof effectiveTransport.merged_transports === 'string' 
+          ? JSON.parse(effectiveTransport.merged_transports) 
+          : effectiveTransport.merged_transports;
         console.log('merged_transports data:', mergedTransportsData);
         if (mergedTransportsData?.totalDistance) {
           console.log('Zwracam merged_transports totalDistance:', mergedTransportsData.totalDistance);
@@ -304,13 +303,13 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
       }
       
       // Sprawdź podstawowe pola odległości transportu
-      if (transport.distance_km) {
-        console.log('Zwracam transport.distance_km:', transport.distance_km);
-        return transport.distance_km;
+      if (effectiveTransport.distance_km) {
+        console.log('Zwracam distance_km:', effectiveTransport.distance_km);
+        return effectiveTransport.distance_km;
       }
-      if (transport.distanceKm) {
-        console.log('Zwracam transport.distanceKm:', transport.distanceKm);
-        return transport.distanceKm;
+      if (effectiveTransport.distanceKm) {
+        console.log('Zwracam distanceKm:', effectiveTransport.distanceKm);
+        return effectiveTransport.distanceKm;
       }
       
       console.log('Nie znaleziono odległości, zwracam 0');
@@ -324,31 +323,24 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
   // Oblicz łączną wartość transportu
   const getTotalValue = () => {
     try {
-      // DEBUGOWANIE - usuń to po naprawieniu
+      const effectiveTransport = getEffectiveTransportData();
+      
       console.log('=== DEBUG WARTOŚĆ ===');
       console.log('Transport ID:', transport.id);
+      console.log('Effective transport ID:', effectiveTransport.id);
       
       // Sprawdź w response_data
-      if (transport.response_data) {
-        const responseData = typeof transport.response_data === 'string' 
-          ? JSON.parse(transport.response_data) 
-          : transport.response_data;
+      if (effectiveTransport.response_data) {
+        const responseData = typeof effectiveTransport.response_data === 'string' 
+          ? JSON.parse(effectiveTransport.response_data) 
+          : effectiveTransport.response_data;
         
-        console.log('Response data dla wartości:', responseData);
-        console.log('isSecondaryMerged:', responseData.isSecondaryMerged);
-        console.log('isMainMerged:', responseData.isMainMerged);
-        
-        // Jeśli to transport dodatkowy, użyj wartości całkowitej z routeSequence lub hardcoded
-        if (responseData.isSecondaryMerged) {
-          console.log('Transport dodatkowy - używam stałej wartości 3000');
-          return 3000; // Hardcoded dla tego przypadku - lepiej byłoby pobrać z głównego transportu
-        }
-        
-        // Dla głównego transportu - używaj normalnej logiki
+        console.log('Effective response data dla wartości:', responseData);
         console.log('totalDeliveryPrice:', responseData.totalDeliveryPrice);
         console.log('totalPrice:', responseData.totalPrice);
         console.log('deliveryPrice:', responseData.deliveryPrice);
         
+        // Użyj danych z efektywnego transportu (głównego dla transportu dodatkowego)
         if (responseData.totalDeliveryPrice) {
           console.log('Zwracam totalDeliveryPrice:', responseData.totalDeliveryPrice);
           return responseData.totalDeliveryPrice;
@@ -370,10 +362,10 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
       }
       
       // Sprawdź w merged_transports
-      if (transport.merged_transports) {
-        const mergedTransportsData = typeof transport.merged_transports === 'string' 
-          ? JSON.parse(transport.merged_transports) 
-          : transport.merged_transports;
+      if (effectiveTransport.merged_transports) {
+        const mergedTransportsData = typeof effectiveTransport.merged_transports === 'string' 
+          ? JSON.parse(effectiveTransport.merged_transports) 
+          : effectiveTransport.merged_transports;
         if (mergedTransportsData?.totalMergedCost) {
           console.log('Zwracam totalMergedCost:', mergedTransportsData.totalMergedCost);
           return mergedTransportsData.totalMergedCost;
@@ -385,9 +377,9 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
       }
       
       // Sprawdź w response (stary format)
-      if (transport.response?.deliveryPrice) {
-        console.log('Zwracam response.deliveryPrice:', transport.response.deliveryPrice);
-        return transport.response.deliveryPrice;
+      if (effectiveTransport.response?.deliveryPrice) {
+        console.log('Zwracam response.deliveryPrice:', effectiveTransport.response.deliveryPrice);
+        return effectiveTransport.response.deliveryPrice;
       }
       
       console.log('Nie znaleziono wartości, zwracam 0');
@@ -417,6 +409,17 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
   const allRoutes = getAllRoutes();
   const realDistance = getRealDistance();
   const totalValue = getTotalValue();
+
+  // Pokaż indicator ładowania jeśli pobieramy dane głównego transportu
+  if (isLoadingMainTransport) {
+    return (
+      <div className="mb-6 bg-gradient-to-br from-purple-50 to-indigo-100 border-2 border-purple-200 rounded-xl p-6 shadow-lg">
+        <div className="flex items-center justify-center">
+          <div className="text-purple-600">Ładowanie danych transportu połączonego...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mb-6 bg-gradient-to-br from-purple-50 to-indigo-100 border-2 border-purple-200 rounded-xl p-6 shadow-lg">
