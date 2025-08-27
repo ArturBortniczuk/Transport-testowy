@@ -9,7 +9,7 @@ import {
   DollarSign
 } from 'lucide-react';
 
-const MergedTransportSummary = ({ transport, mergedData }) => {
+const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
   if (!transport) {
     return null;
   }
@@ -21,6 +21,7 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
     console.log('🐛 Response_data:', transport.response_data);
     console.log('🐛 Merged_transports:', transport.merged_transports);  
     console.log('🐛 MergedData z props:', mergedData);
+    console.log('🐛 AllTransports z props:', allTransports);
     
     if (transport.response_data) {
       try {
@@ -29,6 +30,8 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
           : transport.response_data;
         console.log('🐛 Parsed response_data:', responseData);
         console.log('🐛 originalTransports w response_data:', responseData.originalTransports);
+        console.log('🐛 mainTransportId:', responseData.mainTransportId);
+        console.log('🐛 isSecondaryMerged:', responseData.isSecondaryMerged);
       } catch (e) {
         console.log('🐛 Błąd parsowania response_data:', e);
       }
@@ -41,6 +44,8 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
           : transport.merged_transports;
         console.log('🐛 Parsed merged_transports:', mergedTransportsData);
         console.log('🐛 originalTransports w merged_transports:', mergedTransportsData.originalTransports);
+        console.log('🐛 mainTransportId:', mergedTransportsData.mainTransportId);
+        console.log('🐛 isSecondary:', mergedTransportsData.isSecondary);
       } catch (e) {
         console.log('🐛 Błąd parsowania merged_transports:', e);
       }
@@ -50,10 +55,75 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
   // Wywołaj debug
   debugTransportData();
 
+  // FUNKCJA: Pobierz dane głównego transportu jeśli obecny jest dodatkowy
+  const getMainTransportData = () => {
+    // Sprawdź czy to transport dodatkowy
+    let mainTransportId = null;
+    
+    if (transport.response_data) {
+      try {
+        const responseData = typeof transport.response_data === 'string' 
+          ? JSON.parse(transport.response_data) 
+          : transport.response_data;
+        
+        if (responseData.isSecondaryMerged && responseData.mainTransportId) {
+          mainTransportId = responseData.mainTransportId;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    
+    if (!mainTransportId && transport.merged_transports) {
+      try {
+        const mergedTransportsData = typeof transport.merged_transports === 'string' 
+          ? JSON.parse(transport.merged_transports) 
+          : transport.merged_transports;
+        
+        if (mergedTransportsData.isSecondary && mergedTransportsData.mainTransportId) {
+          mainTransportId = mergedTransportsData.mainTransportId;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    
+    // Jeśli nie ma ID głównego transportu, zwróć null
+    if (!mainTransportId) {
+      return null;
+    }
+    
+    console.log('🔍 Szukam głównego transportu o ID:', mainTransportId);
+    
+    // Znajdź główny transport na liście allTransports
+    if (allTransports && Array.isArray(allTransports)) {
+      const mainTransport = allTransports.find(t => t.id === mainTransportId);
+      if (mainTransport) {
+        console.log('✅ Znaleziono główny transport:', mainTransport);
+        return mainTransport;
+      }
+    }
+    
+    console.log('❌ Nie znaleziono głównego transportu');
+    return null;
+  };
+
   // Funkcja do pobierania wszystkich danych transportów (zarówno głównego jak i połączonych)
   const getAllTransportsData = () => {
     const allTransports = [];
     const addedIds = new Set(); // Śledź już dodane transporty
+    
+    // Sprawdź czy to transport dodatkowy i pobierz dane głównego
+    const mainTransport = getMainTransportData();
+    let effectiveMergedData = mergedData;
+    
+    if (mainTransport) {
+      console.log('🔄 Transport dodatkowy - używam danych z głównego transportu');
+      
+      // Jeśli główny transport ma pełne mergedData, użyj ich
+      // To powinno być przekazane przez komponent rodzica, ale na razie spróbujmy
+      // Będziemy musieli sprawdzić czy główny transport ma pełne dane
+    }
     
     // ZAWSZE dodaj obecny transport jako pierwszy
     const currentTransportData = {
@@ -73,86 +143,10 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
     allTransports.push(currentTransportData);
     addedIds.add(transport.id);
 
-    // 1. Sprawdź response_data (najważniejsze źródło danych)
-    if (transport.response_data) {
-      try {
-        const responseData = typeof transport.response_data === 'string' 
-          ? JSON.parse(transport.response_data) 
-          : transport.response_data;
-        
-        // Sprawdź różne możliwe struktury danych
-        let originalTransports = null;
-        
-        if (responseData.originalTransports) {
-          originalTransports = responseData.originalTransports;
-        } else if (responseData.transports) {
-          originalTransports = responseData.transports;
-        } else if (responseData.mergedTransports) {
-          originalTransports = responseData.mergedTransports;
-        }
-        
-        if (originalTransports && Array.isArray(originalTransports)) {
-          originalTransports.forEach(originalTransport => {
-            if (!addedIds.has(originalTransport.id)) {
-              const transportData = {
-                id: originalTransport.id,
-                orderNumber: originalTransport.orderNumber || originalTransport.order_number,
-                mpk: originalTransport.mpk,
-                documents: originalTransport.documents,
-                clientName: originalTransport.clientName || originalTransport.client_name,
-                responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
-                location: originalTransport.location,
-                delivery_data: originalTransport.delivery_data,
-                route: originalTransport.route || getTransportRoute(originalTransport),
-                distance_km: originalTransport.distance_km || originalTransport.distanceKm,
-                distanceKm: originalTransport.distanceKm || originalTransport.distance_km
-              };
-              allTransports.push(transportData);
-              addedIds.add(originalTransport.id);
-            }
-          });
-        }
-      } catch (e) {
-        console.error('Błąd parsowania response_data:', e);
-      }
-    }
-
-    // 2. Sprawdź merged_transports (backup)
-    if (transport.merged_transports) {
-      try {
-        const mergedTransportsData = typeof transport.merged_transports === 'string' 
-          ? JSON.parse(transport.merged_transports) 
-          : transport.merged_transports;
-        
-        if (mergedTransportsData.originalTransports && Array.isArray(mergedTransportsData.originalTransports)) {
-          mergedTransportsData.originalTransports.forEach(originalTransport => {
-            if (!addedIds.has(originalTransport.id)) {
-              const transportData = {
-                id: originalTransport.id,
-                orderNumber: originalTransport.orderNumber || originalTransport.order_number,
-                mpk: originalTransport.mpk,
-                documents: originalTransport.documents,
-                clientName: originalTransport.clientName || originalTransport.client_name,
-                responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
-                location: originalTransport.location,
-                delivery_data: originalTransport.delivery_data,
-                route: originalTransport.route,
-                distance_km: originalTransport.distance_km || originalTransport.distanceKm,
-                distanceKm: originalTransport.distanceKm || originalTransport.distance_km
-              };
-              allTransports.push(transportData);
-              addedIds.add(originalTransport.id);
-            }
-          });
-        }
-      } catch (e) {
-        console.error('Błąd parsowania merged_transports:', e);
-      }
-    }
-
-    // 3. Sprawdź mergedData przekazane z rodzica
-    if (mergedData?.originalTransports && Array.isArray(mergedData.originalTransports)) {
-      mergedData.originalTransports.forEach(originalTransport => {
+    // 1. Sprawdź mergedData przekazane z rodzica (najważniejsze źródło)
+    if (effectiveMergedData?.originalTransports && Array.isArray(effectiveMergedData.originalTransports) && effectiveMergedData.originalTransports.length > 0) {
+      console.log('✅ Używam pełnych danych z mergedData:', effectiveMergedData.originalTransports);
+      effectiveMergedData.originalTransports.forEach(originalTransport => {
         if (!addedIds.has(originalTransport.id)) {
           const transportData = {
             id: originalTransport.id,
@@ -171,6 +165,85 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
           addedIds.add(originalTransport.id);
         }
       });
+    } else {
+      console.log('⚠️ MergedData są puste, sprawdzam inne źródła...');
+      
+      // 2. Sprawdź response_data (backup)
+      if (transport.response_data) {
+        try {
+          const responseData = typeof transport.response_data === 'string' 
+            ? JSON.parse(transport.response_data) 
+            : transport.response_data;
+          
+          // Sprawdź różne możliwe struktury danych
+          let originalTransports = null;
+          
+          if (responseData.originalTransports) {
+            originalTransports = responseData.originalTransports;
+          } else if (responseData.transports) {
+            originalTransports = responseData.transports;
+          } else if (responseData.mergedTransports) {
+            originalTransports = responseData.mergedTransports;
+          }
+          
+          if (originalTransports && Array.isArray(originalTransports)) {
+            originalTransports.forEach(originalTransport => {
+              if (!addedIds.has(originalTransport.id)) {
+                const transportData = {
+                  id: originalTransport.id,
+                  orderNumber: originalTransport.orderNumber || originalTransport.order_number,
+                  mpk: originalTransport.mpk,
+                  documents: originalTransport.documents,
+                  clientName: originalTransport.clientName || originalTransport.client_name,
+                  responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
+                  location: originalTransport.location,
+                  delivery_data: originalTransport.delivery_data,
+                  route: originalTransport.route || getTransportRoute(originalTransport),
+                  distance_km: originalTransport.distance_km || originalTransport.distanceKm,
+                  distanceKm: originalTransport.distanceKm || originalTransport.distance_km
+                };
+                allTransports.push(transportData);
+                addedIds.add(originalTransport.id);
+              }
+            });
+          }
+        } catch (e) {
+          console.error('Błąd parsowania response_data:', e);
+        }
+      }
+
+      // 3. Sprawdź merged_transports (backup)
+      if (transport.merged_transports) {
+        try {
+          const mergedTransportsData = typeof transport.merged_transports === 'string' 
+            ? JSON.parse(transport.merged_transports) 
+            : transport.merged_transports;
+          
+          if (mergedTransportsData.originalTransports && Array.isArray(mergedTransportsData.originalTransports)) {
+            mergedTransportsData.originalTransports.forEach(originalTransport => {
+              if (!addedIds.has(originalTransport.id)) {
+                const transportData = {
+                  id: originalTransport.id,
+                  orderNumber: originalTransport.orderNumber || originalTransport.order_number,
+                  mpk: originalTransport.mpk,
+                  documents: originalTransport.documents,
+                  clientName: originalTransport.clientName || originalTransport.client_name,
+                  responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
+                  location: originalTransport.location,
+                  delivery_data: originalTransport.delivery_data,
+                  route: originalTransport.route,
+                  distance_km: originalTransport.distance_km || originalTransport.distanceKm,
+                  distanceKm: originalTransport.distanceKm || originalTransport.distance_km
+                };
+                allTransports.push(transportData);
+                addedIds.add(originalTransport.id);
+              }
+            });
+          }
+        } catch (e) {
+          console.error('Błąd parsowania merged_transports:', e);
+        }
+      }
     }
 
     console.log(`🐛 Finalne transporty (${allTransports.length}):`, allTransports.map(t => `ID: ${t.id}, Order: ${t.orderNumber}`));
@@ -284,12 +357,31 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
     return routes;
   };
 
-  // NOWA FUNKCJA: Oblicz łączną odległość wszystkich transportów - UPROSZCZONA
+  // NOWA FUNKCJA: Oblicz łączną odległość wszystkich transportów - Z WSPARCIEM DLA TRANSPORTÓW DODATKOWYCH
   const getRealDistance = () => {
     try {
       const effectiveTransport = getEffectiveTransportData();
       
-      // 1. Sprawdź w response_data czy jest już obliczona łączna odległość
+      // Jeśli to transport dodatkowy, sprawdź czy mamy dane głównego transportu
+      const mainTransport = getMainTransportData();
+      if (mainTransport) {
+        console.log('🔄 Transport dodatkowy - sprawdzam odległość z głównego transportu');
+        
+        // Użyj mergedData z komponentu rodzica - ale dla transportów dodatkowych będą puste
+        // Na razie sprawdzę czy mogę użyć danych z głównego transportu
+        if (mergedData?.totalDistance && mergedData.totalDistance > 0) {
+          console.log('✅ Używam totalDistance z mergedData:', mergedData.totalDistance);
+          return mergedData.totalDistance;
+        }
+      }
+      
+      // 1. Sprawdź w mergedData przekazanych z rodzica (najważniejsze dla głównego transportu)
+      if (mergedData?.totalDistance && mergedData.totalDistance > 0) {
+        console.log('✅ Zwracam mergedData.totalDistance:', mergedData.totalDistance);
+        return mergedData.totalDistance;
+      }
+      
+      // 2. Sprawdź w response_data czy jest już obliczona łączna odległość
       if (effectiveTransport.response_data) {
         const responseData = typeof effectiveTransport.response_data === 'string' 
           ? JSON.parse(effectiveTransport.response_data) 
@@ -305,11 +397,6 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
         if (responseData.distance && responseData.distance > 0) {
           return responseData.distance;
         }
-      }
-      
-      // 2. Sprawdź w mergedData przekazanych z rodzica
-      if (mergedData?.totalDistance && mergedData.totalDistance > 0) {
-        return mergedData.totalDistance;
       }
       
       // 3. Jeśli nie ma obliczonej odległości, spróbuj zsumować odległości poszczególnych transportów
@@ -336,12 +423,24 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
     }
   };
 
-  // NOWA FUNKCJA: Oblicz łączną wartość wszystkich transportów - UPROSZCZONA
+  // NOWA FUNKCJA: Oblicz łączną wartość wszystkich transportów - Z WSPARCIEM DLA TRANSPORTÓW DODATKOWYCH
   const getTotalValue = () => {
     try {
       const effectiveTransport = getEffectiveTransportData();
       
-      // 1. Sprawdź w response_data czy jest już obliczona łączna wartość
+      // Jeśli to transport dodatkowy, sprawdź czy mamy dane głównego transportu
+      const mainTransport = getMainTransportData();
+      if (mainTransport) {
+        console.log('🔄 Transport dodatkowy - sprawdzam wartość z głównego transportu');
+      }
+      
+      // 1. Sprawdź w mergedData przekazanych z rodzica (najważniejsze dla głównego transportu)
+      if (mergedData?.totalValue && mergedData.totalValue > 0) {
+        console.log('✅ Zwracam mergedData.totalValue:', mergedData.totalValue);
+        return mergedData.totalValue;
+      }
+      
+      // 2. Sprawdź w response_data czy jest już obliczona łączna wartość
       if (effectiveTransport.response_data) {
         const responseData = typeof effectiveTransport.response_data === 'string' 
           ? JSON.parse(effectiveTransport.response_data) 
@@ -357,11 +456,6 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
         if (responseData.deliveryPrice && responseData.deliveryPrice > 0) {
           return responseData.deliveryPrice;
         }
-      }
-      
-      // 2. Sprawdź w mergedData przekazanych z rodzica
-      if (mergedData?.totalValue && mergedData.totalValue > 0) {
-        return mergedData.totalValue;
       }
       
       // 3. Sprawdź w merged_transports

@@ -787,34 +787,119 @@ export default function SpedycjaList({
                             {isMergedTransport(zamowienie) && (
                               <MergedTransportSummary 
                                 transport={zamowienie} 
+                                allTransports={zamowienia}
                                 mergedData={(() => {
-                                  // Użyj danych z response_data zamiast merged_transports
                                   try {
+                                    // NAPRAWIONA LOGIKA: obsługuj transporty główne i dodatkowe
+                                    console.log(`🔧 Przetwarzam dane dla transportu ${zamowienie.id}`);
+                                    
+                                    // Sprawdź czy to transport dodatkowy
+                                    let isSecondaryTransport = false;
+                                    let mainTransportId = null;
+                                    
+                                    if (zamowienie.response_data) {
+                                      const responseData = typeof zamowienie.response_data === 'string' 
+                                        ? JSON.parse(zamowienie.response_data) 
+                                        : zamowienie.response_data;
+                                      
+                                      if (responseData.isSecondaryMerged && responseData.mainTransportId) {
+                                        isSecondaryTransport = true;
+                                        mainTransportId = responseData.mainTransportId;
+                                      }
+                                    }
+                                    
+                                    if (zamowienie.merged_transports && !isSecondaryTransport) {
+                                      const mergedData = typeof zamowienie.merged_transports === 'string' 
+                                        ? JSON.parse(zamowienie.merged_transports) 
+                                        : zamowienie.merged_transports;
+                                        
+                                      if (mergedData.isSecondary && mergedData.mainTransportId) {
+                                        isSecondaryTransport = true;
+                                        mainTransportId = mergedData.mainTransportId;
+                                      }
+                                    }
+                                    
+                                    // Jeśli to transport dodatkowy, znajdź dane głównego transportu
+                                    if (isSecondaryTransport && mainTransportId) {
+                                      console.log(`🔍 Transport ${zamowienie.id} jest dodatkowy, szukam głównego ${mainTransportId}`);
+                                      
+                                      const mainTransport = zamowienia.find(z => z.id === mainTransportId);
+                                      if (mainTransport) {
+                                        console.log(`✅ Znaleziono główny transport, przetwarzam jego dane`);
+                                        
+                                        // Rekursywnie wywołaj tę samą logikę dla głównego transportu
+                                        const mainResponseData = mainTransport.response_data ? 
+                                          (typeof mainTransport.response_data === 'string' ? JSON.parse(mainTransport.response_data) : mainTransport.response_data) 
+                                          : null;
+                                        
+                                        if (mainResponseData && mainResponseData.routeSequence) {
+                                          // Znajdź wszystkie transporty w tej grupie
+                                          const connectedTransports = zamowienia.filter(z => {
+                                            const zResponseData = z.response_data ? 
+                                              (typeof z.response_data === 'string' ? JSON.parse(z.response_data) : z.response_data) 
+                                              : null;
+                                            return zResponseData?.isMerged === true && 
+                                                  (zResponseData.mainTransportId === mainTransportId || z.id === mainTransportId);
+                                          });
+                                          
+                                          const originalTransports = connectedTransports.map(z => {
+                                            return {
+                                              id: z.id,
+                                              orderNumber: z.order_number,
+                                              mpk: z.mpk,
+                                              route: `${getLoadingCity(z)} → ${getDeliveryCity(z)}`,
+                                              costAssigned: mainResponseData.costBreakdown?.[z.id] || 0,
+                                              distance: z.distanceKm || z.distance_km || 0,
+                                              clientName: z.client_name,
+                                              documents: z.documents,
+                                              responsiblePerson: z.responsible_person || z.responsiblePerson
+                                            };
+                                          });
+                                          
+                                          return {
+                                            originalTransports: originalTransports,
+                                            totalDistance: mainResponseData.distance || mainResponseData.totalDistance || mainResponseData.realRouteDistance || 0,
+                                            totalValue: mainResponseData.totalDeliveryPrice || mainResponseData.totalPrice || mainResponseData.deliveryPrice || 0,
+                                            routeSequence: mainResponseData.routeSequence || []
+                                          };
+                                        }
+                                      }
+                                    }
+                                    
+                                    // Dla transportu głównego - użyj standardowej logiki
                                     const responseData = typeof zamowienie.response_data === 'string' 
                                       ? JSON.parse(zamowienie.response_data) 
                                       : zamowienie.response_data;
                                     
                                     if (responseData && responseData.routeSequence) {
-                                      // Przekształć routeSequence na format oczekiwany przez komponent
-                                      const originalTransports = responseData.mergedTransportIds?.map(id => {
-                                        const routePoint = responseData.routeSequence.find(point => point.transportId === id);
-                                        return routePoint ? {
-                                          id: id,
-                                          orderNumber: routePoint.transport.orderNumber,
-                                          mpk: routePoint.transport.mpk,
-                                          route: `${routePoint.transport.location.replace('Magazyn ', '')} → ${routePoint.transport.delivery.city}`,
-                                          costAssigned: responseData.costBreakdown?.[id] || 0,
-                                          distance: routePoint.transport.distanceKm || 0,
-                                          clientName: routePoint.transport.clientName,
-                                          documents: routePoint.transport.documents
-                                        } : null;
-                                      }).filter(Boolean) || [];
+                                      // Znajdź wszystkie transporty w tej grupie
+                                      const connectedTransports = zamowienia.filter(z => {
+                                        const zResponseData = z.response_data ? 
+                                          (typeof z.response_data === 'string' ? JSON.parse(z.response_data) : z.response_data) 
+                                          : null;
+                                        return zResponseData?.isMerged === true && 
+                                              (zResponseData.mainTransportId === zamowienie.id || z.id === zamowienie.id);
+                                      });
+                                      
+                                      const originalTransports = connectedTransports.map(z => {
+                                        return {
+                                          id: z.id,
+                                          orderNumber: z.order_number,
+                                          mpk: z.mpk,
+                                          route: `${getLoadingCity(z)} → ${getDeliveryCity(z)}`,
+                                          costAssigned: responseData.costBreakdown?.[z.id] || 0,
+                                          distance: z.distanceKm || z.distance_km || 0,
+                                          clientName: z.client_name,
+                                          documents: z.documents,
+                                          responsiblePerson: z.responsible_person || z.responsiblePerson
+                                        };
+                                      });
                                       
                                       return {
                                         originalTransports: originalTransports,
-                                        totalDistance: responseData.distance || 0,
-                                        totalValue: responseData.totalDeliveryPrice || 0,
-                                        routeSequence: responseData.routeSequence
+                                        totalDistance: responseData.distance || responseData.totalDistance || responseData.realRouteDistance || 0,
+                                        totalValue: responseData.totalDeliveryPrice || responseData.totalPrice || responseData.deliveryPrice || 0,
+                                        routeSequence: responseData.routeSequence || []
                                       };
                                     }
                                     
@@ -823,10 +908,10 @@ export default function SpedycjaList({
                                       ? JSON.parse(zamowienie.merged_transports) 
                                       : zamowienie.merged_transports;
                                   } catch (e) {
-                                    console.error('Błąd przetwarzania danych merged transport:', e);
+                                    console.error('🚨 Błąd przetwarzania danych merged transport:', e);
                                     return null;
                                   }
-                                })()} 
+                                })()}
                               />
                             )}
                             
