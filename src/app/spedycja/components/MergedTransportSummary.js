@@ -16,28 +16,21 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
 
   // Funkcja do pobrania właściwych danych transportu (głównego lub obecnego)
   const getEffectiveTransportData = () => {
-    // Sprawdź czy to transport dodatkowy
-    if (transport.response_data) {
-      const responseData = typeof transport.response_data === 'string' 
-        ? JSON.parse(transport.response_data) 
-        : transport.response_data;
-      
-      if (responseData.isSecondaryMerged && mainTransportData) {
-        // Użyj danych z głównego transportu
-        return mainTransportData;
-      }
-    }
-    
-    // Użyj danych obecnego transportu (transport główny lub brak danych głównego)
+    // Dla połączonych transportów zawsze używaj obecnego transportu
+    // bo dane o całej grupie powinny być w każdym z połączonych transportów
     return transport;
   };
 
   // Funkcja do pobierania wszystkich danych transportów (zarówno głównego jak i połączonych)
   const getAllTransportsData = () => {
     const allTransports = [];
+    const addedIds = new Set(); // Śledź już dodane transporty
     
-    // ZAWSZE dodaj główny transport
-    allTransports.push({
+    console.log('=== DEBUG getAllTransportsData ===');
+    console.log('Obecny transport:', transport);
+    
+    // ZAWSZE dodaj obecny transport jako pierwszy
+    const currentTransportData = {
       id: transport.id,
       orderNumber: transport.order_number,
       mpk: transport.mpk,
@@ -49,22 +42,38 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
       route: getTransportRoute(transport),
       distance_km: transport.distance_km,
       distanceKm: transport.distanceKm
-    });
-
-    // Sprawdź różne źródła danych o połączonych transportach
+    };
     
-    // 1. Dane z response_data (nowy format)
+    allTransports.push(currentTransportData);
+    addedIds.add(transport.id);
+    console.log('Dodano obecny transport:', currentTransportData);
+
+    // 1. Sprawdź response_data (najważniejsze źródło danych)
     if (transport.response_data) {
       try {
         const responseData = typeof transport.response_data === 'string' 
           ? JSON.parse(transport.response_data) 
           : transport.response_data;
         
-        // Sprawdź czy są oryginalne transporty w response_data
-        if (responseData.originalTransports && Array.isArray(responseData.originalTransports)) {
-          responseData.originalTransports.forEach(originalTransport => {
-            if (!allTransports.find(t => t.id === originalTransport.id)) {
-              allTransports.push({
+        console.log('Response_data:', responseData);
+        
+        // Sprawdź różne możliwe struktury danych
+        let originalTransports = null;
+        
+        if (responseData.originalTransports) {
+          originalTransports = responseData.originalTransports;
+        } else if (responseData.transports) {
+          originalTransports = responseData.transports;
+        } else if (responseData.mergedTransports) {
+          originalTransports = responseData.mergedTransports;
+        }
+        
+        console.log('Original transports z response_data:', originalTransports);
+        
+        if (originalTransports && Array.isArray(originalTransports)) {
+          originalTransports.forEach(originalTransport => {
+            if (!addedIds.has(originalTransport.id)) {
+              const transportData = {
                 id: originalTransport.id,
                 orderNumber: originalTransport.orderNumber || originalTransport.order_number,
                 mpk: originalTransport.mpk,
@@ -76,7 +85,10 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
                 route: originalTransport.route || getTransportRoute(originalTransport),
                 distance_km: originalTransport.distance_km || originalTransport.distanceKm,
                 distanceKm: originalTransport.distanceKm || originalTransport.distance_km
-              });
+              };
+              allTransports.push(transportData);
+              addedIds.add(originalTransport.id);
+              console.log('Dodano transport z response_data:', transportData);
             }
           });
         }
@@ -85,40 +97,19 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
       }
     }
 
-    // 2. Dane z mergedData (przekazane z rodzica)
-    if (mergedData?.originalTransports && Array.isArray(mergedData.originalTransports)) {
-      mergedData.originalTransports.forEach(originalTransport => {
-        // Sprawdź czy ten transport nie został już dodany
-        if (!allTransports.find(t => t.id === originalTransport.id)) {
-          allTransports.push({
-            id: originalTransport.id,
-            orderNumber: originalTransport.orderNumber || originalTransport.order_number,
-            mpk: originalTransport.mpk,
-            documents: originalTransport.documents,
-            clientName: originalTransport.clientName || originalTransport.client_name,
-            responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
-            location: originalTransport.location,
-            delivery_data: originalTransport.delivery_data,
-            route: originalTransport.route,
-            distance_km: originalTransport.distance_km || originalTransport.distanceKm,
-            distanceKm: originalTransport.distanceKm || originalTransport.distance_km
-          });
-        }
-      });
-    }
-
-    // 3. Dane z merged_transports (stary format)
+    // 2. Sprawdź merged_transports (backup)
     if (transport.merged_transports) {
       try {
         const mergedTransportsData = typeof transport.merged_transports === 'string' 
           ? JSON.parse(transport.merged_transports) 
           : transport.merged_transports;
         
+        console.log('Merged_transports data:', mergedTransportsData);
+        
         if (mergedTransportsData.originalTransports && Array.isArray(mergedTransportsData.originalTransports)) {
           mergedTransportsData.originalTransports.forEach(originalTransport => {
-            // Sprawdź czy ten transport nie został już dodany
-            if (!allTransports.find(t => t.id === originalTransport.id)) {
-              allTransports.push({
+            if (!addedIds.has(originalTransport.id)) {
+              const transportData = {
                 id: originalTransport.id,
                 orderNumber: originalTransport.orderNumber || originalTransport.order_number,
                 mpk: originalTransport.mpk,
@@ -130,7 +121,10 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
                 route: originalTransport.route,
                 distance_km: originalTransport.distance_km || originalTransport.distanceKm,
                 distanceKm: originalTransport.distanceKm || originalTransport.distance_km
-              });
+              };
+              allTransports.push(transportData);
+              addedIds.add(originalTransport.id);
+              console.log('Dodano transport z merged_transports:', transportData);
             }
           });
         }
@@ -139,6 +133,34 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
       }
     }
 
+    // 3. Sprawdź mergedData przekazane z rodzica
+    if (mergedData?.originalTransports && Array.isArray(mergedData.originalTransports)) {
+      console.log('MergedData originalTransports:', mergedData.originalTransports);
+      mergedData.originalTransports.forEach(originalTransport => {
+        if (!addedIds.has(originalTransport.id)) {
+          const transportData = {
+            id: originalTransport.id,
+            orderNumber: originalTransport.orderNumber || originalTransport.order_number,
+            mpk: originalTransport.mpk,
+            documents: originalTransport.documents,
+            clientName: originalTransport.clientName || originalTransport.client_name,
+            responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
+            location: originalTransport.location,
+            delivery_data: originalTransport.delivery_data,
+            route: originalTransport.route,
+            distance_km: originalTransport.distance_km || originalTransport.distanceKm,
+            distanceKm: originalTransport.distanceKm || originalTransport.distance_km
+          };
+          allTransports.push(transportData);
+          addedIds.add(originalTransport.id);
+          console.log('Dodano transport z mergedData:', transportData);
+        }
+      });
+    }
+
+    console.log('=== FINALNE WSZYSTKIE TRANSPORTY ===');
+    console.log(`Znaleziono ${allTransports.length} transportów:`, allTransports);
+    
     return allTransports;
   };
 
@@ -174,13 +196,38 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
     const allTransports = getAllTransportsData();
     const responsible = new Set();
     
+    console.log('=== DEBUG collectAllResponsible ===');
+    console.log('Wszystkie transporty do sprawdzenia:', allTransports);
+    
     allTransports.forEach(transportData => {
+      console.log(`Transport ${transportData.id}:`, {
+        responsiblePerson: transportData.responsiblePerson,
+        createdBy: transportData.createdBy,
+        responsible_person: transportData.responsible_person
+      });
+      
+      // Sprawdź różne możliwe pola z osobami odpowiedzialnymi
       if (transportData.responsiblePerson) {
         responsible.add(transportData.responsiblePerson);
+        console.log('Dodano odpowiedzialnego:', transportData.responsiblePerson);
+      }
+      
+      // Backup - sprawdź inne możliwe pola
+      if (transportData.responsible_person) {
+        responsible.add(transportData.responsible_person);
+        console.log('Dodano responsible_person:', transportData.responsible_person);
+      }
+      
+      if (transportData.createdBy) {
+        responsible.add(transportData.createdBy);
+        console.log('Dodano createdBy:', transportData.createdBy);
       }
     });
     
-    return Array.from(responsible).filter(Boolean);
+    const result = Array.from(responsible).filter(Boolean);
+    console.log('Finalne osoby odpowiedzialne:', result);
+    
+    return result;
   };
 
   // Funkcja do zbierania tras
@@ -199,7 +246,7 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
     try {
       const effectiveTransport = getEffectiveTransportData();
       
-      console.log('=== DEBUG ODLEGŁOŚĆ ===');
+      console.log('=== DEBUG getRealDistance ===');
       console.log('Transport ID:', transport.id);
       console.log('Effective transport ID:', effectiveTransport.id);
       
@@ -213,46 +260,50 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
         
         // Sprawdź różne pola z obliczoną odległością trasy
         if (responseData.realRouteDistance && responseData.realRouteDistance > 0) {
-          console.log('Zwracam realRouteDistance:', responseData.realRouteDistance);
+          console.log('✅ Zwracam realRouteDistance:', responseData.realRouteDistance);
           return responseData.realRouteDistance;
         }
         if (responseData.totalDistance && responseData.totalDistance > 0) {
-          console.log('Zwracam totalDistance:', responseData.totalDistance);
+          console.log('✅ Zwracam totalDistance:', responseData.totalDistance);
           return responseData.totalDistance;
         }
         if (responseData.distance && responseData.distance > 0) {
-          console.log('Zwracam distance:', responseData.distance);
+          console.log('✅ Zwracam distance:', responseData.distance);
           return responseData.distance;
         }
       }
       
       // 2. Sprawdź w mergedData przekazanych z rodzica
       if (mergedData?.totalDistance && mergedData.totalDistance > 0) {
-        console.log('Zwracam mergedData.totalDistance:', mergedData.totalDistance);
+        console.log('✅ Zwracam mergedData.totalDistance:', mergedData.totalDistance);
         return mergedData.totalDistance;
       }
       
       // 3. Jeśli nie ma obliczonej odległości, spróbuj zsumować odległości poszczególnych transportów
       const allTransports = getAllTransportsData();
       let totalDistance = 0;
+      let foundAnyDistance = false;
       
-      console.log('Wszystkie transporty do sumowania odległości:', allTransports);
+      console.log('Próbuję zsumować odległości z transportów:', allTransports.length);
       
       allTransports.forEach(transportData => {
         const distance = transportData.distance_km || transportData.distanceKm || 0;
         console.log(`Transport ${transportData.id}: odległość ${distance} km`);
-        totalDistance += parseFloat(distance) || 0;
+        if (distance > 0) {
+          totalDistance += parseFloat(distance) || 0;
+          foundAnyDistance = true;
+        }
       });
       
-      if (totalDistance > 0) {
-        console.log('Zsumowano odległości transportów:', totalDistance);
+      if (foundAnyDistance && totalDistance > 0) {
+        console.log('✅ Zsumowano odległości transportów:', totalDistance);
         return Math.round(totalDistance);
       }
       
-      console.log('Nie znaleziono odległości, zwracam 0');
+      console.log('❌ Nie znaleziono żadnej odległości, zwracam 0');
       return 0;
     } catch (e) {
-      console.error('Błąd pobierania odległości:', e);
+      console.error('❌ Błąd pobierania odległości:', e);
       return 0;
     }
   };
@@ -262,7 +313,7 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
     try {
       const effectiveTransport = getEffectiveTransportData();
       
-      console.log('=== DEBUG WARTOŚĆ ===');
+      console.log('=== DEBUG getTotalValue ===');
       console.log('Transport ID:', transport.id);
       console.log('Effective transport ID:', effectiveTransport.id);
       
@@ -276,22 +327,22 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
         
         // Sprawdź różne pola z obliczoną wartością
         if (responseData.totalDeliveryPrice && responseData.totalDeliveryPrice > 0) {
-          console.log('Zwracam totalDeliveryPrice:', responseData.totalDeliveryPrice);
+          console.log('✅ Zwracam totalDeliveryPrice:', responseData.totalDeliveryPrice);
           return responseData.totalDeliveryPrice;
         }
         if (responseData.totalPrice && responseData.totalPrice > 0) {
-          console.log('Zwracam totalPrice:', responseData.totalPrice);
+          console.log('✅ Zwracam totalPrice:', responseData.totalPrice);
           return responseData.totalPrice;
         }
         if (responseData.deliveryPrice && responseData.deliveryPrice > 0) {
-          console.log('Zwracam deliveryPrice:', responseData.deliveryPrice);
+          console.log('✅ Zwracam deliveryPrice:', responseData.deliveryPrice);
           return responseData.deliveryPrice;
         }
       }
       
       // 2. Sprawdź w mergedData przekazanych z rodzica
       if (mergedData?.totalValue && mergedData.totalValue > 0) {
-        console.log('Zwracam mergedData.totalValue:', mergedData.totalValue);
+        console.log('✅ Zwracam mergedData.totalValue:', mergedData.totalValue);
         return mergedData.totalValue;
       }
       
@@ -301,33 +352,69 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
           ? JSON.parse(effectiveTransport.merged_transports) 
           : effectiveTransport.merged_transports;
         if (mergedTransportsData?.totalMergedCost && mergedTransportsData.totalMergedCost > 0) {
-          console.log('Zwracam totalMergedCost:', mergedTransportsData.totalMergedCost);
+          console.log('✅ Zwracam totalMergedCost:', mergedTransportsData.totalMergedCost);
           return mergedTransportsData.totalMergedCost;
         }
         if (mergedTransportsData?.totalValue && mergedTransportsData.totalValue > 0) {
-          console.log('Zwracam merged totalValue:', mergedTransportsData.totalValue);
+          console.log('✅ Zwracam merged totalValue:', mergedTransportsData.totalValue);
           return mergedTransportsData.totalValue;
         }
       }
       
       // 4. Sprawdź w response (stary format)
       if (effectiveTransport.response?.deliveryPrice && effectiveTransport.response.deliveryPrice > 0) {
-        console.log('Zwracam response.deliveryPrice:', effectiveTransport.response.deliveryPrice);
+        console.log('✅ Zwracam response.deliveryPrice:', effectiveTransport.response.deliveryPrice);
         return effectiveTransport.response.deliveryPrice;
       }
       
-      console.log('Nie znaleziono wartości, zwracam 0');
+      console.log('❌ Nie znaleziono wartości, zwracam 0');
       return 0;
     } catch (e) {
-      console.error('Błąd pobierania wartości:', e);
+      console.error('❌ Błąd pobierania wartości:', e);
       return 0;
     }
   };
 
   // Sprawdź czy to transport połączony
   const isConnectedTransport = () => {
+    console.log('=== DEBUG isConnectedTransport ===');
+    
+    // 1. Sprawdź najpierw flagę w response_data
+    try {
+      if (transport.response_data) {
+        const responseData = typeof transport.response_data === 'string' 
+          ? JSON.parse(transport.response_data) 
+          : transport.response_data;
+        
+        console.log('Response_data dla sprawdzenia połączenia:', responseData);
+        
+        if (responseData.isMerged === true) {
+          console.log('✅ Transport połączony - flaga isMerged');
+          return true;
+        }
+      }
+    } catch (e) {
+      console.error('Błąd sprawdzania response_data:', e);
+    }
+    
+    // 2. Sprawdź czy jest merged_transports
+    if (transport.merged_transports) {
+      console.log('✅ Transport połączony - ma merged_transports');
+      return true;
+    }
+    
+    // 3. Sprawdź inne flagi
+    if (transport.is_merged === true || transport.isMerged === true) {
+      console.log('✅ Transport połączony - flaga is_merged/isMerged');
+      return true;
+    }
+    
+    // 4. Sprawdź liczbę transportów
     const allTransports = getAllTransportsData();
-    return allTransports.length > 1; // Jeśli mamy więcej niż główny transport
+    const isConnected = allTransports.length > 1;
+    console.log(`Liczba transportów: ${allTransports.length}, połączony: ${isConnected}`);
+    
+    return isConnected;
   };
 
   // Jeśli to nie transport połączony, nie wyświetlaj komponentu
