@@ -197,13 +197,36 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
   // Oblicz odległość rzeczywistą
   const getRealDistance = () => {
     try {
-      const responseData = typeof transport.response_data === 'string' 
-        ? JSON.parse(transport.response_data) 
-        : transport.response_data;
+      // Sprawdź w response_data
+      if (transport.response_data) {
+        const responseData = typeof transport.response_data === 'string' 
+          ? JSON.parse(transport.response_data) 
+          : transport.response_data;
+        
+        // Sprawdź wszystkie możliwe pola odległości w kolejności ważności
+        if (responseData.realRouteDistance) return responseData.realRouteDistance;
+        if (responseData.totalDistance) return responseData.totalDistance;
+        if (responseData.distance) return responseData.distance;
+      }
       
-      // Sprawdź różne pola odległości
-      return responseData?.distance || responseData?.realRouteDistance || responseData?.totalDistance || mergedData?.totalDistance || 0;
+      // Sprawdź w mergedData przekazanych z rodzica
+      if (mergedData?.totalDistance) return mergedData.totalDistance;
+      
+      // Sprawdź w merged_transports
+      if (transport.merged_transports) {
+        const mergedTransportsData = typeof transport.merged_transports === 'string' 
+          ? JSON.parse(transport.merged_transports) 
+          : transport.merged_transports;
+        if (mergedTransportsData?.totalDistance) return mergedTransportsData.totalDistance;
+      }
+      
+      // Sprawdź podstawowe pola odległości transportu
+      if (transport.distance_km) return transport.distance_km;
+      if (transport.distanceKm) return transport.distanceKm;
+      
+      return 0;
     } catch (e) {
+      console.error('Błąd pobierania odległości:', e);
       return 0;
     }
   };
@@ -211,13 +234,36 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
   // Oblicz łączną wartość transportu
   const getTotalValue = () => {
     try {
-      const responseData = typeof transport.response_data === 'string' 
-        ? JSON.parse(transport.response_data) 
-        : transport.response_data;
+      // Sprawdź w response_data
+      if (transport.response_data) {
+        const responseData = typeof transport.response_data === 'string' 
+          ? JSON.parse(transport.response_data) 
+          : transport.response_data;
+        
+        // Sprawdź wszystkie możliwe pola wartości w kolejności ważności
+        if (responseData.totalDeliveryPrice) return responseData.totalDeliveryPrice;
+        if (responseData.totalPrice) return responseData.totalPrice;
+        if (responseData.deliveryPrice) return responseData.deliveryPrice;
+      }
       
-      // Użyj totalDeliveryPrice zamiast deliveryPrice
-      return responseData?.totalDeliveryPrice || mergedData?.totalValue || responseData?.deliveryPrice || 0;
+      // Sprawdź w mergedData przekazanych z rodzica
+      if (mergedData?.totalValue) return mergedData.totalValue;
+      
+      // Sprawdź w merged_transports
+      if (transport.merged_transports) {
+        const mergedTransportsData = typeof transport.merged_transports === 'string' 
+          ? JSON.parse(transport.merged_transports) 
+          : transport.merged_transports;
+        if (mergedTransportsData?.totalMergedCost) return mergedTransportsData.totalMergedCost;
+        if (mergedTransportsData?.totalValue) return mergedTransportsData.totalValue;
+      }
+      
+      // Sprawdź w response (stary format)
+      if (transport.response?.deliveryPrice) return transport.response.deliveryPrice;
+      
+      return 0;
     } catch (e) {
+      console.error('Błąd pobierania wartości:', e);
       return 0;
     }
   };
