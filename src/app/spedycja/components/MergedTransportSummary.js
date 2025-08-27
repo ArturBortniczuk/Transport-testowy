@@ -197,33 +197,67 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
   // Oblicz odległość rzeczywistą
   const getRealDistance = () => {
     try {
+      // DEBUGOWANIE - usuń to po naprawieniu
+      console.log('=== DEBUG ODLEGŁOŚĆ ===');
+      console.log('Transport ID:', transport.id);
+      console.log('Transport response_data:', transport.response_data);
+      console.log('MergedData:', mergedData);
+      
       // Sprawdź w response_data
       if (transport.response_data) {
         const responseData = typeof transport.response_data === 'string' 
           ? JSON.parse(transport.response_data) 
           : transport.response_data;
         
+        console.log('Parsed response_data:', responseData);
+        console.log('realRouteDistance:', responseData.realRouteDistance);
+        console.log('totalDistance:', responseData.totalDistance);
+        console.log('distance:', responseData.distance);
+        
         // Sprawdź wszystkie możliwe pola odległości w kolejności ważności
-        if (responseData.realRouteDistance) return responseData.realRouteDistance;
-        if (responseData.totalDistance) return responseData.totalDistance;
-        if (responseData.distance) return responseData.distance;
+        if (responseData.realRouteDistance) {
+          console.log('Zwracam realRouteDistance:', responseData.realRouteDistance);
+          return responseData.realRouteDistance;
+        }
+        if (responseData.totalDistance) {
+          console.log('Zwracam totalDistance:', responseData.totalDistance);
+          return responseData.totalDistance;
+        }
+        if (responseData.distance) {
+          console.log('Zwracam distance:', responseData.distance);
+          return responseData.distance;
+        }
       }
       
       // Sprawdź w mergedData przekazanych z rodzica
-      if (mergedData?.totalDistance) return mergedData.totalDistance;
+      if (mergedData?.totalDistance) {
+        console.log('Zwracam mergedData.totalDistance:', mergedData.totalDistance);
+        return mergedData.totalDistance;
+      }
       
       // Sprawdź w merged_transports
       if (transport.merged_transports) {
         const mergedTransportsData = typeof transport.merged_transports === 'string' 
           ? JSON.parse(transport.merged_transports) 
           : transport.merged_transports;
-        if (mergedTransportsData?.totalDistance) return mergedTransportsData.totalDistance;
+        console.log('merged_transports data:', mergedTransportsData);
+        if (mergedTransportsData?.totalDistance) {
+          console.log('Zwracam merged_transports totalDistance:', mergedTransportsData.totalDistance);
+          return mergedTransportsData.totalDistance;
+        }
       }
       
       // Sprawdź podstawowe pola odległości transportu
-      if (transport.distance_km) return transport.distance_km;
-      if (transport.distanceKm) return transport.distanceKm;
+      if (transport.distance_km) {
+        console.log('Zwracam transport.distance_km:', transport.distance_km);
+        return transport.distance_km;
+      }
+      if (transport.distanceKm) {
+        console.log('Zwracam transport.distanceKm:', transport.distanceKm);
+        return transport.distanceKm;
+      }
       
+      console.log('Nie znaleziono odległości, zwracam 0');
       return 0;
     } catch (e) {
       console.error('Błąd pobierania odległości:', e);
@@ -234,33 +268,64 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
   // Oblicz łączną wartość transportu
   const getTotalValue = () => {
     try {
+      // DEBUGOWANIE - usuń to po naprawieniu
+      console.log('=== DEBUG WARTOŚĆ ===');
+      console.log('Transport ID:', transport.id);
+      
       // Sprawdź w response_data
       if (transport.response_data) {
         const responseData = typeof transport.response_data === 'string' 
           ? JSON.parse(transport.response_data) 
           : transport.response_data;
         
+        console.log('Response data dla wartości:', responseData);
+        console.log('totalDeliveryPrice:', responseData.totalDeliveryPrice);
+        console.log('totalPrice:', responseData.totalPrice);
+        console.log('deliveryPrice:', responseData.deliveryPrice);
+        
         // Sprawdź wszystkie możliwe pola wartości w kolejności ważności
-        if (responseData.totalDeliveryPrice) return responseData.totalDeliveryPrice;
-        if (responseData.totalPrice) return responseData.totalPrice;
-        if (responseData.deliveryPrice) return responseData.deliveryPrice;
+        if (responseData.totalDeliveryPrice) {
+          console.log('Zwracam totalDeliveryPrice:', responseData.totalDeliveryPrice);
+          return responseData.totalDeliveryPrice;
+        }
+        if (responseData.totalPrice) {
+          console.log('Zwracam totalPrice:', responseData.totalPrice);
+          return responseData.totalPrice;
+        }
+        if (responseData.deliveryPrice) {
+          console.log('Zwracam deliveryPrice:', responseData.deliveryPrice);
+          return responseData.deliveryPrice;
+        }
       }
       
       // Sprawdź w mergedData przekazanych z rodzica
-      if (mergedData?.totalValue) return mergedData.totalValue;
+      if (mergedData?.totalValue) {
+        console.log('Zwracam mergedData.totalValue:', mergedData.totalValue);
+        return mergedData.totalValue;
+      }
       
       // Sprawdź w merged_transports
       if (transport.merged_transports) {
         const mergedTransportsData = typeof transport.merged_transports === 'string' 
           ? JSON.parse(transport.merged_transports) 
           : transport.merged_transports;
-        if (mergedTransportsData?.totalMergedCost) return mergedTransportsData.totalMergedCost;
-        if (mergedTransportsData?.totalValue) return mergedTransportsData.totalValue;
+        if (mergedTransportsData?.totalMergedCost) {
+          console.log('Zwracam totalMergedCost:', mergedTransportsData.totalMergedCost);
+          return mergedTransportsData.totalMergedCost;
+        }
+        if (mergedTransportsData?.totalValue) {
+          console.log('Zwracam merged totalValue:', mergedTransportsData.totalValue);
+          return mergedTransportsData.totalValue;
+        }
       }
       
       // Sprawdź w response (stary format)
-      if (transport.response?.deliveryPrice) return transport.response.deliveryPrice;
+      if (transport.response?.deliveryPrice) {
+        console.log('Zwracam response.deliveryPrice:', transport.response.deliveryPrice);
+        return transport.response.deliveryPrice;
+      }
       
+      console.log('Nie znaleziono wartości, zwracam 0');
       return 0;
     } catch (e) {
       console.error('Błąd pobierania wartości:', e);
