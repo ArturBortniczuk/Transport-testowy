@@ -622,32 +622,92 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
         </div>
       </div>
 
-      {/* Lista tras */}
+      {/* Sekwencja trasy */}
       <div className="bg-white rounded-lg p-4 border border-purple-100">
         <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
           <MapPin size={18} className="text-purple-600" />
-          Wszystkie trasy w zleceniu
+          Sekwencja trasy
         </h4>
-        <div className="space-y-2">
-          {allRoutes.map((route, index) => (
-            <div key={route.id} className="flex items-center justify-between py-2 px-3 bg-purple-50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <div className="bg-purple-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
-                  {index + 1}
-                </div>
-                <div>
-                  <div className="font-medium text-gray-800">{route.route}</div>
-                  <div className="text-xs text-gray-500">Zlecenie: {route.orderNumber}</div>
-                </div>
+        
+        {(() => {
+          // Sprawdź czy mamy routeSequence w mergedData
+          if (mergedData?.routeSequence && Array.isArray(mergedData.routeSequence) && mergedData.routeSequence.length > 0) {
+            return (
+              <div className="space-y-3">
+                {mergedData.routeSequence.map((point, index) => {
+                  const isFirst = index === 0;
+                  const isLast = index === mergedData.routeSequence.length - 1;
+                  
+                  return (
+                    <div key={index} className="flex items-center gap-3">
+                      {/* Numer punktu */}
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white ${
+                        isFirst ? 'bg-green-500' : isLast ? 'bg-red-500' : 'bg-purple-500'
+                      }`}>
+                        {index + 1}
+                      </div>
+                      
+                      {/* Szczegóły punktu */}
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-800">
+                          {point.city || point.location || 'Nieznane miasto'}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          {point.company || point.clientName || point.firmName || 'Nieznana firma'}
+                        </div>
+                        {point.type && (
+                          <div className="text-xs text-gray-500">
+                            {point.type === 'pickup' ? '📦 Załadunek' : 
+                             point.type === 'delivery' ? '🏢 Rozładunek' : 
+                             point.type}
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Informacje dodatkowe */}
+                      <div className="text-right">
+                        {point.transportId && (
+                          <div className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded mb-1">
+                            ID: {point.transportId}
+                          </div>
+                        )}
+                        {point.orderNumber && (
+                          <div className="text-xs text-gray-500">
+                            {point.orderNumber}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              {route.mpk && (
-                <div className="text-xs bg-purple-200 text-purple-800 px-2 py-1 rounded">
-                  MPK: {route.mpk}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+            );
+          } else {
+            // Fallback - pokaż standardową listę tras jeśli nie ma routeSequence
+            return (
+              <div className="space-y-2">
+                {allRoutes.map((route, index) => (
+                  <div key={route.id} className="flex items-center justify-between py-2 px-3 bg-purple-50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-purple-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
+                        {index + 1}
+                      </div>
+                      <div>
+                        <div className="font-medium text-gray-800">{route.route}</div>
+                        <div className="text-xs text-gray-500">Zlecenie: {route.orderNumber}</div>
+                      </div>
+                    </div>
+                    {route.mpk && (
+                      <div className="text-xs bg-purple-200 text-purple-800 px-2 py-1 rounded">
+                        MPK: {route.mpk}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          }
+        })()}
       </div>
 
 
