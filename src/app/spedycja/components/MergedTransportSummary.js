@@ -10,45 +10,9 @@ import {
 } from 'lucide-react';
 
 const MergedTransportSummary = ({ transport, mergedData }) => {
-  const [mainTransportData, setMainTransportData] = React.useState(null);
-  const [isLoadingMainTransport, setIsLoadingMainTransport] = React.useState(false);
-
   if (!transport) {
     return null;
   }
-
-  // Sprawdź czy to transport dodatkowy i pobierz dane głównego transportu
-  React.useEffect(() => {
-    const fetchMainTransportData = async () => {
-      try {
-        if (transport.response_data) {
-          const responseData = typeof transport.response_data === 'string' 
-            ? JSON.parse(transport.response_data) 
-            : transport.response_data;
-          
-          if (responseData.isSecondaryMerged && responseData.mainTransportId) {
-            setIsLoadingMainTransport(true);
-            console.log('Pobieranie danych głównego transportu ID:', responseData.mainTransportId);
-            
-            const response = await fetch(`/api/spedycje/${responseData.mainTransportId}`);
-            if (response.ok) {
-              const data = await response.json();
-              if (data.success) {
-                console.log('Pobrano dane głównego transportu:', data.spedycja);
-                setMainTransportData(data.spedycja);
-              }
-            }
-            setIsLoadingMainTransport(false);
-          }
-        }
-      } catch (error) {
-        console.error('Błąd pobierania danych głównego transportu:', error);
-        setIsLoadingMainTransport(false);
-      }
-    };
-
-    fetchMainTransportData();
-  }, [transport.id]);
 
   // Funkcja do pobrania właściwych danych transportu (głównego lub obecnego)
   const getEffectiveTransportData = () => {
@@ -409,17 +373,6 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
   const allRoutes = getAllRoutes();
   const realDistance = getRealDistance();
   const totalValue = getTotalValue();
-
-  // Pokaż indicator ładowania jeśli pobieramy dane głównego transportu
-  if (isLoadingMainTransport) {
-    return (
-      <div className="mb-6 bg-gradient-to-br from-purple-50 to-indigo-100 border-2 border-purple-200 rounded-xl p-6 shadow-lg">
-        <div className="flex items-center justify-center">
-          <div className="text-purple-600">Ładowanie danych transportu połączonego...</div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="mb-6 bg-gradient-to-br from-purple-50 to-indigo-100 border-2 border-purple-200 rounded-xl p-6 shadow-lg">
