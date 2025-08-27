@@ -4,123 +4,142 @@ import {
   MapPin, 
   FileText, 
   Users, 
-  Package, 
   Calculator, 
   Route,
-  Clock,
-  Building,
   Hash
 } from 'lucide-react';
 
 const MergedTransportSummary = ({ transport, mergedData }) => {
-  if (!transport || !mergedData || !mergedData.originalTransports) {
+  if (!transport) {
     return null;
   }
 
-  // Funkcja do zbierania wszystkich unikalnych wartości z pola
-  const collectUniqueValues = (field) => {
-    const values = new Set();
+  // Funkcja do pobierania wszystkich danych transportów (zarówno głównego jak i połączonych)
+  const getAllTransportsData = () => {
+    const allTransports = [];
     
-    // Główny transport
-    if (transport[field]) {
-      values.add(transport[field]);
-    }
-    
-    // Transporty połączone
-    mergedData.originalTransports.forEach(originalTransport => {
-      if (originalTransport[field]) {
-        values.add(originalTransport[field]);
-      }
+    // ZAWSZE dodaj główny transport
+    allTransports.push({
+      id: transport.id,
+      orderNumber: transport.order_number,
+      mpk: transport.mpk,
+      documents: transport.documents,
+      clientName: transport.client_name,
+      responsiblePerson: transport.responsible_person,
+      location: transport.location,
+      delivery_data: transport.delivery_data,
+      route: getTransportRoute(transport)
     });
+
+    // Sprawdź różne źródła danych o połączonych transportach
     
-    return Array.from(values).filter(Boolean);
-  };
-
-// Funkcja do zbierania wszystkich odpowiedzialnych osób
-const collectAllResponsible = () => {
-  const responsible = new Set();
-  
-  // Główny transport
-  if (transport.responsiblePerson) {
-    responsible.add(transport.responsiblePerson);
-  }
-  
-  // Transporty połączone - sprawdź w routeSequence
-  if (mergedData.routeSequence) {
-    mergedData.routeSequence.forEach(point => {
-      if (point.transport && point.transport.responsiblePerson) {
-        responsible.add(point.transport.responsiblePerson);
-      }
-    });
-  }
-  
-  // Fallback do originalTransports
-  if (mergedData.originalTransports) {
-    mergedData.originalTransports.forEach(originalTransport => {
-      if (originalTransport.responsiblePerson) {
-        responsible.add(originalTransport.responsiblePerson);
-      }
-    });
-  }
-  
-  return Array.from(responsible).filter(Boolean);
-};
-
-
-  // Funkcja do zbierania tras
-  const getAllRoutes = () => {
-    const routes = [];
-    
-    // Jeśli mamy routeSequence z response_data, użyj tego
-    if (mergedData.routeSequence) {
-      const uniqueTransports = new Map();
-      
-      // Zbierz unikalne transporty z ich punktami
-      mergedData.routeSequence.forEach(point => {
-        if (!uniqueTransports.has(point.transportId)) {
-          uniqueTransports.set(point.transportId, {
-            id: point.transportId,
-            orderNumber: point.transport.orderNumber,
-            mpk: point.transport.mpk,
-            loading: null,
-            unloading: null
+    // 1. Dane z response_data (nowy format)
+    if (transport.response_data) {
+      try {
+        const responseData = typeof transport.response_data === 'string' 
+          ? JSON.parse(transport.response_data) 
+          : transport.response_data;
+        
+        // Jeśli mamy routeSequence, wyciągnij z niego transporty
+        if (responseData.routeSequence && Array.isArray(responseData.routeSequence)) {
+          const uniqueTransportIds = new Set();
+          
+          responseData.routeSequence.forEach(point => {
+            if (point.transportId && point.transport && !uniqueTransportIds.has(point.transportId)) {
+              uniqueTransportIds.add(point.transportId);
+              
+              // Dodaj tylko jeśli to nie główny transport
+              if (point.transportId !== transport.id) {
+                allTransports.push({
+                  id: point.transportId,
+                  orderNumber: point.transport.orderNumber,
+                  mpk: point.transport.mpk,
+                  documents: point.transport.documents,
+                  clientName: point.transport.clientName || point.transport.client_name,
+                  responsiblePerson: point.transport.responsiblePerson || point.transport.responsible_person,
+                  location: point.transport.location,
+                  delivery_data: point.transport.delivery || point.transport.delivery_data,
+                  route: `${point.transport.location?.replace('Magazyn ', '') || point.city} → ${point.transport.delivery?.city || point.transport.delivery_data?.city || ''}`
+                });
+              }
+            }
           });
         }
         
-        const transportData = uniqueTransports.get(point.transportId);
-        if (point.type === 'loading') {
-          transportData.loading = point.city;
-        } else if (point.type === 'unloading') {
-          transportData.unloading = point.city;
+        // Alternatywnie, jeśli mamy mergedTransportIds z dodatkowymi danymi
+        else if (responseData.mergedTransportIds && Array.isArray(responseData.mergedTransportIds)) {
+          responseData.mergedTransportIds.forEach(transportData => {
+            if (transportData && typeof transportData === 'object' && transportData.id !== transport.id) {
+              allTransports.push({
+                id: transportData.id,
+                orderNumber: transportData.orderNumber,
+                mpk: transportData.mpk,
+                documents: transportData.documents,
+                clientName: transportData.clientName || transportData.client_name,
+                responsiblePerson: transportData.responsiblePerson || transportData.responsible_person,
+                location: transportData.location,
+                delivery_data: transportData.delivery || transportData.delivery_data,
+                route: transportData.route || `${transportData.location?.replace('Magazyn ', '') || ''} → ${transportData.delivery?.city || transportData.delivery_data?.city || ''}`
+              });
+            }
+          });
         }
-      });
-      
-      // Przekształć na trasy
-      uniqueTransports.forEach(transportData => {
-        if (transportData.loading && transportData.unloading) {
-          routes.push({
-            id: transportData.id,
-            orderNumber: transportData.orderNumber,
-            route: `${transportData.loading} → ${transportData.unloading}`,
-            mpk: transportData.mpk
+      } catch (e) {
+        console.error('Błąd parsowania response_data:', e);
+      }
+    }
+
+    // 2. Dane z mergedData (przekazane z rodzica)
+    if (mergedData?.originalTransports && Array.isArray(mergedData.originalTransports)) {
+      mergedData.originalTransports.forEach(originalTransport => {
+        // Sprawdź czy ten transport nie został już dodany
+        if (!allTransports.find(t => t.id === originalTransport.id)) {
+          allTransports.push({
+            id: originalTransport.id,
+            orderNumber: originalTransport.orderNumber,
+            mpk: originalTransport.mpk,
+            documents: originalTransport.documents,
+            clientName: originalTransport.clientName || originalTransport.client_name,
+            responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
+            location: originalTransport.location,
+            delivery_data: originalTransport.delivery_data,
+            route: originalTransport.route
           });
         }
       });
-      
-      return routes;
     }
-    
-    // Fallback do starej metody
-    if (mergedData.originalTransports) {
-      return mergedData.originalTransports.map(t => ({
-        id: t.id,
-        orderNumber: t.orderNumber,
-        route: t.route || 'Nie podano',
-        mpk: t.mpk
-      }));
+
+    // 3. Dane z merged_transports (stary format)
+    if (transport.merged_transports) {
+      try {
+        const mergedTransportsData = typeof transport.merged_transports === 'string' 
+          ? JSON.parse(transport.merged_transports) 
+          : transport.merged_transports;
+        
+        if (mergedTransportsData.originalTransports && Array.isArray(mergedTransportsData.originalTransports)) {
+          mergedTransportsData.originalTransports.forEach(originalTransport => {
+            // Sprawdź czy ten transport nie został już dodany
+            if (!allTransports.find(t => t.id === originalTransport.id)) {
+              allTransports.push({
+                id: originalTransport.id,
+                orderNumber: originalTransport.orderNumber,
+                mpk: originalTransport.mpk,
+                documents: originalTransport.documents,
+                clientName: originalTransport.clientName || originalTransport.client_name,
+                responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
+                location: originalTransport.location,
+                delivery_data: originalTransport.delivery_data,
+                route: originalTransport.route
+              });
+            }
+          });
+        }
+      } catch (e) {
+        console.error('Błąd parsowania merged_transports:', e);
+      }
     }
-    
-    return routes;
+
+    return allTransports;
   };
 
   // Funkcja pomocnicza do formatowania trasy
@@ -136,12 +155,45 @@ const collectAllResponsible = () => {
     return `${start} → ${end}`;
   };
 
-  // Pobieranie danych
-  const allMPKs = collectUniqueValues('mpk');
-  const allDocuments = collectUniqueValues('documents');
-  const allClients = collectUniqueValues('clientName');
-  const allRoutes = getAllRoutes();
-  
+  // Funkcja do zbierania wszystkich unikalnych wartości z pola
+  const collectUniqueValues = (field) => {
+    const values = new Set();
+    const allTransports = getAllTransportsData();
+    
+    allTransports.forEach(transportData => {
+      if (transportData[field]) {
+        values.add(transportData[field]);
+      }
+    });
+    
+    return Array.from(values).filter(Boolean);
+  };
+
+  // Funkcja do zbierania wszystkich odpowiedzialnych osób
+  const collectAllResponsible = () => {
+    const allTransports = getAllTransportsData();
+    const responsible = new Set();
+    
+    allTransports.forEach(transportData => {
+      if (transportData.responsiblePerson) {
+        responsible.add(transportData.responsiblePerson);
+      }
+    });
+    
+    return Array.from(responsible).filter(Boolean);
+  };
+
+  // Funkcja do zbierania tras
+  const getAllRoutes = () => {
+    const allTransports = getAllTransportsData();
+    return allTransports.map(transportData => ({
+      id: transportData.id,
+      orderNumber: transportData.orderNumber,
+      route: transportData.route || 'Nie podano',
+      mpk: transportData.mpk
+    }));
+  };
+
   // Oblicz odległość rzeczywistą
   const getRealDistance = () => {
     try {
@@ -170,9 +222,25 @@ const collectAllResponsible = () => {
     }
   };
 
+  // Sprawdź czy to transport połączony
+  const isConnectedTransport = () => {
+    const allTransports = getAllTransportsData();
+    return allTransports.length > 1; // Jeśli mamy więcej niż główny transport
+  };
+
+  // Jeśli to nie transport połączony, nie wyświetlaj komponentu
+  if (!isConnectedTransport()) {
+    return null;
+  }
+
+  // Pobieranie danych
+  const allMPKs = collectUniqueValues('mpk');
+  const allDocuments = collectUniqueValues('documents');
+  const allClients = collectUniqueValues('clientName');
+  const allResponsible = collectAllResponsible();
+  const allRoutes = getAllRoutes();
   const realDistance = getRealDistance();
   const totalValue = getTotalValue();
-  const totalTransports = 1 + (mergedData.originalTransports?.length || 0);
 
   return (
     <div className="mb-6 bg-gradient-to-br from-purple-50 to-indigo-100 border-2 border-purple-200 rounded-xl p-6 shadow-lg">
@@ -263,24 +331,22 @@ const collectAllResponsible = () => {
               <div>
                 <span className="text-gray-600">Odpowiedzialni:</span>
                 <div className="mt-1 space-y-1">
-                  {(() => {
-                    const allResponsible = collectAllResponsible();
-                    return allResponsible.length > 0 ? (
-                      allResponsible.map((person, index) => (
-                        <div key={index} className="text-xs bg-blue-50 text-blue-800 px-2 py-1 rounded border">
-                          {person}
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-xs text-gray-500">Brak danych</div>
-                    );
-                  })()}
+                  {allResponsible.length > 0 ? (
+                    allResponsible.map((person, index) => (
+                      <div key={index} className="text-xs bg-blue-50 text-blue-800 px-2 py-1 rounded border">
+                        {person}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-xs text-gray-500">Brak danych</div>
+                  )}
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
+
       {/* Szczegółowe trasy */}
       <div className="mt-6 bg-white rounded-lg p-4 shadow-sm border border-purple-200">
         <div className="flex items-center gap-2 mb-4">
