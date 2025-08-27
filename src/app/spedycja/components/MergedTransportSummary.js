@@ -6,7 +6,6 @@ import {
   Users, 
   Calculator, 
   Route,
-  Hash,
   DollarSign
 } from 'lucide-react';
 
@@ -383,18 +382,21 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
           </div>
         </div>
 
-        {/* Liczba klientów */}
+        {/* Klienci */}
         <div className="bg-white rounded-lg p-4 shadow-sm border border-purple-100">
           <div className="flex items-center gap-2 mb-2">
             <Users size={18} className="text-blue-600" />
-            <h4 className="font-semibold text-gray-800">Klienci</h4>
+            <h4 className="font-semibold text-gray-800">Klienci ({allClients.length})</h4>
           </div>
-          <div className="text-2xl font-bold text-blue-600">
-            {allClients.length}
-          </div>
-          <div className="text-xs text-gray-500">
-            {allClients.slice(0, 2).join(', ')}
-            {allClients.length > 2 && '...'}
+          <div className="space-y-1 max-h-20 overflow-y-auto">
+            {allClients.map((client, index) => (
+              <div key={index} className="text-sm text-gray-700 border-l-2 border-blue-200 pl-2">
+                {client}
+              </div>
+            ))}
+            {allClients.length === 0 && (
+              <div className="text-sm text-gray-400">Brak danych</div>
+            )}
           </div>
         </div>
 
@@ -402,26 +404,35 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
         <div className="bg-white rounded-lg p-4 shadow-sm border border-purple-100">
           <div className="flex items-center gap-2 mb-2">
             <FileText size={18} className="text-orange-600" />
-            <h4 className="font-semibold text-gray-800">Dokumenty</h4>
+            <h4 className="font-semibold text-gray-800">Dokumenty ({allDocuments.length})</h4>
           </div>
-          <div className="text-2xl font-bold text-orange-600">
-            {allDocuments.length}
-          </div>
-          <div className="text-xs text-gray-500">
-            {allDocuments.slice(0, 2).join(', ')}
-            {allDocuments.length > 2 && '...'}
+          <div className="space-y-1 max-h-20 overflow-y-auto">
+            {allDocuments.map((doc, index) => (
+              <div key={index} className="text-sm text-gray-700 border-l-2 border-orange-200 pl-2">
+                {doc}
+              </div>
+            ))}
+            {allDocuments.length === 0 && (
+              <div className="text-sm text-gray-400">Brak danych</div>
+            )}
           </div>
         </div>
 
-        {/* MPK */}
+        {/* Odpowiedzialni */}
         <div className="bg-white rounded-lg p-4 shadow-sm border border-purple-100">
           <div className="flex items-center gap-2 mb-2">
-            <Hash size={18} className="text-purple-600" />
-            <h4 className="font-semibold text-gray-800">MPK</h4>
+            <Users size={18} className="text-purple-600" />
+            <h4 className="font-semibold text-gray-800">Odpowiedzialni ({allResponsible.length})</h4>
           </div>
-          <div className="text-sm font-bold text-purple-600">
-            {allMPKs.slice(0, 3).join(', ')}
-            {allMPKs.length > 3 && '...'}
+          <div className="space-y-1 max-h-20 overflow-y-auto">
+            {allResponsible.map((person, index) => (
+              <div key={index} className="text-sm text-gray-700 border-l-2 border-purple-200 pl-2">
+                {person}
+              </div>
+            ))}
+            {allResponsible.length === 0 && (
+              <div className="text-sm text-gray-400">Brak danych</div>
+            )}
           </div>
         </div>
       </div>
@@ -454,22 +465,7 @@ const MergedTransportSummary = ({ transport, mergedData }) => {
         </div>
       </div>
 
-      {/* Odpowiedzialni */}
-      {allResponsible.length > 0 && (
-        <div className="mt-4 bg-white rounded-lg p-4 border border-purple-100">
-          <h4 className="font-semibold text-gray-800 mb-2 flex items-center gap-2">
-            <Users size={18} className="text-purple-600" />
-            Osoby odpowiedzialne
-          </h4>
-          <div className="flex flex-wrap gap-2">
-            {allResponsible.map((person, index) => (
-              <div key={index} className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm">
-                {person}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+
     </div>
   );
 };
