@@ -232,6 +232,22 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     
     return formattedLines.join('<br>');
   };
+
+  // NOWA FUNKCJA do zbierania wszystkich numerów zleceń
+  const getAllOrderNumbers = () => {
+    const orderNumbers = [spedycja.order_number || spedycja.id]; // Główne zlecenie
+    
+    if (mergedTransports && mergedTransports.originalTransports) {
+      mergedTransports.originalTransports.forEach(transport => {
+        const orderNum = transport.order_number || transport.orderNumber || transport.id;
+        if (orderNum && !orderNumbers.includes(orderNum)) {
+          orderNumbers.push(orderNum);
+        }
+      });
+    }
+    
+    return orderNumbers.filter(Boolean);
+  };
   
   // Funkcja do zbierania wszystkich MPK
   const getAllMPKs = () => {
@@ -266,7 +282,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       });
     }
     
-    return documents;
+    return documents.filter(Boolean);
   };
   
   // Funkcja do zbierania wszystkich miejsc załadunku
@@ -421,6 +437,78 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     
     return places;
   };
+
+  // NOWA FUNKCJA do tworzenia sekwencji trasy
+  const getRouteSequence = () => {
+    const sequence = [];
+    const loadingPlaces = getAllLoadingPlaces();
+    const unloadingPlaces = getAllUnloadingPlaces();
+    
+    // Dodaj wszystkie punkty załadunku
+    loadingPlaces.forEach((place, index) => {
+      // Wyciągnij nazwę firmy z adresu (ostatnia linia po <br>)
+      const addressParts = place.address.split('<br>');
+      const companyName = addressParts.length > 2 ? addressParts[addressParts.length - 1] : 'Firma';
+      const addressOnly = addressParts.slice(0, -1).join('<br>');
+      
+      sequence.push({
+        type: 'ZAŁADUNEK',
+        companyName,
+        address: addressOnly,
+        contact: place.contact || 'Nie podano',
+        date: place.date
+      });
+    });
+    
+    // Dodaj wszystkie punkty rozładunku
+    unloadingPlaces.forEach((place, index) => {
+      // Wyciągnij nazwę firmy z adresu (ostatnia linia po <br>)
+      const addressParts = place.address.split('<br>');
+      const companyName = addressParts.length > 2 ? addressParts[addressParts.length - 1] : 'Odbiorca';
+      const addressOnly = addressParts.slice(0, -1).join('<br>');
+      
+      sequence.push({
+        type: 'ROZŁADUNEK',
+        companyName,
+        address: addressOnly,
+        contact: place.contact || 'Nie podano',
+        date: place.date
+      });
+    });
+    
+    return sequence;
+  };
+
+  // NOWA FUNKCJA do obliczania całkowitej ceny transportu
+  const getTotalTransportPrice = () => {
+    let totalPrice = 0;
+    
+    // Cena głównego transportu
+    if (responseData.deliveryPrice) {
+      totalPrice += parseFloat(responseData.deliveryPrice);
+    }
+    
+    // Ceny z połączonych transportów
+    if (mergedTransports && mergedTransports.originalTransports) {
+      mergedTransports.originalTransports.forEach(transport => {
+        if (transport.response_data) {
+          try {
+            const transportResponse = typeof transport.response_data === 'string' 
+              ? JSON.parse(transport.response_data) 
+              : transport.response_data;
+            
+            if (transportResponse.deliveryPrice) {
+              totalPrice += parseFloat(transportResponse.deliveryPrice);
+            }
+          } catch (error) {
+            console.error('Error parsing transport response data:', error);
+          }
+        }
+      });
+    }
+    
+    return totalPrice > 0 ? totalPrice.toFixed(2) : null;
+  };
   
   // Formatowanie ceny z dopiskiem "Netto"
   const formatPrice = (price) => {
@@ -428,10 +516,13 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     return `${price} PLN Netto`;
   };
   
+  const allOrderNumbers = getAllOrderNumbers();
   const allMPKs = getAllMPKs();
   const allDocuments = getAllDocuments();
   const loadingPlaces = getAllLoadingPlaces();
   const unloadingPlaces = getAllUnloadingPlaces();
+  const routeSequence = getRouteSequence();
+  const totalPrice = getTotalTransportPrice();
   
   // Tworzenie HTML-a
   return `
@@ -514,23 +605,38 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
           font-weight: bold;
           color: #c0392b;
         }
-        .place-item {
-          margin-bottom: 15px;
-          padding: 12px;
+        .route-item {
+          margin-bottom: 20px;
+          padding: 15px;
           background-color: white;
-          border-radius: 5px;
-          border: 1px solid #ddd;
+          border-radius: 8px;
+          border-left: 5px solid #1a71b5;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        .place-address {
+        .route-type {
+          font-size: 18px;
           font-weight: bold;
+          color: #1a71b5;
+          margin-bottom: 10px;
+          text-transform: uppercase;
+        }
+        .route-company {
+          font-size: 16px;
+          font-weight: bold;
+          color: #333;
+          margin-bottom: 8px;
+        }
+        .route-address {
+          font-size: 14px;
+          color: #555;
           margin-bottom: 8px;
           line-height: 1.4;
         }
-        .place-details {
-          font-size: 14px;
-          color: #555;
+        .route-details {
+          font-size: 13px;
+          color: #666;
         }
-        .place-details div {
+        .route-details div {
           margin-bottom: 4px;
         }
       </style>
@@ -538,15 +644,15 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     <body>
       <div class="header">
         <h1>ZLECENIE TRANSPORTOWE</h1>
-        <p>Nr zlecenia: ${spedycja.order_number || spedycja.id} | Data utworzenia: ${formatDate(new Date().toISOString())}</p>
+        <p>Numery zleceń: ${allOrderNumbers.join(', ')} | Data utworzenia: ${formatDate(new Date().toISOString())}</p>
       </div>
       
       <div class="important-note">
-        Proszę o dopisanie na fakturze zamieszczonego poniżej numeru zlecenia: ${spedycja.order_number || spedycja.id}.
+        Proszę o dopisanie na fakturze zamieszczonych poniżej numerów zleceń: ${allOrderNumbers.join(', ')}.
       </div>
       
       <div class="important-warning">
-        <strong>UWAGA!</strong> Na fakturze musi być podany numer zlecenia: ${spedycja.order_number || spedycja.id}. 
+        <strong>UWAGA!</strong> Na fakturze musi być podany numer zlecenia: ${allOrderNumbers.join(', ')}. 
         Faktury bez numeru zlecenia nie będą opłacane.
       </div>
       
@@ -573,26 +679,15 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       </div>
       
       <div class="section">
-        <h2>${loadingPlaces.length === 1 ? 'Miejsce załadunku' : 'Miejsca załadunku'}</h2>
-        ${loadingPlaces.map((place, index) => `
-          <div class="place-item">
-            <div class="place-address">${loadingPlaces.length === 1 ? '' : `${index + 1}. `}${place.address}</div>
-            <div class="place-details">
-              <div><strong>Data załadunku:</strong> ${formatDate(place.date) || 'Nie podano'}</div>
-              <div><strong>Kontakt:</strong> ${place.contact || 'Nie podano'}</div>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-      
-      <div class="section">
-        <h2>${unloadingPlaces.length === 1 ? 'Miejsce rozładunku' : 'Miejsca rozładunku'}</h2>
-        ${unloadingPlaces.map((place, index) => `
-          <div class="place-item">
-            <div class="place-address">${unloadingPlaces.length === 1 ? '' : `${index + 1}. `}${place.address}</div>
-            <div class="place-details">
-              <div><strong>Data rozładunku:</strong> ${formatDate(place.date) || 'Nie podano'}</div>
-              <div><strong>Kontakt:</strong> ${place.contact || 'Nie podano'}</div>
+        <h2>Sekwencja trasy</h2>
+        ${routeSequence.map((point, index) => `
+          <div class="route-item">
+            <div class="route-type">${index + 1}. ${point.type}</div>
+            <div class="route-company">${point.companyName}</div>
+            <div class="route-address">${point.address}</div>
+            <div class="route-details">
+              <div><strong>Data ${point.type.toLowerCase()}:</strong> ${formatDate(point.date) || 'Nie podano'}</div>
+              <div><strong>Kontakt:</strong> ${point.contact}</div>
             </div>
           </div>
         `).join('')}
@@ -620,8 +715,8 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
         <h2>Płatność</h2>
         <table class="info-table">
           <tr>
-            <th>Cena transportu:</th>
-            <td>${responseData.deliveryPrice ? formatPrice(responseData.deliveryPrice) : 'Nie podano'}</td>
+            <th>Całkowita cena transportu:</th>
+            <td>${totalPrice ? formatPrice(totalPrice) : (responseData.deliveryPrice ? formatPrice(responseData.deliveryPrice) : 'Nie podano')}</td>
           </tr>
           <tr>
             <th>Termin płatności:</th>
