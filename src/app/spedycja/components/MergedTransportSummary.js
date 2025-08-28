@@ -657,8 +657,10 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
                         </div>
                         {point.type && (
                           <div className="text-xs text-gray-500">
-                            {point.type === 'pickup' ? '📦 Załadunek' : 
-                             point.type === 'delivery' ? '🏢 Rozładunek' : 
+                            {point.type === 'pickup' ? 'Załadunek' : 
+                             point.type === 'delivery' ? 'Rozładunek' : 
+                             point.type === 'loading' ? 'Załadunek' :
+                             point.type === 'unloading' ? 'Rozładunek' :
                              point.type}
                           </div>
                         )}
@@ -666,9 +668,9 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
                       
                       {/* Informacje dodatkowe */}
                       <div className="text-right">
-                        {point.transportId && (
+                        {point.mpk && (
                           <div className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded mb-1">
-                            ID: {point.transportId}
+                            MPK: {point.mpk}
                           </div>
                         )}
                         {point.orderNumber && (
