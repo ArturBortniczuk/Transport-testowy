@@ -63,9 +63,6 @@ const TransportConnectionBadge = ({ transport }) => {
         <div className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 shadow-sm">
           <Route size={12} />
           <span>Połączony</span>
-          <span className="bg-white bg-opacity-20 px-1.5 py-0.5 rounded-full text-xs font-bold">
-            {totalTransports}
-          </span>
         </div>
         
         {/* Badge z rzeczywistą odległością */}
