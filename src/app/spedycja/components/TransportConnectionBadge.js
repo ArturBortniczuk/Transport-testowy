@@ -77,7 +77,6 @@ const TransportConnectionBadge = ({ transport }) => {
       {/* Dodatkowe informacje w kompaktowej formie */}
       <div className="text-xs text-gray-500 flex items-center gap-1">
         <Truck size={10} />
-        <span>{totalTransports} tras w jednym zleceniu</span>
         {realDistance && (
           <span className="text-green-600 ml-1">(optymalizowana trasa)</span>
         )}
