@@ -65,7 +65,7 @@ export async function POST(request) {
       }, { status: 403 });
     }
     
-    // Pobierz dane z żądania - UPROSZCZONE, bez additionalPlaces
+    // Pobierz dane z żądania
     const { 
       spedycjaId, 
       towar, 
@@ -158,7 +158,7 @@ export async function POST(request) {
     
     const info = await transporter.sendMail(mailOptions);
     
-    // Zapisz informacje o wysłanym zleceniu - UPROSZCZONE
+    // Zapisz informacje o wysłanym zleceniu
     await db('spedycje')
       .where('id', spedycjaId)
       .update({
@@ -181,7 +181,7 @@ export async function POST(request) {
       success: true,
       messageId: info.messageId,
       message: isMerged 
-        ? `Wysłano zlecenie dla transportu połączonego (${mergedTransports?.originalTransports?.length + 1} tras)`
+        ? `Wysłano zlecenie dla transportu połączonego (${(mergedTransports?.originalTransports?.length || 0) + 1} tras)`
         : 'Wysłano zlecenie transportowe'
     });
   } catch (error) {
@@ -193,7 +193,7 @@ export async function POST(request) {
   }
 }
 
-// ZAKTUALIZOWANA FUNKCJA generująca HTML zamówienia
+// POPRAWIONA FUNKCJA generująca HTML zamówienia
 function generateTransportOrderHTML({ spedycja, producerAddress, delivery, responseData, mergedTransports, user, orderData }) {
   const { towar, terminPlatnosci, waga, dataZaladunku, dataRozladunku } = orderData;
   
@@ -235,9 +235,8 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
 
   // POPRAWIONA FUNKCJA do zbierania wszystkich numerów zleceń
   const getAllOrderNumbers = () => {
-    const orderNumbers = [spedycja.order_number || spedycja.id]; // Główne zlecenie
+    const orderNumbers = [spedycja.order_number || spedycja.id];
     
-    // Sprawdź merged_transports
     if (mergedTransports && mergedTransports.originalTransports && Array.isArray(mergedTransports.originalTransports)) {
       mergedTransports.originalTransports.forEach(transport => {
         const orderNum = transport.orderNumber || transport.order_number || transport.id;
@@ -252,9 +251,8 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
   
   // POPRAWIONA FUNKCJA do zbierania wszystkich MPK
   const getAllMPKs = () => {
-    const mpks = [spedycja.mpk]; // Główny MPK
+    const mpks = [spedycja.mpk];
     
-    // Sprawdź merged_transports
     if (mergedTransports && mergedTransports.originalTransports && Array.isArray(mergedTransports.originalTransports)) {
       mergedTransports.originalTransports.forEach(transport => {
         if (transport.mpk && !mpks.includes(transport.mpk)) {
@@ -263,19 +261,17 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       });
     }
     
-    return mpks.filter(Boolean); // Usuń puste wartości
+    return mpks.filter(Boolean);
   };
   
   // POPRAWIONA FUNKCJA do zbierania wszystkich dokumentów
   const getAllDocuments = () => {
     const documents = [];
     
-    // Główny transport
     if (spedycja.documents) {
       documents.push(spedycja.documents);
     }
     
-    // Sprawdź merged_transports
     if (mergedTransports && mergedTransports.originalTransports && Array.isArray(mergedTransports.originalTransports)) {
       mergedTransports.originalTransports.forEach(transport => {
         if (transport.documents && !documents.includes(transport.documents)) {
@@ -287,25 +283,23 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     return documents.filter(Boolean);
   };
 
-  // NOWA FUNKCJA do tworzenia sekwencji trasy z routeSequence
+  // POPRAWIONA FUNKCJA do tworzenia sekwencji trasy
   const getRouteSequence = () => {
     const sequence = [];
     
-    // Najpierw sprawdź czy mamy routeSequence w responseData
+    // Sprawdź czy mamy routeSequence w responseData
     if (responseData && responseData.routeSequence && Array.isArray(responseData.routeSequence)) {
       responseData.routeSequence.forEach((point, index) => {
         let companyName = 'Nie podano';
         let address = 'Brak danych';
         let contact = 'Nie podano';
         
-        // Wyciągnij dane z punktu
         if (point.company) {
           companyName = point.company;
         } else if (point.transport && point.transport.clientName) {
           companyName = point.transport.clientName;
         }
         
-        // Formatuj adres
         if (point.city && point.address) {
           address = `${point.city}`;
           if (point.postalCode) {
@@ -316,7 +310,6 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
           address = point.description;
         }
         
-        // Kontakt
         if (point.contact) {
           contact = point.contact;
         } else if (point.transport) {
@@ -337,8 +330,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       return sequence;
     }
     
-    // FALLBACK - jeśli nie ma routeSequence, stwórz z dostępnych danych
-    // Główny transport - załadunek
+    // FALLBACK - stwórz z dostępnych danych
     let mainCompanyName = 'Nie podano';
     let mainAddress = 'Brak danych';
     
@@ -363,10 +355,10 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       date: dataZaladunku
     });
     
-    // Dodaj punkty z merged_transports jeśli są
+    // Dodaj punkty z merged_transports
     if (mergedTransports && mergedTransports.originalTransports && Array.isArray(mergedTransports.originalTransports)) {
       mergedTransports.originalTransports.forEach(transport => {
-        // Załadunek dla każdego połączonego transportu
+        // Załadunek
         let transportCompanyName = 'Nie podano';
         let transportAddress = 'Brak danych';
         
@@ -397,7 +389,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
           date: dataZaladunku
         });
         
-        // Rozładunek dla każdego połączonego transportu
+        // Rozładunek
         if (transport.delivery_data) {
           try {
             const deliveryData = typeof transport.delivery_data === 'string' ? 
@@ -447,28 +439,28 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
   const getTotalTransportPrice = () => {
     let totalPrice = 0;
     
-    // Sprawdź czy mamy totalMergedCost w mergedTransports
-    if (mergedTransports && mergedTransports.totalMergedCost) {
-      totalPrice += parseFloat(mergedTransports.totalMergedCost);
-    }
-    
-    // Dodaj główną cenę transportu
-    if (responseData.deliveryPrice) {
-      totalPrice += parseFloat(responseData.deliveryPrice);
-    }
-    
-    // Jeśli nie mamy totalMergedCost, spróbuj zsumować z originalTransports
-    if (totalPrice === 0 && mergedTransports && mergedTransports.originalTransports) {
-      mergedTransports.originalTransports.forEach(transport => {
-        if (transport.costAssigned) {
-          totalPrice += parseFloat(transport.costAssigned);
+    // Sprawdź czy mamy totalMergedCost + mainTransportCost w mergedTransports
+    if (mergedTransports) {
+      if (mergedTransports.totalMergedCost && mergedTransports.mainTransportCost) {
+        totalPrice = parseFloat(mergedTransports.totalMergedCost) + parseFloat(mergedTransports.mainTransportCost);
+      } else if (mergedTransports.originalTransports) {
+        // Suma kosztów z originalTransports + główny koszt
+        mergedTransports.originalTransports.forEach(transport => {
+          if (transport.costAssigned) {
+            totalPrice += parseFloat(transport.costAssigned);
+          }
+        });
+        
+        // Dodaj główną cenę
+        if (responseData.deliveryPrice) {
+          totalPrice += parseFloat(responseData.deliveryPrice);
         }
-      });
-      
-      // Dodaj główną cenę
-      if (responseData.deliveryPrice) {
-        totalPrice += parseFloat(responseData.deliveryPrice);
       }
+    }
+    
+    // Fallback do głównej ceny
+    if (totalPrice === 0 && responseData.deliveryPrice) {
+      totalPrice = parseFloat(responseData.deliveryPrice);
     }
     
     return totalPrice > 0 ? totalPrice.toFixed(2) : null;
