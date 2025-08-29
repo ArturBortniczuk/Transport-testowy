@@ -34,64 +34,130 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
     return zamowienie?.merged_transports && zamowienie?.response?.isMerged
   })()
   
-  // Pobierz dane o połączonych transportach
+// POPRAWIONA FUNKCJA pobierająca dane o połączonych transportach
   const getMergedData = () => {
     if (!isMergedTransport) return null
     
+    console.log('DEBUG getMergedData - zamowienie:', zamowienie);
+    console.log('DEBUG merged_transports:', zamowienie.merged_transports);
+    console.log('DEBUG response_data:', zamowienie.response_data);
+    
     try {
-      // Sprawdź response_data
-      if (zamowienie?.response_data) {
-        const responseData = typeof zamowienie.response_data === 'string' 
-          ? JSON.parse(zamowienie.response_data) 
-          : zamowienie.response_data
+      // NAJPIERW: Sprawdź merged_transports (to jest główne źródło danych)
+      if (zamowienie.merged_transports) {
+        const mergedTransports = typeof zamowienie.merged_transports === 'string' 
+          ? JSON.parse(zamowienie.merged_transports) 
+          : zamowienie.merged_transports;
         
-        // Agreguj dane z wszystkich połączonych transportów
-        let allCargoDescriptions = [];
-        let totalWeight = 0;
-        let allOrderNumbers = [];
-        let allMpks = [];
-        let allDocuments = [];
-        let allClients = [];
-        let totalPrice = 0;
+        console.log('DEBUG parsed merged_transports:', mergedTransports);
         
-        if (responseData?.mergedTransportIds && Array.isArray(responseData.mergedTransportIds)) {
-          responseData.mergedTransportIds.forEach(transport => {
-            if (transport.cargoDescription) allCargoDescriptions.push(transport.cargoDescription);
-            if (transport.weight) totalWeight += parseFloat(transport.weight) || 0;
+        if (mergedTransports.originalTransports && Array.isArray(mergedTransports.originalTransports)) {
+          console.log('DEBUG originalTransports count:', mergedTransports.originalTransports.length);
+          
+          // Agreguj dane z originalTransports
+          let allOrderNumbers = [zamowienie.orderNumber || zamowienie.order_number || zamowienie.id];
+          let allMpks = zamowienie.mpk ? [zamowienie.mpk] : [];
+          let allDocuments = zamowienie.documents ? [zamowienie.documents] : [];
+          let allClients = (zamowienie.clientName || zamowienie.client_name) ? [zamowienie.clientName || zamowienie.client_name] : [];
+          let allCargoDescriptions = [];
+          let totalWeight = 0;
+          let totalPrice = mergedTransports.mainTransportCost || 0;
+          
+          mergedTransports.originalTransports.forEach((transport, index) => {
+            console.log(`DEBUG Transport ${index + 1}:`, transport);
+            
             if (transport.orderNumber) allOrderNumbers.push(transport.orderNumber);
             if (transport.mpk) allMpks.push(transport.mpk);
             if (transport.documents) allDocuments.push(transport.documents);
             if (transport.clientName) allClients.push(transport.clientName);
-            if (transport.deliveryPrice) totalPrice += parseFloat(transport.deliveryPrice) || 0;
+            if (transport.costAssigned) totalPrice += parseFloat(transport.costAssigned);
           });
-        }
-        
-        // Dodaj główny transport
-        allOrderNumbers.unshift(zamowienie.orderNumber || zamowienie.id);
-        if (zamowienie.mpk) allMpks.unshift(zamowienie.mpk);
-        if (zamowienie.documents) allDocuments.unshift(zamowienie.documents);
-        if (zamowienie.clientName) allClients.unshift(zamowienie.clientName);
-        
-        return {
-          originalTransports: responseData?.mergedTransportIds || [],
-          costBreakdown: responseData?.costBreakdown || responseData?.priceBreakdown || null,
-          routeSequence: responseData?.routeSequence || [],
-          totalDistance: responseData?.totalDistance || 0,
-          cargoDescription: allCargoDescriptions.join(', ') || responseData?.cargoDescription || '',
-          totalWeight: totalWeight || responseData?.totalWeight || 0,
-          allOrderNumbers: [...new Set(allOrderNumbers)], // usuń duplikaty
-          allMpks: [...new Set(allMpks)],
-          allDocuments: [...new Set(allDocuments)],
-          allClients: [...new Set(allClients)],
-          totalPrice: totalPrice || responseData?.totalPrice || 0
+          
+          console.log('DEBUG WYNIK z merged_transports:');
+          console.log('  - allOrderNumbers:', allOrderNumbers);
+          console.log('  - allMpks:', allMpks);
+          console.log('  - allDocuments:', allDocuments);
+          console.log('  - totalPrice:', totalPrice);
+          
+          return {
+            originalTransports: mergedTransports.originalTransports,
+            costBreakdown: mergedTransports.costBreakdown || null,
+            routeSequence: [], // Brak routeSequence w starym formacie
+            totalDistance: mergedTransports.totalDistance || 0,
+            totalMergedCost: mergedTransports.totalMergedCost || 0,
+            mainTransportCost: mergedTransports.mainTransportCost || 0,
+            // Agregowane dane
+            allOrderNumbers: [...new Set(allOrderNumbers)],
+            allMpks: [...new Set(allMpks.filter(mpk => mpk && mpk !== ''))],
+            allDocuments: [...new Set(allDocuments.filter(doc => doc && doc !== '' && doc !== 'undefined'))],
+            allClients: [...new Set(allClients.filter(client => client && client !== ''))],
+            totalPrice: totalPrice.toFixed(2)
+          };
         }
       }
       
-      // Fallback do starych pól
-      return {
-        originalTransports: zamowienie.merged_transports?.originalTransports || [],
-        costBreakdown: zamowienie.response?.costBreakdown || null
+      // DRUGIE: Sprawdź response_data dla nowego formatu z routeSequence
+      if (zamowienie.response_data) {
+        const responseData = typeof zamowienie.response_data === 'string' 
+          ? JSON.parse(zamowienie.response_data) 
+          : zamowienie.response_data;
+        
+        console.log('DEBUG parsed response_data:', responseData);
+        
+        if (responseData.routeSequence && Array.isArray(responseData.routeSequence)) {
+          console.log('DEBUG routeSequence count:', responseData.routeSequence.length);
+          
+          // Wyciągnij unikalne transporty z routeSequence
+          const transportMap = new Map();
+          let allOrderNumbers = [zamowienie.orderNumber || zamowienie.order_number || zamowienie.id];
+          let allMpks = zamowienie.mpk ? [zamowienie.mpk] : [];
+          let allDocuments = zamowienie.documents ? [zamowienie.documents] : [];
+          let allClients = (zamowienie.clientName || zamowienie.client_name) ? [zamowienie.clientName || zamowienie.client_name] : [];
+          
+          responseData.routeSequence.forEach(point => {
+            if (point.transport && point.transportId && point.transportId !== zamowienie.id) {
+              const transport = {
+                id: point.transportId,
+                orderNumber: point.transport.orderNumber || point.transport.order_number,
+                mpk: point.transport.mpk,
+                documents: point.transport.documents,
+                clientName: point.transport.clientName || point.transport.client_name,
+                costAssigned: responseData.costBreakdown?.[point.transportId] || 0
+              };
+              
+              transportMap.set(point.transportId, transport);
+              
+              // Agreguj dane
+              if (transport.orderNumber) allOrderNumbers.push(transport.orderNumber);
+              if (transport.mpk) allMpks.push(transport.mpk);
+              if (transport.documents) allDocuments.push(transport.documents);
+              if (transport.clientName) allClients.push(transport.clientName);
+            }
+          });
+          
+          console.log('DEBUG WYNIK z routeSequence:');
+          console.log('  - allOrderNumbers:', allOrderNumbers);
+          console.log('  - allMpks:', allMpks);
+          console.log('  - allDocuments:', allDocuments);
+          
+          return {
+            originalTransports: Array.from(transportMap.values()),
+            routeSequence: responseData.routeSequence,
+            totalDistance: responseData.realRouteDistance || responseData.totalDistance || 0,
+            totalMergedCost: responseData.totalMergedCost || 0,
+            mainTransportCost: responseData.deliveryPrice || 0,
+            // Agregowane dane
+            allOrderNumbers: [...new Set(allOrderNumbers)],
+            allMpks: [...new Set(allMpks.filter(mpk => mpk && mpk !== ''))],
+            allDocuments: [...new Set(allDocuments.filter(doc => doc && doc !== '' && doc !== 'undefined'))],
+            allClients: [...new Set(allClients.filter(client => client && client !== ''))],
+            totalPrice: (parseFloat(responseData.deliveryPrice || 0) + parseFloat(responseData.totalMergedCost || 0)).toFixed(2)
+          };
+        }
       }
+      
+      console.log('DEBUG - nie znaleziono prawidłowych danych');
+      return null;
     } catch (error) {
       console.error('Błąd parsowania danych połączonych transportów:', error)
       return null
@@ -148,75 +214,103 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
     }
   }, [isMergedTransport]); // Zależność tylko od stanu połączenia
   
-  // Funkcja agregująca dane ze wszystkich połączonych transportów
+// POPRAWIONA FUNKCJA agregująca dane ze wszystkich połączonych transportów
   const getAggregatedMergedData = () => {
-    if (!isMergedTransport) return null;
+    if (!isMergedTransport || !mergedData) return null;
     
-    const baseData = mergedData || {};
-    
-    // Jeśli nie mamy jeszcze szczegółów, zwróć podstawowe dane
-    if (!mergedTransportsDetails.length) {
-      return baseData;
-    }
-    
-    // Agreguj dane z wszystkich transportów (głównego + połączonych)
-    let allCargoDescriptions = [];
-    let totalWeight = 0;
-    let allOrderNumbers = [zamowienie.orderNumber || zamowienie.id];
-    let allMpks = zamowienie.mpk ? [zamowienie.mpk] : [];
-    let allDocuments = zamowienie.documents ? [zamowienie.documents] : [];
-    let allClients = zamowienie.clientName ? [zamowienie.clientName] : [];
-    let totalPrice = parseFloat(baseData.totalPrice || 0);
-    
-    // Dodaj dane z głównego transportu
-    if (zamowienie.goodsDescription?.description) {
-      allCargoDescriptions.push(zamowienie.goodsDescription.description);
-    }
-    if (zamowienie.goodsDescription?.weight) {
-      totalWeight += parseFloat(zamowienie.goodsDescription.weight) || 0;
-    }
-    
-    // Agreguj dane z połączonych transportów
-    mergedTransportsDetails.forEach(transport => {
-      if (transport.orderNumber) allOrderNumbers.push(transport.orderNumber);
-      if (transport.mpk) allMpks.push(transport.mpk);
-      if (transport.documents) allDocuments.push(transport.documents);
-      if (transport.clientName) allClients.push(transport.clientName);
+    try {
+      console.log('🔍 DEBUG getAggregatedMergedData - mergedData:', mergedData);
       
-      // Pobierz dane o towarze z połączonych transportów
-      if (transport.goodsDescription?.description) {
-        allCargoDescriptions.push(transport.goodsDescription.description);
+      // Użyj danych z mergedData
+      const baseData = mergedData;
+      
+      // Dane głównego transportu - ZAWSZE dodaj jako pierwsze
+      let allOrderNumbers = [zamowienie.orderNumber || zamowienie.order_number || zamowienie.id];
+      let allMpks = zamowienie.mpk ? [zamowienie.mpk] : [];
+      let allDocuments = zamowienie.documents ? [zamowienie.documents] : [];
+      let allClients = (zamowienie.clientName || zamowienie.client_name) ? [zamowienie.clientName || zamowienie.client_name] : [];
+      let allCargoDescriptions = [];
+      let totalWeight = 0;
+      let totalPrice = 0;
+      
+      console.log('🔍 Główny transport - orderNumber:', zamowienie.orderNumber || zamowienie.order_number || zamowienie.id);
+      console.log('🔍 Główny transport - mpk:', zamowienie.mpk);
+      console.log('🔍 Główny transport - documents:', zamowienie.documents);
+      
+      // Dodaj dane z głównego transportu
+      if (zamowienie.goodsDescription?.description) {
+        allCargoDescriptions.push(zamowienie.goodsDescription.description);
       }
-      if (transport.goodsDescription?.weight) {
-        totalWeight += parseFloat(transport.goodsDescription.weight) || 0;
+      if (zamowienie.goodsDescription?.weight) {
+        totalWeight += parseFloat(zamowienie.goodsDescription.weight) || 0;
       }
       
-      // Dodaj ceny z response_data każdego transportu
-      if (transport.response_data) {
-        try {
-          const responseData = typeof transport.response_data === 'string' 
-            ? JSON.parse(transport.response_data) 
-            : transport.response_data;
-          if (responseData.deliveryPrice) {
-            totalPrice += parseFloat(responseData.deliveryPrice) || 0;
+      // Cena głównego transportu
+      if (baseData.mainTransportCost) {
+        totalPrice += parseFloat(baseData.mainTransportCost);
+      } else if (zamowienie.response?.deliveryPrice) {
+        totalPrice += parseFloat(zamowienie.response.deliveryPrice);
+      }
+      
+      // Agreguj dane z połączonych transportów z mergedData.originalTransports
+      if (baseData.originalTransports && Array.isArray(baseData.originalTransports)) {
+        console.log('🔍 Połączone transporty count:', baseData.originalTransports.length);
+        
+        baseData.originalTransports.forEach((transport, index) => {
+          console.log(`🔍 Transport ${index + 1}:`, {
+            id: transport.id,
+            orderNumber: transport.orderNumber,
+            mpk: transport.mpk,
+            documents: transport.documents,
+            clientName: transport.clientName
+          });
+          
+          if (transport.orderNumber) allOrderNumbers.push(transport.orderNumber);
+          if (transport.mpk) allMpks.push(transport.mpk);  // BEZ FILTROWANIA - wszystkie MPK
+          if (transport.documents) allDocuments.push(transport.documents);
+          if (transport.clientName) allClients.push(transport.clientName);
+          
+          // Pobierz dane o towarze jeśli są dostępne
+          if (transport.goodsDescription) {
+            allCargoDescriptions.push(transport.goodsDescription);
           }
-        } catch (e) {
-          // Błąd parsowania response_data - ignoruj
-        }
+          if (transport.weight) {
+            totalWeight += parseFloat(transport.weight) || 0;
+          }
+          
+          // Dodaj koszt przypisany do tego transportu
+          if (transport.costAssigned) {
+            totalPrice += parseFloat(transport.costAssigned);
+          }
+        });
       }
-    });
-    
-    return {
-      ...baseData,
-      allOrderNumbers: [...new Set(allOrderNumbers)],
-      allMpks: [...new Set(allMpks.filter(mpk => mpk))],
-      allDocuments: [...new Set(allDocuments.filter(doc => doc))],
-      allClients: [...new Set(allClients.filter(client => client))],
-      cargoDescription: allCargoDescriptions.filter(desc => desc).join(', ') || baseData.cargoDescription || '',
-      totalWeight: totalWeight || baseData.totalWeight || 0,
-      totalPrice: totalPrice,
-      originalTransports: mergedTransportsDetails.length > 0 ? mergedTransportsDetails : baseData.originalTransports || []
-    };
+      
+      // Jeśli mamy totalMergedCost, użyj go zamiast sumowania
+      if (baseData.totalMergedCost && baseData.mainTransportCost) {
+        totalPrice = parseFloat(baseData.totalMergedCost) + parseFloat(baseData.mainTransportCost);
+      }
+      
+      console.log('🔍 WYNIK agregacji:');
+      console.log('  - allOrderNumbers:', allOrderNumbers);
+      console.log('  - allMpks:', allMpks);
+      console.log('  - allDocuments:', allDocuments);
+      console.log('  - totalPrice:', totalPrice);
+      
+      return {
+        ...baseData,
+        allOrderNumbers: [...new Set(allOrderNumbers)], // usuń duplikaty ale zachowaj wszystkie
+        allMpks: [...new Set(allMpks.filter(mpk => mpk && mpk !== ''))], // usuń tylko puste, zostaw 000-000-000
+        allDocuments: [...new Set(allDocuments.filter(doc => doc && doc !== '' && doc !== 'undefined'))],
+        allClients: [...new Set(allClients.filter(client => client && client !== ''))],
+        cargoDescription: allCargoDescriptions.filter(desc => desc).join(', ') || baseData.cargoDescription || '',
+        totalWeight: totalWeight > 0 ? totalWeight : (baseData.totalWeight || 0),
+        totalPrice: totalPrice > 0 ? totalPrice.toFixed(2) : '0.00',
+        originalTransports: baseData.originalTransports || []
+      };
+    } catch (error) {
+      console.error('❌ Błąd agregacji danych połączonych transportów:', error);
+      return null;
+    }
   };
   
   // Memoizuj zagregowane dane
