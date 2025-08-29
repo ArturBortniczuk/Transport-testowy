@@ -78,95 +78,85 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
           let allOrderNumbers = [zamowienie.orderNumber || zamowienie.order_number || zamowienie.id];
           let allMpks = zamowienie.mpk ? [zamowienie.mpk] : [];
           let allDocuments = zamowienie.documents ? [zamowienie.documents] : [];
-          let allClients = (zamowienie.clientName || zamowienie.client_name) ? [zamowienie.clientName || zamowienie.client_name] : [];
-          let totalPrice = mergedTransports.mainTransportCost || 0;
-          
+          let allClients = zamowienie.clientName ? [zamowienie.clientName] : [];
+          let totalPrice = 0;
+          let totalWeight = 0;
+          let totalDistance = 0;
+          let cargoDescription = '';
+
+          // POPRAWIONE AGREGOWANIE DANYCH Z response_data
+          try {
+            const responseData = zamowienie.response_data 
+              ? (typeof zamowienie.response_data === 'string' 
+                 ? JSON.parse(zamowienie.response_data) 
+                 : zamowienie.response_data)
+              : {};
+
+            totalPrice = responseData.deliveryPrice || responseData.totalPrice || 0;
+            totalDistance = responseData.realRouteDistance || responseData.totalDistance || zamowienie.distance_km || 0;
+            cargoDescription = responseData.cargoDescription || '';
+            totalWeight = responseData.totalWeight || 0;
+          } catch (e) {
+            console.error('Błąd parsowania response_data w getMergedData:', e);
+          }
+
+          // Dodaj dane z połączonych transportów
           mergedTransports.originalTransports.forEach(transport => {
-            if (transport.orderNumber) allOrderNumbers.push(transport.orderNumber);
-            if (transport.mpk) allMpks.push(transport.mpk);
-            if (transport.documents) allDocuments.push(transport.documents);
-            if (transport.clientName) allClients.push(transport.clientName);
-            if (transport.costAssigned) totalPrice += parseFloat(transport.costAssigned);
+            if (typeof transport === 'object') {
+              if (transport.orderNumber) allOrderNumbers.push(transport.orderNumber);
+              if (transport.mpk) allMpks.push(transport.mpk);
+              if (transport.documents) allDocuments.push(transport.documents);
+              if (transport.clientName) allClients.push(transport.clientName);
+            }
           });
-          
+
+          // Usuń duplikaty
+          allOrderNumbers = [...new Set(allOrderNumbers)];
+          allMpks = [...new Set(allMpks)];
+          allDocuments = [...new Set(allDocuments.filter(Boolean))];
+          allClients = [...new Set(allClients.filter(Boolean))];
+
           return {
-            originalTransports: mergedTransports.originalTransports,
-            costBreakdown: mergedTransports.costBreakdown || null,
-            routeSequence: mergedTransports.routeSequence || [],
-            totalDistance: mergedTransports.totalDistance || 0,
-            totalMergedCost: mergedTransports.totalMergedCost || 0,
-            mainTransportCost: mergedTransports.mainTransportCost || 0,
-            allOrderNumbers: [...new Set(allOrderNumbers)],
-            allMpks: [...new Set(allMpks.filter(mpk => mpk && mpk !== ''))],
-            allDocuments: [...new Set(allDocuments.filter(doc => doc && doc !== '' && doc !== 'undefined'))],
-            allClients: [...new Set(allClients.filter(client => client && client !== ''))],
-            totalPrice: totalPrice.toFixed(2),
-            transportCount: mergedTransports.originalTransports.length + 1 // +1 dla głównego
+            ...mergedTransports,
+            allOrderNumbers,
+            allMpks,
+            allDocuments,
+            allClients,
+            totalPrice,
+            totalWeight,
+            totalDistance,
+            cargoDescription,
+            transportCount: mergedTransports.originalTransports.length + 1 // POPRAWKA: +1 za główny transport
           };
         }
       }
       
-      // DRUGIE: Sprawdź response_data dla nowego formatu - ORYGINALNY KOD
+      // DRUGIE: Sprawdź response_data.mergedTransports
       if (zamowienie?.response_data) {
         const responseData = typeof zamowienie.response_data === 'string' 
           ? JSON.parse(zamowienie.response_data) 
-          : zamowienie.response_data
+          : zamowienie.response_data;
         
-        // Agreguj dane z wszystkich połączonych transportów
-        let allCargoDescriptions = [];
-        let totalWeight = 0;
-        let allOrderNumbers = [];
-        let allMpks = [];
-        let allDocuments = [];
-        let allClients = [];
-        let totalPrice = 0;
-        
-        if (responseData?.mergedTransportIds && Array.isArray(responseData.mergedTransportIds)) {
-          responseData.mergedTransportIds.forEach(transport => {
-            if (transport.cargoDescription) allCargoDescriptions.push(transport.cargoDescription);
-            if (transport.weight) totalWeight += parseFloat(transport.weight) || 0;
-            if (transport.orderNumber) allOrderNumbers.push(transport.orderNumber);
-            if (transport.mpk) allMpks.push(transport.mpk);
-            if (transport.documents) allDocuments.push(transport.documents);
-            if (transport.clientName) allClients.push(transport.clientName);
-            if (transport.deliveryPrice) totalPrice += parseFloat(transport.deliveryPrice) || 0;
-          });
-        }
-        
-        // Dodaj główny transport
-        allOrderNumbers.unshift(zamowienie.orderNumber || zamowienie.id);
-        if (zamowienie.mpk) allMpks.unshift(zamowienie.mpk);
-        if (zamowienie.documents) allDocuments.unshift(zamowienie.documents);
-        if (zamowienie.clientName) allClients.unshift(zamowienie.clientName);
-        
-        return {
-          originalTransports: responseData?.mergedTransportIds || [],
-          costBreakdown: responseData?.costBreakdown || responseData?.priceBreakdown || null,
-          routeSequence: responseData?.routeSequence || [],
-          totalDistance: responseData?.totalDistance || 0,
-          cargoDescription: allCargoDescriptions.join(', ') || responseData?.cargoDescription || '',
-          totalWeight: totalWeight || responseData?.totalWeight || 0,
-          allOrderNumbers: [...new Set(allOrderNumbers)], // usuń duplikaty
-          allMpks: [...new Set(allMpks)],
-          allDocuments: [...new Set(allDocuments)],
-          allClients: [...new Set(allClients)],
-          totalPrice: totalPrice || responseData?.totalPrice || 0
+        if (responseData.mergedTransports && responseData.mergedTransports.originalTransports) {
+          return {
+            ...responseData.mergedTransports,
+            // Już przekazane dane
+            totalPrice: responseData.deliveryPrice || responseData.totalPrice || 0,
+            totalDistance: responseData.realRouteDistance || responseData.totalDistance || 0,
+            cargoDescription: responseData.cargoDescription || '',
+            totalWeight: responseData.totalWeight || 0
+          };
         }
       }
       
-      // Fallback do starych pól
-      return {
-        originalTransports: zamowienie.merged_transports?.originalTransports || [],
-        costBreakdown: zamowienie.response?.costBreakdown || null
-      }
+      return null;
     } catch (error) {
-      console.error('Błąd parsowania danych połączonych transportów:', error)
-      return null
+      console.error('Błąd pobierania danych połączonych transportów:', error);
+      return null;
     }
-  }
-  
-  // Pobierz dane o połączonych transportach
-  const mergedData = isMergedTransport ? getMergedData() : null
+  };
+
+  const mergedData = getMergedData()
   
   // State dla szczegółów połączonych transportów
   const [mergedTransportsDetails, setMergedTransportsDetails] = useState([]);
@@ -213,13 +203,13 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
     if (isMergedTransport && mergedData?.originalTransports?.length > 0) {
       fetchMergedTransportsDetails();
     }
-  }, [isMergedTransport]); // Zależność tylko od stanu połączenia
+  }, [isMergedTransport]); 
   
-  // UPROSZCZONA FUNKCJA agregująca dane - teraz getMergedData() robi większość pracy
+  // FUNKCJA agregująca dane - używa getMergedData()
   const getAggregatedMergedData = () => {
     if (!isMergedTransport || !mergedData) return null;
     
-    // mergedData już zawiera wszystko co potrzebujemy
+    // mergedData już zawiera wszystko co potrzebujemy z getMergedData()
     return mergedData;
   };
   
@@ -245,7 +235,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
           ? JSON.parse(zamowienie.response_data) 
           : zamowienie.response_data;
         
-        // 1. Sprawdź realRouteDistance
+        // POPRAWKA: Sprawdź realRouteDistance jako pierwszą opcję
         if (responseData.realRouteDistance && responseData.realRouteDistance > 0) {
           return responseData.realRouteDistance;
         }
@@ -281,148 +271,6 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
     return zamowienie.distanceKm || zamowienie.distance_km || 0;
   }
   
-  // Funkcja do obliczania rzeczywistej odległości trasy (tylko jeśli brak danych)
-  const calculateRouteDistance = async () => {
-    // Najpierw sprawdź czy mamy już dane
-    const existingDistance = getRouteDistanceFromData();
-    if (existingDistance > 0) {
-      return existingDistance;
-    }
-    
-    if (!isMergedTransport) {
-      return zamowienie.distanceKm || 0;
-    }
-
-    // Jeśli mamy routeSequence, użyj jej
-    const routeSequence = mergedData?.routeSequence;
-    if (routeSequence && routeSequence.length >= 2) {
-      try {
-        // Przygotuj punkty trasy w odpowiedniej kolejności
-        const waypoints = [];
-        
-        for (const point of routeSequence) {
-        let address = '';
-        
-        if (point.type === 'loading') {
-          if (point.address === 'Magazyn Białystok') {
-            address = 'Białystok, Wysockiego 69B';
-          } else if (point.address === 'Magazyn Zielonka') {
-            address = 'Zielonka, Krótka 2';
-          } else if (point.location) {
-            address = `${point.location.city}, ${point.location.postalCode || ''}, ${point.location.street || ''}`;
-          } else {
-            address = point.description;
-          }
-        } else {
-          // rozładunek
-          if (point.location) {
-            address = `${point.location.city}, ${point.location.postalCode || ''}, ${point.location.street || ''}`;
-          } else {
-            address = point.description;
-          }
-        }
-        
-        if (address) {
-          waypoints.push(address);
-        }
-      }
-
-      if (waypoints.length < 2) {
-        return zamowienie.distanceKm || 0;
-      }
-
-      // Użyj Google Maps API do obliczenia odległości przez wszystkie punkty
-      const origin = waypoints[0];
-      const destination = waypoints[waypoints.length - 1];
-      const waypointsParam = waypoints.slice(1, -1).map(wp => encodeURIComponent(wp)).join('|');
-      
-      const url = `/api/distance?origins=${encodeURIComponent(origin)}&destinations=${encodeURIComponent(destination)}${waypointsParam ? `&waypoints=${waypointsParam}` : ''}`;
-      
-      const response = await fetch(url);
-      const data = await response.json();
-      
-      if (data.status === 'OK' && data.rows && data.rows[0] && data.rows[0].elements && data.rows[0].elements[0]) {
-        const distanceKm = Math.round(data.rows[0].elements[0].distance.value / 1000);
-        return distanceKm;
-      }
-      
-      // Fallback - sumuj odległości między kolejnymi punktami
-      let totalDistance = 0;
-      for (let i = 0; i < waypoints.length - 1; i++) {
-        try {
-          const segmentUrl = `/api/distance?origins=${encodeURIComponent(waypoints[i])}&destinations=${encodeURIComponent(waypoints[i + 1])}`;
-          const segmentResponse = await fetch(segmentUrl);
-          const segmentData = await segmentResponse.json();
-          
-          if (segmentData.status === 'OK' && segmentData.rows && segmentData.rows[0] && segmentData.rows[0].elements && segmentData.rows[0].elements[0]) {
-            totalDistance += Math.round(segmentData.rows[0].elements[0].distance.value / 1000);
-          }
-        } catch (segmentError) {
-          console.warn(`Błąd obliczania segmentu ${i}: ${segmentError.message}`);
-        }
-      }
-      
-      if (totalDistance > 0) {
-        return totalDistance;
-      }
-      
-      } catch (error) {
-        console.error('Błąd obliczania odległości z routeSequence:', error);
-      }
-    }
-    
-    // Jeśli nie ma routeSequence, oblicz na podstawie rzeczywistych transportów
-    if (mergedTransportsDetails.length > 0) {
-      try {
-        
-        const waypoints = [];
-        
-        // Główny transport - załadunek
-        const mainLoadingAddress = getMainLoadingAddress();
-        if (mainLoadingAddress) {
-          waypoints.push(mainLoadingAddress);
-        }
-        
-        // Dodaj wszystkie punkty rozładunku z połączonych transportów
-        mergedTransportsDetails.forEach(transport => {
-          const deliveryAddress = getTransportDeliveryAddress(transport);
-          if (deliveryAddress) {
-            waypoints.push(deliveryAddress);
-          }
-        });
-        
-        // Główny transport - rozładunek (na końcu)
-        const mainDeliveryAddress = getMainDeliveryAddress();
-        if (mainDeliveryAddress) {
-          waypoints.push(mainDeliveryAddress);
-        }
-        
-        // Punkty trasy przygotowane
-        
-        if (waypoints.length >= 2) {
-          const origin = waypoints[0];
-          const destination = waypoints[waypoints.length - 1];
-          const waypointsParam = waypoints.slice(1, -1).map(wp => encodeURIComponent(wp)).join('|');
-          
-          const url = `/api/distance?origins=${encodeURIComponent(origin)}&destinations=${encodeURIComponent(destination)}${waypointsParam ? `&waypoints=${waypointsParam}` : ''}`;
-          
-          const response = await fetch(url);
-          const data = await response.json();
-          
-          if (data.status === 'OK' && data.rows && data.rows[0] && data.rows[0].elements && data.rows[0].elements[0]) {
-            const distanceKm = Math.round(data.rows[0].elements[0].distance.value / 1000);
-            return distanceKm;
-          }
-        }
-      } catch (error) {
-        console.error('Błąd obliczania odległości na podstawie transportów:', error);
-      }
-    }
-    
-    // Ostateczny fallback
-    return zamowienie.distanceKm || 0;
-  };
-  
   // Funkcje pomocnicze do pobierania adresów
   const getMainLoadingAddress = () => {
     if (zamowienie.location === 'Magazyn Białystok') {
@@ -452,6 +300,144 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
   // State dla rzeczywistej odległości
   const [calculatedRouteDistance, setCalculatedRouteDistance] = useState(0);
   
+  // Funkcja do obliczania rzeczywistej odległości trasy (tylko jeśli brak danych)
+  const calculateRouteDistance = async () => {
+    // Najpierw sprawdź czy mamy już dane
+    const existingDistance = getRouteDistanceFromData();
+    if (existingDistance > 0) {
+      return existingDistance;
+    }
+    
+    if (!isMergedTransport) {
+      return zamowienie.distanceKm || 0;
+    }
+
+    // Jeśli mamy routeSequence, użyj jej
+    const routeSequence = mergedData?.routeSequence;
+    if (routeSequence && routeSequence.length >= 2) {
+      try {
+        // Przygotuj punkty trasy w odpowiedniej kolejności
+        const waypoints = [];
+        
+        for (const point of routeSequence) {
+          let address = '';
+          
+          if (point.type === 'loading') {
+            if (point.address === 'Magazyn Białystok') {
+              address = 'Białystok, Wysockiego 69B';
+            } else if (point.address === 'Magazyn Zielonka') {
+              address = 'Zielonka, Krótka 2';
+            } else if (point.location) {
+              address = `${point.location.city}, ${point.location.postalCode || ''}, ${point.location.street || ''}`;
+            } else {
+              address = point.description;
+            }
+          } else {
+            // rozładunek
+            if (point.location) {
+              address = `${point.location.city}, ${point.location.postalCode || ''}, ${point.location.street || ''}`;
+            } else {
+              address = point.description;
+            }
+          }
+          
+          if (address) {
+            waypoints.push(address);
+          }
+        }
+
+        if (waypoints.length < 2) {
+          return zamowienie.distanceKm || 0;
+        }
+
+        // Użyj Google Maps API do obliczenia odległości przez wszystkie punkty
+        const origin = waypoints[0];
+        const destination = waypoints[waypoints.length - 1];
+        const waypointsParam = waypoints.slice(1, -1).map(wp => encodeURIComponent(wp)).join('|');
+        
+        const url = `/api/distance?origins=${encodeURIComponent(origin)}&destinations=${encodeURIComponent(destination)}${waypointsParam ? `&waypoints=${waypointsParam}` : ''}`;
+          
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.status === 'OK' && data.rows && data.rows[0] && data.rows[0].elements && data.rows[0].elements[0]) {
+          const distanceKm = Math.round(data.rows[0].elements[0].distance.value / 1000);
+          return distanceKm;
+        }
+      } catch (error) {
+        console.error('Błąd obliczania odległości z routeSequence:', error);
+      }
+    }
+    
+    // Jeśli nie ma routeSequence, oblicz na podstawie rzeczywistych transportów
+    if (mergedTransportsDetails.length > 0) {
+      try {
+        const waypoints = [];
+        
+        // Główny transport - załadunek
+        const mainLoadingAddress = getMainLoadingAddress();
+        if (mainLoadingAddress) {
+          waypoints.push(mainLoadingAddress);
+        }
+        
+        // Dodaj wszystkie punkty rozładunku z połączonych transportów
+        mergedTransportsDetails.forEach(transport => {
+          const deliveryAddress = getTransportDeliveryAddress(transport);
+          if (deliveryAddress) {
+            waypoints.push(deliveryAddress);
+          }
+        });
+        
+        // Główny transport - rozładunek (na końcu)
+        const mainDeliveryAddress = getMainDeliveryAddress();
+        if (mainDeliveryAddress) {
+          waypoints.push(mainDeliveryAddress);
+        }
+        
+        if (waypoints.length >= 2) {
+          const origin = waypoints[0];
+          const destination = waypoints[waypoints.length - 1];
+          const waypointsParam = waypoints.slice(1, -1).map(wp => encodeURIComponent(wp)).join('|');
+          
+          const url = `/api/distance?origins=${encodeURIComponent(origin)}&destinations=${encodeURIComponent(destination)}${waypointsParam ? `&waypoints=${waypointsParam}` : ''}`;
+      
+          const response = await fetch(url);
+          const data = await response.json();
+          
+          if (data.status === 'OK' && data.rows && data.rows[0] && data.rows[0].elements && data.rows[0].elements[0]) {
+            const distanceKm = Math.round(data.rows[0].elements[0].distance.value / 1000);
+            return distanceKm;
+          }
+          
+          // Fallback - sumuj odległości między kolejnymi punktami
+          let totalDistance = 0;
+          for (let i = 0; i < waypoints.length - 1; i++) {
+            try {
+              const segmentUrl = `/api/distance?origins=${encodeURIComponent(waypoints[i])}&destinations=${encodeURIComponent(waypoints[i + 1])}`;
+              const segmentResponse = await fetch(segmentUrl);
+              const segmentData = await segmentResponse.json();
+              
+              if (segmentData.status === 'OK' && segmentData.rows && segmentData.rows[0] && segmentData.rows[0].elements && segmentData.rows[0].elements[0]) {
+                totalDistance += Math.round(segmentData.rows[0].elements[0].distance.value / 1000);
+              }
+            } catch (segmentError) {
+              console.warn(`Błąd obliczania segmentu ${i}: ${segmentError.message}`);
+            }
+          }
+          
+          if (totalDistance > 0) {
+            return totalDistance;
+          }
+        }
+      } catch (error) {
+        console.error('Błąd obliczania odległości na podstawie transportów:', error);
+      }
+    }
+    
+    // Ostateczny fallback
+    return zamowienie.distanceKm || 0;
+  };
+  
   // Oblicz odległość przy załadowaniu komponentu
   useEffect(() => {
     const calculateDistance = async () => {
@@ -471,9 +457,9 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
     };
     
     calculateDistance();
-  }, [isMergedTransport, mergedTransportsDetails.length]); // Uproszczone dependencies
+  }, [isMergedTransport, mergedTransportsDetails.length]); 
   
-  // NOWY useEffect - automatyczne wypełnianie towaru i wagi
+  // Automatyczne wypełnianie towaru i wagi
   useEffect(() => {
     const goodsData = getGoodsDataFromResponse();
     
@@ -486,17 +472,14 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
   
   // Automatyczne wypełnienie danych dla połączonych transportów
   useEffect(() => {
-    if (isMergedTransport && mergedData) {
-      const aggregated = getAggregatedMergedData();
-      if (aggregated && aggregated.cargoDescription) {
-        setFormData(prev => ({
-          ...prev,
-          towar: aggregated.cargoDescription || prev.towar,
-          waga: aggregated.totalWeight ? aggregated.totalWeight.toString() : prev.waga
-        }))
-      }
+    if (isMergedTransport && aggregatedMergedData) {
+      setFormData(prev => ({
+        ...prev,
+        towar: aggregatedMergedData.cargoDescription || prev.towar,
+        waga: aggregatedMergedData.totalWeight ? aggregatedMergedData.totalWeight.toString() : prev.waga
+      }));
     }
-  }, [isMergedTransport, mergedTransportsDetails.length]) // Uproszczone dependencies
+  }, [isMergedTransport, aggregatedMergedData]);
   
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -565,7 +548,6 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
           {error}
         </div>
       )}
-
 
       {/* Podstawowe dane zlecenia */}
       <div className="grid grid-cols-2 gap-4">
@@ -657,7 +639,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
         </h3>
         
         <div className="space-y-4">
-          {/* Numery zleceń - w oddzielnych liniach */}
+          {/* POPRAWIONE Numery zleceń - w oddzielnych liniach */}
           <div>
             <span className="font-medium text-gray-700">Numery zleceń:</span>
             <div className="mt-1 space-y-1">
@@ -672,7 +654,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
             </div>
           </div>
 
-          {/* MPK - w oddzielnych liniach */}
+          {/* POPRAWIONE MPK - w oddzielnych liniach */}
           <div>
             <span className="font-medium text-gray-700">MPK:</span>
             <div className="mt-1 space-y-1">
@@ -687,7 +669,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
             </div>
           </div>
 
-          {/* Dokumenty - w oddzielnych liniach */}
+          {/* POPRAWIONE Dokumenty - w oddzielnych liniach */}
           <div>
             <span className="font-medium text-gray-700">Dokumenty:</span>
             <div className="mt-1 space-y-1">
@@ -702,7 +684,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
             </div>
           </div>
 
-          {/* Klienci - w oddzielnych liniach */}
+          {/* POPRAWIONE Klienci - w oddzielnych liniach */}
           {((zamowienie.clientName) || (isMergedTransport && aggregatedMergedData?.allClients?.length > 0)) && (
             <div>
               <span className="font-medium text-gray-700">Klienci:</span>
@@ -719,7 +701,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
             </div>
           )}
 
-          {/* Podsumowanie danych */}
+          {/* POPRAWIONE Podsumowanie danych */}
           <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-200">
             <div className="space-y-2">
               {isMergedTransport && (
@@ -727,14 +709,35 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
               )}
               <p><span className="font-medium">Łączna odległość:</span> {
                 (() => {
-                  const distance = calculatedRouteDistance > 0 ? calculatedRouteDistance : getRouteDistanceFromData();
+                  // POPRAWKA: Używaj właściwej hierarchii danych
+                  if (calculatedRouteDistance > 0) {
+                    return calculatedRouteDistance;
+                  }
+                  
+                  if (isMergedTransport && aggregatedMergedData?.totalDistance) {
+                    return aggregatedMergedData.totalDistance;
+                  }
+                  
+                  // Dla zwykłego transportu
+                  const distance = getRouteDistanceFromData();
                   return distance || 0;
                 })()
               } km</p>
               <p><span className="font-medium">Wartość transportu:</span> {
                 isMergedTransport && aggregatedMergedData?.totalPrice 
                   ? aggregatedMergedData.totalPrice 
-                  : (zamowienie.response?.deliveryPrice || 0)
+                  : (() => {
+                      try {
+                        const responseData = zamowienie?.response_data 
+                          ? (typeof zamowienie.response_data === 'string' 
+                             ? JSON.parse(zamowienie.response_data) 
+                             : zamowienie.response_data)
+                          : {};
+                        return responseData.deliveryPrice || 0;
+                      } catch (error) {
+                        return 0;
+                      }
+                    })()
               } PLN</p>
             </div>
             
@@ -749,8 +752,8 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
           </div>
         </div>
         
-        {/* Szczegóły tras dla transportu połączonego - UPROSZCZONE */}
-        {isMergedTransport && aggregatedMergedData && (
+        {/* UPROSZCZONE Szczegóły tras dla transportu połączonego */}
+        {isMergedTransport && mergedData && (
           <div className="mt-4 pt-3 border-t border-gray-200">
             <h4 className="font-bold text-sm mb-2 text-gray-800">Szczegóły wszystkich tras:</h4>
             
@@ -769,12 +772,12 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
                       </div>
                       <div className="flex-1">
                         <div className="font-medium text-gray-900">
-                          {point.type === 'loading' ? 'Załadunek' : 'Rozładunek'} - {point.city}
+                          {point.type === 'loading' ? 'Załadunek' : 'Rozładunek'}
                         </div>
-                        <div className="text-sm text-gray-600 mt-1">
-                          <strong>{point.company}</strong>
+                        <div className="text-sm text-gray-600">
+                          {point.description}
                         </div>
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-gray-500 mt-1">
                           {point.address}
                         </div>
                       </div>
@@ -783,66 +786,32 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
                 </div>
               </div>
             ) : (
-              /* Fallback - stary sposób wyświetlania */
-              <div>
-                <div className="mb-2 p-2 bg-white rounded border border-purple-100">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <span className="font-medium">GŁÓWNA: {zamowienie.orderNumber}</span>
-                      <div className="text-xs text-gray-600 mt-1">
-                        Załadunek: {zamowienie.location === 'Odbiory własne' 
-                          ? formatAddress(zamowienie.producerAddress) 
-                          : zamowienie.location}
-                      </div>
-                      <div className="text-xs text-gray-600">
-                        Rozładunek: {formatAddress(zamowienie.delivery)}
-                      </div>
-                    </div>
-                    <div className="text-right text-sm">
-                      <div className="font-medium text-green-600">
-                        {aggregatedMergedData.costBreakdown?.[zamowienie.id] || 0} PLN
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        MPK: {zamowienie.mpk}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Pozostałe transporty */}
-                {aggregatedMergedData.originalTransports && aggregatedMergedData.originalTransports.length > 0 && (
-                  <div className="text-sm text-gray-600 mt-2">
-                    <strong>Transporty połączone:</strong> {aggregatedMergedData.originalTransports.map(t => t.orderNumber || t.id).join(', ')}
-                  </div>
-                )}
+              <div className="text-sm text-gray-500">
+                Szczegóły trasy nie są dostępne
               </div>
             )}
           </div>
         )}
       </div>
       
-      <div className="flex justify-end gap-2 pt-4 border-t">
+      {/* Przyciski */}
+      <div className="flex gap-4 pt-4">
         <button
           type="button"
-          onClick={() => {
-            console.log('Zamykanie formularza zlecenia transportowego');
-            if (onCancel) {
-              onCancel();
-            }
-          }}
-          className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors"
+          onClick={onCancel}
+          className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
         >
-          Zamknij
+          Anuluj
         </button>
         <button
           type="submit"
           disabled={isSubmitting}
-          className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center gap-2"
+          className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         >
-          <Truck size={16} />
+          <FileText size={18} />
           {isSubmitting ? 'Wysyłanie...' : 'Wyślij zlecenie'}
         </button>
       </div>
     </form>
-  )
+  );
 }
