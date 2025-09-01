@@ -562,6 +562,13 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
               </span>
             )}
           </div>
+
+          {/* DODAJ TEN CONSOLE.LOG */}
+          {console.log('🔍 DEBUG TransportOrderForm:')}
+          {console.log('🔍 isMergedTransport:', isMergedTransport)}
+          {console.log('🔍 mergedData:', mergedData)}
+          {console.log('🔍 mergedTransportsDetails:', mergedTransportsDetails)}
+          {console.log('🔍 aggregatedMergedData:', aggregatedMergedData)}
           
           <div className="bg-white rounded-lg p-4 border">
             <MergedTransportSummary 
