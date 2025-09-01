@@ -2,6 +2,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { Calendar, Info, Truck, FileText, MapPin, DollarSign, LinkIcon, Building, ShoppingBag, Weight } from 'lucide-react'
+import MergedTransportSummary from './MergedTransportSummary' // NOWY IMPORT
 
 export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
   const [formData, setFormData] = useState({
@@ -549,6 +550,34 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
         </div>
       )}
 
+      {/* NOWA SEKCJA: Szczegółowe informacje o połączonych transportach */}
+      {isMergedTransport && (
+        <div className="mt-6 bg-blue-50 p-6 rounded-lg border border-blue-200">
+          <div className="flex items-center mb-4">
+            <LinkIcon size={20} className="mr-2 text-blue-600" />
+            <h3 className="text-lg font-semibold text-blue-800">Transport Połączony</h3>
+            {aggregatedMergedData?.transportCount && (
+              <span className="ml-2 bg-blue-600 text-white px-2 py-1 rounded-full text-xs">
+                {aggregatedMergedData.transportCount} tras
+              </span>
+            )}
+          </div>
+          
+          <div className="bg-white rounded-lg p-4 border">
+            <MergedTransportSummary 
+              transport={zamowienie}
+              mergedData={mergedData}
+              allTransports={null}
+            />
+          </div>
+          
+          <div className="mt-4 text-sm text-blue-700 bg-blue-100 p-3 rounded-md">
+            <strong>Informacja:</strong> To zlecenie obejmuje {aggregatedMergedData?.transportCount || 1} połączonych transportów. 
+            Wszystkie szczegóły tras i punktów dostawy są wyświetlone powyżej.
+          </div>
+        </div>
+      )}
+
       {/* Podstawowe dane zlecenia */}
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -631,7 +660,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
         </div>
       </div>
       
-      {/* POPRAWIONE Podsumowanie zlecenia */}
+      {/* ROZSZERZONE Podsumowanie zlecenia */}
       <div className="mt-6 bg-gray-50 p-4 rounded-md">
         <h3 className="font-medium mb-4 flex items-center">
           <FileText size={18} className="mr-2 text-blue-600" />
@@ -645,7 +674,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
             <div className="mt-1 space-y-1">
               {(isMergedTransport && aggregatedMergedData?.allOrderNumbers 
                 ? aggregatedMergedData.allOrderNumbers 
-                : [zamowienie.orderNumber || zamowienie.id]
+                : [zamowienie.orderNumber || zamowienie.order_number || zamowienie.id]
               ).map((orderNum, index) => (
                 <div key={index} className="ml-4 text-sm bg-white px-2 py-1 rounded border">
                   {index + 1}. {orderNum}
@@ -654,54 +683,110 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
             </div>
           </div>
 
-          {/* POPRAWIONE MPK - w oddzielnych liniach */}
-          <div>
-            <span className="font-medium text-gray-700">MPK:</span>
-            <div className="mt-1 space-y-1">
-              {(isMergedTransport && aggregatedMergedData?.allMpks 
-                ? aggregatedMergedData.allMpks 
-                : [zamowienie.mpk].filter(Boolean)
-              ).map((mpk, index) => (
-                <div key={index} className="ml-4 text-sm bg-white px-2 py-1 rounded border">
-                  {index + 1}. {mpk}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* POPRAWIONE Dokumenty - w oddzielnych liniach */}
-          <div>
-            <span className="font-medium text-gray-700">Dokumenty:</span>
-            <div className="mt-1 space-y-1">
-              {(isMergedTransport && aggregatedMergedData?.allDocuments 
-                ? aggregatedMergedData.allDocuments 
-                : [zamowienie.documents].filter(Boolean)
-              ).map((doc, index) => (
-                <div key={index} className="ml-4 text-sm bg-white px-2 py-1 rounded border">
-                  {index + 1}. {doc}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* POPRAWIONE Klienci - w oddzielnych liniach */}
-          {((zamowienie.clientName) || (isMergedTransport && aggregatedMergedData?.allClients?.length > 0)) && (
-            <div>
-              <span className="font-medium text-gray-700">Klienci:</span>
-              <div className="mt-1 space-y-1">
-                {(isMergedTransport && aggregatedMergedData?.allClients 
-                  ? aggregatedMergedData.allClients 
-                  : [zamowienie.clientName].filter(Boolean)
-                ).map((client, index) => (
-                  <div key={index} className="ml-4 text-sm bg-white px-2 py-1 rounded border">
-                    {index + 1}. {client}
+          {/* ROZSZERZONE INFORMACJE dla połączonych transportów */}
+          {isMergedTransport && aggregatedMergedData && (
+            <>
+              {/* Wszystkie MPK */}
+              {aggregatedMergedData.allMpks && aggregatedMergedData.allMpks.length > 0 && (
+                <div>
+                  <span className="font-medium text-gray-700">MPK:</span>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {aggregatedMergedData.allMpks.map((mpk, index) => (
+                      <span key={index} className="bg-green-100 text-green-800 px-2 py-1 rounded-md text-xs">
+                        {mpk}
+                      </span>
+                    ))}
                   </div>
-                ))}
+                </div>
+              )}
+
+              {/* Wszystkie dokumenty */}
+              {aggregatedMergedData.allDocuments && aggregatedMergedData.allDocuments.length > 0 && (
+                <div>
+                  <span className="font-medium text-gray-700">Dokumenty:</span>
+                  <div className="mt-1 space-y-1">
+                    {aggregatedMergedData.allDocuments.map((doc, index) => (
+                      <div key={index} className="ml-4 text-sm bg-yellow-50 px-2 py-1 rounded border border-yellow-200">
+                        {doc}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Wszyscy klienci */}
+              {aggregatedMergedData.allClients && aggregatedMergedData.allClients.length > 0 && (
+                <div>
+                  <span className="font-medium text-gray-700">Klienci:</span>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {aggregatedMergedData.allClients.map((client, index) => (
+                      <span key={index} className="bg-purple-100 text-purple-800 px-2 py-1 rounded-md text-xs">
+                        {client}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Informacje finansowe i dystans */}
+              <div className="grid grid-cols-3 gap-4 mt-4 p-3 bg-gray-100 rounded-md">
+                <div className="text-center">
+                  <div className="text-xs text-gray-600">Łączna cena</div>
+                  <div className="font-bold text-green-600">
+                    {aggregatedMergedData.totalPrice ? `${aggregatedMergedData.totalPrice.toFixed(2)} PLN` : 'Do ustalenia'}
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-xs text-gray-600">Łączna waga</div>
+                  <div className="font-bold text-blue-600">
+                    {aggregatedMergedData.totalWeight ? `${aggregatedMergedData.totalWeight} kg` : 'Do ustalenia'}
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-xs text-gray-600">Odległość</div>
+                  <div className="font-bold text-orange-600">
+                    {aggregatedMergedData.totalDistance ? `${aggregatedMergedData.totalDistance} km` : 'Do ustalenia'}
+                  </div>
+                </div>
               </div>
-            </div>
+            </>
           )}
 
-          {/* POPRAWIONE Podsumowanie danych */}
+          {/* Podstawowe informacje - również dla normalnych transportów */}
+          {!isMergedTransport && (
+            <>
+              <div>
+                <span className="font-medium text-gray-700">MPK:</span>
+                <div className="mt-1">
+                  <span className="bg-green-100 text-green-800 px-2 py-1 rounded-md text-xs">
+                    {zamowienie.mpk || 'Nie podano'}
+                  </span>
+                </div>
+              </div>
+
+              {zamowienie.documents && (
+                <div>
+                  <span className="font-medium text-gray-700">Dokumenty:</span>
+                  <div className="mt-1 text-sm bg-yellow-50 px-2 py-1 rounded border border-yellow-200">
+                    {zamowienie.documents}
+                  </div>
+                </div>
+              )}
+
+              {zamowienie.clientName && (
+                <div>
+                  <span className="font-medium text-gray-700">Klient:</span>
+                  <div className="mt-1">
+                    <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-md text-xs">
+                      {zamowienie.clientName}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Informacje o trasie i odległości */}
           <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-200">
             <div className="space-y-2">
               {isMergedTransport && (
@@ -709,7 +794,6 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
               )}
               <p><span className="font-medium">Łączna odległość:</span> {
                 (() => {
-                  // POPRAWKA: Używaj właściwej hierarchii danych
                   if (calculatedRouteDistance > 0) {
                     return calculatedRouteDistance;
                   }
@@ -718,14 +802,13 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
                     return aggregatedMergedData.totalDistance;
                   }
                   
-                  // Dla zwykłego transportu
                   const distance = getRouteDistanceFromData();
-                  return distance || 0;
+                  return distance || zamowienie.distanceKm || zamowienie.distance_km || 0;
                 })()
               } km</p>
               <p><span className="font-medium">Wartość transportu:</span> {
                 isMergedTransport && aggregatedMergedData?.totalPrice 
-                  ? aggregatedMergedData.totalPrice 
+                  ? `${aggregatedMergedData.totalPrice.toFixed(2)} PLN`
                   : (() => {
                       try {
                         const responseData = zamowienie?.response_data 
@@ -733,12 +816,13 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
                              ? JSON.parse(zamowienie.response_data) 
                              : zamowienie.response_data)
                           : {};
-                        return responseData.deliveryPrice || 0;
+                        const price = responseData.deliveryPrice || 0;
+                        return price > 0 ? `${price.toFixed(2)} PLN` : 'Do ustalenia';
                       } catch (error) {
-                        return 0;
+                        return 'Do ustalenia';
                       }
                     })()
-              } PLN</p>
+              }</p>
             </div>
             
             <div className="space-y-2">
@@ -748,70 +832,53 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
               {!isMergedTransport && (
                 <p><span className="font-medium">Trasa:</span> {getTransportRoute(zamowienie)}</p>
               )}
+              
+              {/* Podstawowe informacje o adresach */}
+              <div className="text-sm text-gray-600">
+                <div><span className="font-medium">Załadunek:</span> {
+                  zamowienie.location === 'Odbiory własne' && zamowienie.producerAddress 
+                    ? formatAddress(zamowienie.producerAddress)
+                    : (zamowienie.location || 'Nie podano')
+                }</div>
+                <div><span className="font-medium">Rozładunek:</span> {
+                  zamowienie.delivery_data 
+                    ? formatAddress(JSON.parse(zamowienie.delivery_data))
+                    : (zamowienie.delivery ? formatAddress(zamowienie.delivery) : 'Nie podano')
+                }</div>
+              </div>
             </div>
           </div>
         </div>
-        
-        {/* UPROSZCZONE Szczegóły tras dla transportu połączonego */}
-        {isMergedTransport && mergedData && (
-          <div className="mt-4 pt-3 border-t border-gray-200">
-            <h4 className="font-bold text-sm mb-2 text-gray-800">Szczegóły wszystkich tras:</h4>
-            
-            {mergedData?.routeSequence && mergedData.routeSequence.length > 0 ? (
-              /* Wyświetl sekwencję trasy - UPROSZCZONE */
-              <div className="mb-3 p-3 bg-blue-50 rounded border border-blue-200">
-                <h5 className="font-medium text-blue-800 mb-3 flex items-center">
-                  <MapPin size={16} className="mr-2" />
-                  Sekwencja trasy ({mergedData.routeSequence.length} punktów)
-                </h5>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {mergedData.routeSequence.map((point, index) => (
-                    <div key={point.id || index} className="flex items-start gap-3 p-2 bg-white rounded border">
-                      <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0">
-                        {index + 1}
-                      </div>
-                      <div className="flex-1">
-                        <div className="font-medium text-gray-900">
-                          {point.type === 'loading' ? 'Załadunek' : 'Rozładunek'}
-                        </div>
-                        <div className="text-sm text-gray-600">
-                          {point.description}
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          {point.address}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="text-sm text-gray-500">
-                Szczegóły trasy nie są dostępne
-              </div>
-            )}
-          </div>
-        )}
       </div>
-      
-      {/* Przyciski */}
-      <div className="flex gap-4 pt-4">
+
+      {/* Przyciski akcji */}
+      <div className="flex justify-end space-x-4 pt-6 border-t">
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+          className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors"
+          disabled={isSubmitting}
         >
           Anuluj
         </button>
         <button
           type="submit"
+          className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-2"
           disabled={isSubmitting}
-          className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         >
-          <FileText size={18} />
-          {isSubmitting ? 'Wysyłanie...' : 'Wyślij zlecenie'}
+          {isSubmitting ? (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              Wysyłanie...
+            </>
+          ) : (
+            <>
+              <FileText size={16} />
+              Wyślij zlecenie
+            </>
+          )}
         </button>
       </div>
     </form>
-  );
+  )
 }
