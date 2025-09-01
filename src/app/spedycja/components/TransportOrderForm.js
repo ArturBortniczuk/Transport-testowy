@@ -2,7 +2,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { Calendar, Info, Truck, FileText, MapPin, DollarSign, LinkIcon, Building, ShoppingBag, Weight } from 'lucide-react'
-import MergedTransportSummary from './MergedTransportSummary' // JEDYNA NOWA LINIJKA
+import MergedTransportSummary from './MergedTransportSummary'
 
 export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
   const [formData, setFormData] = useState({
@@ -68,91 +68,84 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
     if (!isMergedTransport) return null
     
     try {
-      // NAJPIERW: Sprawdź merged_transports (główne źródło danych)
-      if (zamowienie.merged_transports) {
-        const mergedTransports = typeof zamowienie.merged_transports === 'string' 
-          ? JSON.parse(zamowienie.merged_transports) 
-          : zamowienie.merged_transports;
-        
-        if (mergedTransports.originalTransports && Array.isArray(mergedTransports.originalTransports)) {
-          // Agreguj dane z originalTransports
-          let allOrderNumbers = [zamowienie.orderNumber || zamowienie.order_number || zamowienie.id];
-          let allMpks = zamowienie.mpk ? [zamowienie.mpk] : [];
-          let allDocuments = zamowienie.documents ? [zamowienie.documents] : [];
-          let allClients = zamowienie.clientName ? [zamowienie.clientName] : [];
-          let totalPrice = 0;
-          let totalWeight = 0;
-          let totalDistance = 0;
-          let cargoDescription = '';
-
-          // POPRAWIONE AGREGOWANIE DANYCH Z response_data
-          try {
-            const responseData = zamowienie.response_data 
-              ? (typeof zamowienie.response_data === 'string' 
-                 ? JSON.parse(zamowienie.response_data) 
-                 : zamowienie.response_data)
-              : {};
-
-            totalPrice = responseData.deliveryPrice || responseData.totalPrice || 0;
-            totalDistance = responseData.realRouteDistance || responseData.totalDistance || zamowienie.distance_km || 0;
-            cargoDescription = responseData.cargoDescription || '';
-            totalWeight = responseData.totalWeight || 0;
-          } catch (e) {
-            console.error('Błąd parsowania response_data w getMergedData:', e);
-          }
-
-          // Dodaj dane z połączonych transportów
-          mergedTransports.originalTransports.forEach(transport => {
-            if (typeof transport === 'object') {
-              if (transport.orderNumber) allOrderNumbers.push(transport.orderNumber);
-              if (transport.mpk) allMpks.push(transport.mpk);
-              if (transport.documents) allDocuments.push(transport.documents);
-              if (transport.clientName) allClients.push(transport.clientName);
-            }
-          });
-
-          // Usuń duplikaty
-          allOrderNumbers = [...new Set(allOrderNumbers)];
-          allMpks = [...new Set(allMpks)];
-          allDocuments = [...new Set(allDocuments.filter(Boolean))];
-          allClients = [...new Set(allClients.filter(Boolean))];
-
-          return {
-            ...mergedTransports,
-            allOrderNumbers,
-            allMpks,
-            allDocuments,
-            allClients,
-            totalPrice,
-            totalWeight,
-            totalDistance,
-            cargoDescription,
-            transportCount: mergedTransports.originalTransports.length + 1 // POPRAWKA: +1 za główny transport
-          };
-        }
-      }
+      console.log('🔍 getMergedData: Sprawdzam dane dla transportu', zamowienie.id);
       
-      // DRUGIE: Sprawdź response_data.mergedTransports
+      // NAJPIERW: Sprawdź response_data (główne źródło danych)
       if (zamowienie?.response_data) {
+        console.log('🔍 getMergedData: Mam response_data');
         const responseData = typeof zamowienie.response_data === 'string' 
           ? JSON.parse(zamowienie.response_data) 
           : zamowienie.response_data;
         
-        if (responseData.mergedTransports && responseData.mergedTransports.originalTransports) {
+        console.log('🔍 getMergedData: Parsed response_data:', responseData);
+        
+        // POPRAWKA: Sprawdź mergedTransportIds zamiast originalTransports
+        if (responseData.mergedTransportIds && Array.isArray(responseData.mergedTransportIds) && responseData.mergedTransportIds.length > 0) {
+          console.log('✅ getMergedData: Znaleziono mergedTransportIds:', responseData.mergedTransportIds);
+          
+          // Utwórz dane używając mergedTransportIds
+          let allOrderNumbers = [zamowienie.orderNumber || zamowienie.order_number || zamowienie.id];
+          let allMpks = zamowienie.mpk ? [zamowienie.mpk] : [];
+          let allDocuments = zamowienie.documents ? [zamowienie.documents] : [];
+          let allClients = zamowienie.clientName ? [zamowienie.clientName] : [];
+          
+          // Utwórz originalTransports z mergedTransportIds (na potrzeby kompatybilności)
+          const originalTransports = responseData.mergedTransportIds.map(id => ({ id }));
+          
           return {
-            ...responseData.mergedTransports,
-            // Już przekazane dane
-            totalPrice: responseData.deliveryPrice || responseData.totalPrice || 0,
-            totalDistance: responseData.realRouteDistance || responseData.totalDistance || 0,
+            originalTransports: originalTransports,
+            routeSequence: responseData.routeSequence || [],
+            mergedTransportIds: responseData.mergedTransportIds,
+            allOrderNumbers,
+            allMpks,
+            allDocuments,
+            allClients,
+            totalPrice: responseData.totalDeliveryPrice || responseData.deliveryPrice || 0,
+            totalWeight: responseData.totalWeight || 0,
+            totalDistance: responseData.distance || 0,
             cargoDescription: responseData.cargoDescription || '',
-            totalWeight: responseData.totalWeight || 0
+            transportCount: responseData.mergedTransportIds.length, // Liczba wszystkich transportów
+            isMainMerged: responseData.isMainMerged || false
           };
         }
       }
       
+      // DRUGIE: Sprawdź merged_transports
+      if (zamowienie.merged_transports) {
+        console.log('🔍 getMergedData: Sprawdzam merged_transports');
+        const mergedTransports = typeof zamowienie.merged_transports === 'string' 
+          ? JSON.parse(zamowienie.merged_transports) 
+          : zamowienie.merged_transports;
+        
+        console.log('🔍 getMergedData: Parsed merged_transports:', mergedTransports);
+        
+        // POPRAWKA: Sprawdź mergedTransportIds w merged_transports
+        if (mergedTransports.mergedTransportIds && Array.isArray(mergedTransports.mergedTransportIds)) {
+          console.log('✅ getMergedData: Znaleziono mergedTransportIds w merged_transports:', mergedTransports.mergedTransportIds);
+          
+          const originalTransports = mergedTransports.mergedTransportIds.map(id => ({ id }));
+          
+          return {
+            originalTransports: originalTransports,
+            mergedTransportIds: mergedTransports.mergedTransportIds,
+            allOrderNumbers: [zamowienie.orderNumber || zamowienie.order_number || zamowienie.id],
+            allMpks: zamowienie.mpk ? [zamowienie.mpk] : [],
+            allDocuments: zamowienie.documents ? [zamowienie.documents] : [],
+            allClients: zamowienie.clientName ? [zamowienie.clientName] : [],
+            totalPrice: 0,
+            totalWeight: 0,
+            totalDistance: 0,
+            cargoDescription: '',
+            transportCount: mergedTransports.mergedTransportIds.length,
+            isMain: mergedTransports.isMain || false
+          };
+        }
+      }
+      
+      console.log('❌ getMergedData: Nie znaleziono danych o połączonych transportach');
       return null;
     } catch (error) {
-      console.error('Błąd pobierania danych połączonych transportów:', error);
+      console.error('❌ getMergedData: Błąd pobierania danych połączonych transportów:', error);
       return null;
     }
   };
@@ -562,8 +555,8 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
               </span>
             )}
           </div>
-
-          {/* DODAJ TEN CONSOLE.LOG */}
+          
+          {/* DEBUG CONSOLE LOGS */}
           {console.log('🔍 DEBUG TransportOrderForm:')}
           {console.log('🔍 isMergedTransport:', isMergedTransport)}
           {console.log('🔍 mergedData:', mergedData)}
