@@ -567,7 +567,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
             <MergedTransportSummary 
               transport={zamowienie}
               mergedData={mergedData}
-              allTransports={null}
+              allTransports={mergedTransportsDetails}
             />
           </div>
           
