@@ -552,7 +552,7 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
           </div>
           <div className="text-sm text-gray-600 space-y-1">
             {allClients.map((client, idx) => (
-              <div key={idx} className="truncate">{client}</div>
+              <div key={idx} className="break-words">{client}</div>
             ))}
           </div>
         </div>
@@ -565,7 +565,7 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
           </div>
           <div className="text-sm text-gray-600 space-y-1">
             {allDocuments.map((doc, idx) => (
-              <div key={idx} className="truncate">{doc}</div>
+              <div key={idx} className="break-words">{doc}</div>
             ))}
           </div>
         </div>
@@ -578,7 +578,7 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
           </div>
           <div className="text-sm text-gray-600 space-y-1">
             {allResponsible.map((person, idx) => (
-              <div key={idx} className="truncate">{person}</div>
+              <div key={idx} className="break-words">{person}</div>
             ))}
           </div>
         </div>
