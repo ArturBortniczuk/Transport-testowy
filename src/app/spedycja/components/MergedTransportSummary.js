@@ -1,4 +1,3 @@
-// src/app/spedycja/components/MergedTransportSummary.js
 import React from 'react';
 import { 
   Truck, 
@@ -109,7 +108,7 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
     return null;
   };
 
-  // Funkcja do pobrania wszystkich danych transportów (zarówno głównego jak i połączonych)
+  // Funkcja do pobierania wszystkich danych transportów (zarówno głównego jak i połączonych)
   const getAllTransportsData = () => {
     const allTransports = [];
     const addedIds = new Set(); // Śledź już dodane transporty
@@ -120,16 +119,20 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
     
     if (mainTransport) {
       console.log('🔄 Transport dodatkowy - używam danych z głównego transportu');
+      
+      // Jeśli główny transport ma pełne mergedData, użyj ich
+      // To powinno być przekazane przez komponent rodzica, ale na razie spróbujmy
+      // Będziemy musieli sprawdzić czy główny transport ma pełne dane
     }
     
     // ZAWSZE dodaj obecny transport jako pierwszy
     const currentTransportData = {
       id: transport.id,
-      orderNumber: transport.order_number || transport.orderNumber,
+      orderNumber: transport.order_number,
       mpk: transport.mpk,
       documents: transport.documents,
-      clientName: transport.client_name || transport.clientName,
-      responsiblePerson: transport.responsible_person || transport.responsiblePerson,
+      clientName: transport.client_name,
+      responsiblePerson: transport.responsible_person,
       location: transport.location,
       delivery_data: transport.delivery_data,
       route: getTransportRoute(transport),
@@ -140,136 +143,110 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
     allTransports.push(currentTransportData);
     addedIds.add(transport.id);
 
-    // GŁÓWNY PROBLEM: Sprawdźmy response_data dla mergedTransportIds
-    if (transport.response_data) {
-      try {
-        const responseData = typeof transport.response_data === 'string' 
-          ? JSON.parse(transport.response_data) 
-          : transport.response_data;
-        
-        console.log('🔍 Response data:', responseData);
-        
-        // KLUCZOWE: Sprawdź mergedTransportIds zamiast originalTransports
-        if (responseData.mergedTransportIds && Array.isArray(responseData.mergedTransportIds)) {
-          console.log('✅ Znaleziono mergedTransportIds:', responseData.mergedTransportIds);
+    // 1. Sprawdź mergedData przekazane z rodzica (najważniejsze źródło)
+    if (effectiveMergedData?.originalTransports && Array.isArray(effectiveMergedData.originalTransports) && effectiveMergedData.originalTransports.length > 0) {
+      console.log('✅ Używam pełnych danych z mergedData:', effectiveMergedData.originalTransports);
+      effectiveMergedData.originalTransports.forEach(originalTransport => {
+        if (!addedIds.has(originalTransport.id)) {
+          const transportData = {
+            id: originalTransport.id,
+            orderNumber: originalTransport.orderNumber || originalTransport.order_number,
+            mpk: originalTransport.mpk,
+            documents: originalTransport.documents,
+            clientName: originalTransport.clientName || originalTransport.client_name,
+            responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
+            location: originalTransport.location,
+            delivery_data: originalTransport.delivery_data,
+            route: originalTransport.route,
+            distance_km: originalTransport.distance_km || originalTransport.distanceKm,
+            distanceKm: originalTransport.distanceKm || originalTransport.distance_km
+          };
+          allTransports.push(transportData);
+          addedIds.add(originalTransport.id);
+        }
+      });
+    } else {
+      console.log('⚠️ MergedData są puste, sprawdzam inne źródła...');
+      
+      // 2. Sprawdź response_data (backup)
+      if (transport.response_data) {
+        try {
+          const responseData = typeof transport.response_data === 'string' 
+            ? JSON.parse(transport.response_data) 
+            : transport.response_data;
           
-          // Dla każdego ID stwórz dane transportu
-          responseData.mergedTransportIds.forEach((transportId, index) => {
-            if (!addedIds.has(transportId) && transportId !== transport.id) {
-              // Sprawdź czy mamy routeSequence z dodatkowymi danymi
-              let routeData = null;
-              if (responseData.routeSequence && responseData.routeSequence[index + 1]) {
-                routeData = responseData.routeSequence[index + 1];
+          // Sprawdź różne możliwe struktury danych
+          let originalTransports = null;
+          
+          if (responseData.originalTransports) {
+            originalTransports = responseData.originalTransports;
+          } else if (responseData.transports) {
+            originalTransports = responseData.transports;
+          } else if (responseData.mergedTransports) {
+            originalTransports = responseData.mergedTransports;
+          }
+          
+          if (originalTransports && Array.isArray(originalTransports)) {
+            originalTransports.forEach(originalTransport => {
+              if (!addedIds.has(originalTransport.id)) {
+                const transportData = {
+                  id: originalTransport.id,
+                  orderNumber: originalTransport.orderNumber || originalTransport.order_number,
+                  mpk: originalTransport.mpk,
+                  documents: originalTransport.documents,
+                  clientName: originalTransport.clientName || originalTransport.client_name,
+                  responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
+                  location: originalTransport.location,
+                  delivery_data: originalTransport.delivery_data,
+                  route: originalTransport.route || getTransportRoute(originalTransport),
+                  distance_km: originalTransport.distance_km || originalTransport.distanceKm,
+                  distanceKm: originalTransport.distanceKm || originalTransport.distance_km
+                };
+                allTransports.push(transportData);
+                addedIds.add(originalTransport.id);
               }
-              
-              const transportData = {
-                id: transportId,
-                orderNumber: routeData?.orderNumber || `Generated-${transportId}`,
-                mpk: routeData?.mpk || `MPK-${transportId}`,
-                documents: routeData?.documents || `DOC-${transportId}`,
-                clientName: routeData?.clientName || `Client-${transportId}`,
-                responsiblePerson: routeData?.responsiblePerson || transport.responsible_person,
-                location: routeData?.startLocation || 'Unknown',
-                delivery_data: routeData?.endLocation,
-                route: routeData ? `${routeData.startLocation} → ${routeData.endLocation}` : `Transport ${transportId}`,
-                distance_km: routeData?.distance || 0,
-                distanceKm: routeData?.distance || 0
-              };
-              allTransports.push(transportData);
-              addedIds.add(transportId);
-            }
-          });
+            });
+          }
+        } catch (e) {
+          console.error('Błąd parsowania response_data:', e);
         }
-        
-        // FALLBACK: Sprawdź originalTransports 
-        if (responseData.originalTransports && Array.isArray(responseData.originalTransports)) {
-          responseData.originalTransports.forEach(originalTransport => {
-            if (!addedIds.has(originalTransport.id)) {
-              const transportData = {
-                id: originalTransport.id,
-                orderNumber: originalTransport.orderNumber || originalTransport.order_number,
-                mpk: originalTransport.mpk,
-                documents: originalTransport.documents,
-                clientName: originalTransport.clientName || originalTransport.client_name,
-                responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
-                location: originalTransport.location,
-                delivery_data: originalTransport.delivery_data,
-                route: originalTransport.route,
-                distance_km: originalTransport.distance_km || originalTransport.distanceKm,
-                distanceKm: originalTransport.distanceKm || originalTransport.distance_km
-              };
-              allTransports.push(transportData);
-              addedIds.add(originalTransport.id);
-            }
-          });
-        }
-        
-        // NOWE: Sprawdź routeSequence bezpośrednio
-        if (responseData.routeSequence && Array.isArray(responseData.routeSequence) && responseData.routeSequence.length > 1) {
-          console.log('✅ Znaleziono routeSequence:', responseData.routeSequence);
+      }
+
+      // 3. Sprawdź merged_transports (backup)
+      if (transport.merged_transports) {
+        try {
+          const mergedTransportsData = typeof transport.merged_transports === 'string' 
+            ? JSON.parse(transport.merged_transports) 
+            : transport.merged_transports;
           
-          responseData.routeSequence.forEach((routePoint, index) => {
-            if (index === 0) return; // Skip first point (current transport)
-            
-            const routeId = `route-${index}`;
-            if (!addedIds.has(routeId)) {
-              const transportData = {
-                id: routeId,
-                orderNumber: routePoint.orderNumber || `Route-${index}`,
-                mpk: routePoint.mpk || 'Brak',
-                documents: routePoint.documents || 'Brak',
-                clientName: routePoint.clientName || routePoint.companyName || 'Brak',
-                responsiblePerson: routePoint.responsiblePerson || transport.responsible_person,
-                location: routePoint.startLocation || routePoint.location,
-                delivery_data: routePoint.endLocation,
-                route: `${routePoint.startLocation || routePoint.location} → ${routePoint.endLocation || routePoint.destination}`,
-                distance_km: routePoint.distance || 0,
-                distanceKm: routePoint.distance || 0
-              };
-              allTransports.push(transportData);
-              addedIds.add(routeId);
-            }
-          });
+          if (mergedTransportsData.originalTransports && Array.isArray(mergedTransportsData.originalTransports)) {
+            mergedTransportsData.originalTransports.forEach(originalTransport => {
+              if (!addedIds.has(originalTransport.id)) {
+                const transportData = {
+                  id: originalTransport.id,
+                  orderNumber: originalTransport.orderNumber || originalTransport.order_number,
+                  mpk: originalTransport.mpk,
+                  documents: originalTransport.documents,
+                  clientName: originalTransport.clientName || originalTransport.client_name,
+                  responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
+                  location: originalTransport.location,
+                  delivery_data: originalTransport.delivery_data,
+                  route: originalTransport.route,
+                  distance_km: originalTransport.distance_km || originalTransport.distanceKm,
+                  distanceKm: originalTransport.distanceKm || originalTransport.distance_km
+                };
+                allTransports.push(transportData);
+                addedIds.add(originalTransport.id);
+              }
+            });
+          }
+        } catch (e) {
+          console.error('Błąd parsowania merged_transports:', e);
         }
-      } catch (e) {
-        console.error('Błąd parsowania response_data:', e);
       }
     }
 
-    // 3. Sprawdź merged_transports (backup)
-    if (transport.merged_transports) {
-      try {
-        const mergedTransportsData = typeof transport.merged_transports === 'string' 
-          ? JSON.parse(transport.merged_transports) 
-          : transport.merged_transports;
-        
-        if (mergedTransportsData.originalTransports && Array.isArray(mergedTransportsData.originalTransports)) {
-          mergedTransportsData.originalTransports.forEach(originalTransport => {
-            if (!addedIds.has(originalTransport.id)) {
-              const transportData = {
-                id: originalTransport.id,
-                orderNumber: originalTransport.orderNumber || originalTransport.order_number,
-                mpk: originalTransport.mpk,
-                documents: originalTransport.documents,
-                clientName: originalTransport.clientName || originalTransport.client_name,
-                responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
-                location: originalTransport.location,
-                delivery_data: originalTransport.delivery_data,
-                route: originalTransport.route,
-                distance_km: originalTransport.distance_km || originalTransport.distanceKm,
-                distanceKm: originalTransport.distanceKm || originalTransport.distance_km
-              };
-              allTransports.push(transportData);
-              addedIds.add(originalTransport.id);
-            }
-          });
-        }
-      } catch (e) {
-        console.error('Błąd parsowania merged_transports:', e);
-      }
-    }
-
-    console.log(`🐛 Finalne transporty (${allTransports.length}):`, allTransports.map(t => `ID: ${t.id}, Order: ${t.orderNumber}, Route: ${t.route}`));
+    console.log(`🐛 Finalne transporty (${allTransports.length}):`, allTransports.map(t => `ID: ${t.id}, Order: ${t.orderNumber}`));
     
     return allTransports;
   };
@@ -367,14 +344,20 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
     const allTransports = getAllTransportsData();
     
     const routes = allTransports.map(transportData => {
-      const route = transportData.route || getTransportRoute(transportData);
-      return route;
-    }).filter(route => route && route !== 'Brak danych');
+      const route = transportData.route || getTransportRoute(transportData) || 'Nie podano';
+      
+      return {
+        id: transportData.id,
+        orderNumber: transportData.orderNumber,
+        route: route,
+        mpk: transportData.mpk
+      };
+    });
     
     return routes;
   };
 
-  // NOWA FUNKCJA: Oblicz rzeczywistą odległość trasy - Z WSPARCIEM DLA TRANSPORTÓW DODATKOWYCH
+  // NOWA FUNKCJA: Oblicz łączną odległość wszystkich transportów - Z WSPARCIEM DLA TRANSPORTÓW DODATKOWYCH
   const getRealDistance = () => {
     try {
       const effectiveTransport = getEffectiveTransportData();
@@ -383,6 +366,13 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
       const mainTransport = getMainTransportData();
       if (mainTransport) {
         console.log('🔄 Transport dodatkowy - sprawdzam odległość z głównego transportu');
+        
+        // Użyj mergedData z komponentu rodzica - ale dla transportów dodatkowych będą puste
+        // Na razie sprawdzę czy mogę użyć danych z głównego transportu
+        if (mergedData?.totalDistance && mergedData.totalDistance > 0) {
+          console.log('✅ Używam totalDistance z mergedData:', mergedData.totalDistance);
+          return mergedData.totalDistance;
+        }
       }
       
       // 1. Sprawdź w mergedData przekazanych z rodzica (najważniejsze dla głównego transportu)
@@ -391,7 +381,7 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
         return mergedData.totalDistance;
       }
       
-      // 2. Sprawdź w response_data czy jest już obliczona odległość trasy
+      // 2. Sprawdź w response_data czy jest już obliczona łączna odległość
       if (effectiveTransport.response_data) {
         const responseData = typeof effectiveTransport.response_data === 'string' 
           ? JSON.parse(effectiveTransport.response_data) 
@@ -573,7 +563,7 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
             <h4 className="font-semibold text-gray-800">Łączna wartość</h4>
           </div>
           <div className="text-2xl font-bold text-green-600">
-            {totalValue > 0 ? `${totalValue} PLN` : 'Brak danych'}
+            {totalValue > 0 ? `${totalValue.toLocaleString()} PLN` : 'Brak danych'}
           </div>
         </div>
 
@@ -583,10 +573,15 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
             <Users size={18} className="text-blue-600" />
             <h4 className="font-semibold text-gray-800">Klienci ({allClients.length})</h4>
           </div>
-          <div className="text-sm text-gray-600 space-y-1">
-            {allClients.map((client, idx) => (
-              <div key={idx} className="break-words">{client}</div>
+          <div className="space-y-1 max-h-20 overflow-y-auto">
+            {allClients.map((client, index) => (
+              <div key={index} className="text-sm text-gray-700 border-l-2 border-blue-200 pl-2">
+                {client}
+              </div>
             ))}
+            {allClients.length === 0 && (
+              <div className="text-sm text-gray-400">Brak danych</div>
+            )}
           </div>
         </div>
 
@@ -596,62 +591,128 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
             <FileText size={18} className="text-orange-600" />
             <h4 className="font-semibold text-gray-800">Dokumenty ({allDocuments.length})</h4>
           </div>
-          <div className="text-sm text-gray-600 space-y-1">
-            {allDocuments.map((doc, idx) => (
-              <div key={idx} className="break-words">{doc}</div>
+          <div className="space-y-1 max-h-20 overflow-y-auto">
+            {allDocuments.map((doc, index) => (
+              <div key={index} className="text-sm text-gray-700 border-l-2 border-orange-200 pl-2">
+                {doc}
+              </div>
             ))}
+            {allDocuments.length === 0 && (
+              <div className="text-sm text-gray-400">Brak danych</div>
+            )}
           </div>
         </div>
 
         {/* Odpowiedzialni */}
         <div className="bg-white rounded-lg p-4 shadow-sm border border-purple-100">
           <div className="flex items-center gap-2 mb-2">
-            <Users size={18} className="text-indigo-600" />
+            <Users size={18} className="text-purple-600" />
             <h4 className="font-semibold text-gray-800">Odpowiedzialni ({allResponsible.length})</h4>
           </div>
-          <div className="text-sm text-gray-600 space-y-1">
-            {allResponsible.map((person, idx) => (
-              <div key={idx} className="break-words">{person}</div>
+          <div className="space-y-1 max-h-20 overflow-y-auto">
+            {allResponsible.map((person, index) => (
+              <div key={index} className="text-sm text-gray-700 border-l-2 border-purple-200 pl-2">
+                {person}
+              </div>
             ))}
+            {allResponsible.length === 0 && (
+              <div className="text-sm text-gray-400">Brak danych</div>
+            )}
           </div>
         </div>
       </div>
 
       {/* Sekwencja trasy */}
-      <div className="bg-white rounded-lg p-4 border border-purple-100 mb-4">
-        <div className="flex items-center gap-2 mb-3">
+      <div className="bg-white rounded-lg p-4 border border-purple-100">
+        <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
           <MapPin size={18} className="text-purple-600" />
-          <h4 className="font-semibold text-gray-800">Sekwencja trasy</h4>
-        </div>
-        <div className="space-y-2">
-          {allRoutes.map((route, idx) => (
-            <div key={idx} className="flex items-center gap-3 p-2 bg-gray-50 rounded-md">
-              <div className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center">
-                {idx + 1}
+          Sekwencja trasy
+        </h4>
+        
+        {(() => {
+          // Sprawdź czy mamy routeSequence w mergedData
+          if (mergedData?.routeSequence && Array.isArray(mergedData.routeSequence) && mergedData.routeSequence.length > 0) {
+            return (
+              <div className="space-y-3">
+                {mergedData.routeSequence.map((point, index) => {
+                  const isFirst = index === 0;
+                  const isLast = index === mergedData.routeSequence.length - 1;
+                  
+                  return (
+                    <div key={index} className="flex items-center gap-3">
+                      {/* Numer punktu */}
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white ${
+                        isFirst ? 'bg-green-500' : isLast ? 'bg-red-500' : 'bg-purple-500'
+                      }`}>
+                        {index + 1}
+                      </div>
+                      
+                      {/* Szczegóły punktu */}
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-800">
+                          {point.city || point.location || 'Nieznane miasto'}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          {point.company || point.clientName || point.firmName || 'Nieznana firma'}
+                        </div>
+                        {point.type && (
+                          <div className="text-xs text-gray-500">
+                            {point.type === 'pickup' ? 'Załadunek' : 
+                             point.type === 'delivery' ? 'Rozładunek' : 
+                             point.type === 'loading' ? 'Załadunek' :
+                             point.type === 'unloading' ? 'Rozładunek' :
+                             point.type}
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Informacje dodatkowe */}
+                      <div className="text-right">
+                        {point.mpk && (
+                          <div className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded mb-1">
+                            MPK: {point.mpk}
+                          </div>
+                        )}
+                        {point.orderNumber && (
+                          <div className="text-xs text-gray-500">
+                            {point.orderNumber}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <span className="text-sm font-medium text-gray-700">{route}</span>
-            </div>
-          ))}
-        </div>
+            );
+          } else {
+            // Fallback - pokaż standardową listę tras jeśli nie ma routeSequence
+            return (
+              <div className="space-y-2">
+                {allRoutes.map((route, index) => (
+                  <div key={route.id} className="flex items-center justify-between py-2 px-3 bg-purple-50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-purple-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
+                        {index + 1}
+                      </div>
+                      <div>
+                        <div className="font-medium text-gray-800">{route.route}</div>
+                        <div className="text-xs text-gray-500">Zlecenie: {route.orderNumber}</div>
+                      </div>
+                    </div>
+                    {route.mpk && (
+                      <div className="text-xs bg-purple-200 text-purple-800 px-2 py-1 rounded">
+                        MPK: {route.mpk}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          }
+        })()}
       </div>
 
-      {/* Numery zleceń */}
-      <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-        <h4 className="font-semibold text-blue-800 mb-2">Numery połączonych zleceń:</h4>
-        <div className="flex flex-wrap gap-2">
-          {collectUniqueValues('orderNumber').map((orderNum, idx) => (
-            <span key={idx} className="bg-blue-600 text-white px-3 py-1 rounded-full text-sm font-medium">
-              {orderNum}
-            </span>
-          ))}
-        </div>
-      </div>
 
-      {/* Podsumowanie */}
-      <div className="mt-4 text-sm text-purple-700 bg-purple-100 p-3 rounded-md">
-        <strong>Informacja:</strong> To zlecenie obejmuje {allRoutes.length} połączonych transportów. 
-        Wszystkie szczegóły tras i punktów dostawy są wyświetlone powyżej.
-      </div>
     </div>
   );
 };
