@@ -292,6 +292,185 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
     }
   };
 
+  // Funkcja formatująca trasę transportu
+  const getTransportRoute = (transport) => {
+    let start;
+    if (transport.location === 'Odbiory własne' && transport.producerAddress) {
+      start = transport.producerAddress.city || 'Brak miasta';
+    } else if (transport.location === 'Magazyn Białystok') {
+      start = 'Białystok';
+    } else if (transport.location === 'Magazyn Zielonka') {
+      start = 'Zielonka';
+    } else {
+      start = transport.location?.replace('Magazyn ', '') || 'Nie podano';
+    }
+    
+    const end = transport.delivery?.city || 'Brak danych'
+    
+    return `${start} → ${end}`
+  }
+  
+  // Funkcja formatująca adres
+  const formatAddress = (address) => {
+    if (!address) return 'Brak danych'
+    if (typeof address === 'string') return address
+    return `${address.city || ''}, ${address.postalCode || ''}, ${address.street || ''}`.replace(/^,\s*|,\s*$/g, '')
+  }
+
+  // ===== FUNKCJE DO POBIERANIA DANYCH O POŁĄCZONYCH TRANSPORTACH =====
+  
+  // Funkcja do pobrania wszystkich danych transportów
+  const getAllTransportsData = () => {
+    const allTransports = [];
+    const addedIds = new Set();
+    
+    // ZAWSZE dodaj obecny transport jako pierwszy
+    const currentTransportData = {
+      id: zamowienie.id,
+      orderNumber: zamowienie.order_number || zamowienie.orderNumber,
+      mpk: zamowienie.mpk,
+      documents: zamowienie.documents,
+      clientName: zamowienie.client_name || zamowienie.clientName,
+      responsiblePerson: zamowienie.responsible_person || zamowienie.responsiblePerson,
+      location: zamowienie.location,
+      delivery_data: zamowienie.delivery_data,
+      route: getTransportRoute(zamowienie),
+      distance_km: zamowienie.distance_km,
+      distanceKm: zamowienie.distanceKm
+    };
+    
+    allTransports.push(currentTransportData);
+    addedIds.add(zamowienie.id);
+
+    // Sprawdź response_data
+    if (zamowienie.response_data) {
+      try {
+        const responseData = typeof zamowienie.response_data === 'string' 
+          ? JSON.parse(zamowienie.response_data) 
+          : zamowienie.response_data;
+        
+        if (responseData.originalTransports && Array.isArray(responseData.originalTransports)) {
+          responseData.originalTransports.forEach(originalTransport => {
+            if (!addedIds.has(originalTransport.id)) {
+              const transportData = {
+                id: originalTransport.id,
+                orderNumber: originalTransport.orderNumber || originalTransport.order_number,
+                mpk: originalTransport.mpk,
+                documents: originalTransport.documents,
+                clientName: originalTransport.clientName || originalTransport.client_name,
+                responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
+                location: originalTransport.location,
+                delivery_data: originalTransport.delivery_data,
+                route: originalTransport.route,
+                distance_km: originalTransport.distance_km || originalTransport.distanceKm,
+                distanceKm: originalTransport.distanceKm || originalTransport.distance_km
+              };
+              allTransports.push(transportData);
+              addedIds.add(originalTransport.id);
+            }
+          });
+        }
+      } catch (e) {
+        console.error('Błąd parsowania response_data:', e);
+      }
+    }
+    
+    // Sprawdź merged_transports (backup)
+    if (zamowienie.merged_transports) {
+      try {
+        const mergedTransportsData = typeof zamowienie.merged_transports === 'string' 
+          ? JSON.parse(zamowienie.merged_transports) 
+          : zamowienie.merged_transports;
+        
+        if (mergedTransportsData.originalTransports && Array.isArray(mergedTransportsData.originalTransports)) {
+          mergedTransportsData.originalTransports.forEach(originalTransport => {
+            if (!addedIds.has(originalTransport.id)) {
+              const transportData = {
+                id: originalTransport.id,
+                orderNumber: originalTransport.orderNumber || originalTransport.order_number,
+                mpk: originalTransport.mpk,
+                documents: originalTransport.documents,
+                clientName: originalTransport.clientName || originalTransport.client_name,
+                responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
+                location: originalTransport.location,
+                delivery_data: originalTransport.delivery_data,
+                route: originalTransport.route,
+                distance_km: originalTransport.distance_km || originalTransport.distanceKm,
+                distanceKm: originalTransport.distanceKm || originalTransport.distance_km
+              };
+              allTransports.push(transportData);
+              addedIds.add(originalTransport.id);
+            }
+          });
+        }
+      } catch (e) {
+        console.error('Błąd parsowania merged_transports:', e);
+      }
+    }
+    
+    return allTransports;
+  };
+
+  // Funkcja do zbierania wszystkich unikalnych wartości z pola
+  const collectUniqueValues = (field) => {
+    const values = new Set();
+    const allTransports = getAllTransportsData();
+    
+    allTransports.forEach(transportData => {
+      if (transportData[field]) {
+        values.add(transportData[field]);
+      }
+    });
+    
+    return Array.from(values).filter(Boolean);
+  };
+
+  // Funkcja do zbierania wszystkich odpowiedzialnych osób
+  const collectAllResponsible = () => {
+    const allTransports = getAllTransportsData();
+    const responsible = new Set();
+    
+    allTransports.forEach(transportData => {
+      if (transportData.responsiblePerson && transportData.responsiblePerson.trim()) {
+        responsible.add(transportData.responsiblePerson.trim());
+      }
+      if (transportData.responsible_person && transportData.responsible_person.trim()) {
+        responsible.add(transportData.responsible_person.trim());
+      }
+    });
+    
+    const result = Array.from(responsible).filter(Boolean);
+    
+    // Jeśli nadal brak, spróbuj z oryginalnego transportu
+    if (result.length === 0) {
+      if (zamowienie.responsible_person) {
+        result.push(zamowienie.responsible_person);
+      }
+      if (zamowienie.created_by) {
+        result.push(zamowienie.created_by);
+      }
+    }
+    
+    return result;
+  };
+
+  // Funkcja do zbierania tras
+  const getAllRoutes = () => {
+    const allTransports = getAllTransportsData();
+    
+    return allTransports.map(transportData => {
+      return transportData.route || getTransportRoute(transportData);
+    }).filter(route => route && route !== 'Brak danych');
+  };
+
+  // ZDEFINIUJ WSZYSTKIE ZMIENNE
+  const allMPKs = isMergedTransport ? collectUniqueValues('mpk') : [zamowienie.mpk].filter(Boolean);
+  const allDocuments = isMergedTransport ? collectUniqueValues('documents') : [zamowienie.documents].filter(Boolean);
+  const allClients = isMergedTransport ? collectUniqueValues('clientName') : [zamowienie.clientName || zamowienie.client_name].filter(Boolean);
+  const allResponsible = isMergedTransport ? collectAllResponsible() : [zamowienie.responsible_person || zamowienie.responsiblePerson].filter(Boolean);
+  const allRoutes = isMergedTransport ? getAllRoutes() : [getTransportRoute(zamowienie)];
+  const allOrderNumbers = isMergedTransport ? collectUniqueValues('orderNumber') : [zamowienie.orderNumber || zamowienie.order_number || zamowienie.id];
+
   // Automatyczne wypełnienie danych z response_data
   useEffect(() => {
     const goodsData = getGoodsDataFromResponse();
@@ -343,31 +522,6 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
     } finally {
       setIsSubmitting(false)
     }
-  }
-  
-  // Funkcja formatująca trasę transportu
-  const getTransportRoute = (transport) => {
-    let start;
-    if (transport.location === 'Odbiory własne' && transport.producerAddress) {
-      start = transport.producerAddress.city || 'Brak miasta';
-    } else if (transport.location === 'Magazyn Białystok') {
-      start = 'Białystok';
-    } else if (transport.location === 'Magazyn Zielonka') {
-      start = 'Zielonka';
-    } else {
-      start = transport.location?.replace('Magazyn ', '') || 'Nie podano';
-    }
-    
-    const end = transport.delivery?.city || 'Brak danych'
-    
-    return `${start} → ${end}`
-  }
-  
-  // Funkcja formatująca adres
-  const formatAddress = (address) => {
-    if (!address) return 'Brak danych'
-    if (typeof address === 'string') return address
-    return `${address.city || ''}, ${address.postalCode || ''}, ${address.street || ''}`.replace(/^,\s*|,\s*$/g, '')
   }
 
   return (
