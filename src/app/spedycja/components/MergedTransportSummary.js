@@ -120,10 +120,6 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
     
     if (mainTransport) {
       console.log('🔄 Transport dodatkowy - używam danych z głównego transportu');
-      
-      // Jeśli główny transport ma pełne mergedData, użyj ich
-      // To powinno być przekazane przez komponent rodzica, ale na razie spróbujmy
-      // Będziemy musieli sprawdzić czy główny transport ma pełne dane
     }
     
     // ZAWSZE dodaj obecny transport jako pierwszy
@@ -144,99 +140,136 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
     allTransports.push(currentTransportData);
     addedIds.add(transport.id);
 
-    // 1. Sprawdź mergedData przekazane z rodzica (najważniejsze źródło)
-    if (effectiveMergedData?.originalTransports && Array.isArray(effectiveMergedData.originalTransports) && effectiveMergedData.originalTransports.length > 0) {
-      console.log('✅ Używam pełnych danych z mergedData:', effectiveMergedData.originalTransports);
-      effectiveMergedData.originalTransports.forEach(originalTransport => {
-        if (!addedIds.has(originalTransport.id)) {
-          const transportData = {
-            id: originalTransport.id,
-            orderNumber: originalTransport.orderNumber || originalTransport.order_number,
-            mpk: originalTransport.mpk,
-            documents: originalTransport.documents,
-            clientName: originalTransport.clientName || originalTransport.client_name,
-            responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
-            location: originalTransport.location,
-            delivery_data: originalTransport.delivery_data,
-            route: originalTransport.route,
-            distance_km: originalTransport.distance_km || originalTransport.distanceKm,
-            distanceKm: originalTransport.distanceKm || originalTransport.distance_km
-          };
-          allTransports.push(transportData);
-          addedIds.add(originalTransport.id);
-        }
-      });
-    } else {
-      console.log('⚠️ MergedData są puste, sprawdzam inne źródła...');
-      
-      // 2. Sprawdź response_data (backup)
-      if (transport.response_data) {
-        try {
-          const responseData = typeof transport.response_data === 'string' 
-            ? JSON.parse(transport.response_data) 
-            : transport.response_data;
+    // GŁÓWNY PROBLEM: Sprawdźmy response_data dla mergedTransportIds
+    if (transport.response_data) {
+      try {
+        const responseData = typeof transport.response_data === 'string' 
+          ? JSON.parse(transport.response_data) 
+          : transport.response_data;
+        
+        console.log('🔍 Response data:', responseData);
+        
+        // KLUCZOWE: Sprawdź mergedTransportIds zamiast originalTransports
+        if (responseData.mergedTransportIds && Array.isArray(responseData.mergedTransportIds)) {
+          console.log('✅ Znaleziono mergedTransportIds:', responseData.mergedTransportIds);
           
-          if (responseData.originalTransports && Array.isArray(responseData.originalTransports)) {
-            responseData.originalTransports.forEach(originalTransport => {
-              if (!addedIds.has(originalTransport.id)) {
-                const transportData = {
-                  id: originalTransport.id,
-                  orderNumber: originalTransport.orderNumber || originalTransport.order_number,
-                  mpk: originalTransport.mpk,
-                  documents: originalTransport.documents,
-                  clientName: originalTransport.clientName || originalTransport.client_name,
-                  responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
-                  location: originalTransport.location,
-                  delivery_data: originalTransport.delivery_data,
-                  route: originalTransport.route,
-                  distance_km: originalTransport.distance_km || originalTransport.distanceKm,
-                  distanceKm: originalTransport.distanceKm || originalTransport.distance_km
-                };
-                allTransports.push(transportData);
-                addedIds.add(originalTransport.id);
+          // Dla każdego ID stwórz dane transportu
+          responseData.mergedTransportIds.forEach((transportId, index) => {
+            if (!addedIds.has(transportId) && transportId !== transport.id) {
+              // Sprawdź czy mamy routeSequence z dodatkowymi danymi
+              let routeData = null;
+              if (responseData.routeSequence && responseData.routeSequence[index + 1]) {
+                routeData = responseData.routeSequence[index + 1];
               }
-            });
-          }
-        } catch (e) {
-          console.error('Błąd parsowania response_data:', e);
+              
+              const transportData = {
+                id: transportId,
+                orderNumber: routeData?.orderNumber || `Generated-${transportId}`,
+                mpk: routeData?.mpk || `MPK-${transportId}`,
+                documents: routeData?.documents || `DOC-${transportId}`,
+                clientName: routeData?.clientName || `Client-${transportId}`,
+                responsiblePerson: routeData?.responsiblePerson || transport.responsible_person,
+                location: routeData?.startLocation || 'Unknown',
+                delivery_data: routeData?.endLocation,
+                route: routeData ? `${routeData.startLocation} → ${routeData.endLocation}` : `Transport ${transportId}`,
+                distance_km: routeData?.distance || 0,
+                distanceKm: routeData?.distance || 0
+              };
+              allTransports.push(transportData);
+              addedIds.add(transportId);
+            }
+          });
         }
-      }
-      
-      // 3. Sprawdź merged_transports (backup)
-      if (transport.merged_transports) {
-        try {
-          const mergedTransportsData = typeof transport.merged_transports === 'string' 
-            ? JSON.parse(transport.merged_transports) 
-            : transport.merged_transports;
+        
+        // FALLBACK: Sprawdź originalTransports 
+        if (responseData.originalTransports && Array.isArray(responseData.originalTransports)) {
+          responseData.originalTransports.forEach(originalTransport => {
+            if (!addedIds.has(originalTransport.id)) {
+              const transportData = {
+                id: originalTransport.id,
+                orderNumber: originalTransport.orderNumber || originalTransport.order_number,
+                mpk: originalTransport.mpk,
+                documents: originalTransport.documents,
+                clientName: originalTransport.clientName || originalTransport.client_name,
+                responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
+                location: originalTransport.location,
+                delivery_data: originalTransport.delivery_data,
+                route: originalTransport.route,
+                distance_km: originalTransport.distance_km || originalTransport.distanceKm,
+                distanceKm: originalTransport.distanceKm || originalTransport.distance_km
+              };
+              allTransports.push(transportData);
+              addedIds.add(originalTransport.id);
+            }
+          });
+        }
+        
+        // NOWE: Sprawdź routeSequence bezpośrednio
+        if (responseData.routeSequence && Array.isArray(responseData.routeSequence) && responseData.routeSequence.length > 1) {
+          console.log('✅ Znaleziono routeSequence:', responseData.routeSequence);
           
-          if (mergedTransportsData.originalTransports && Array.isArray(mergedTransportsData.originalTransports)) {
-            mergedTransportsData.originalTransports.forEach(originalTransport => {
-              if (!addedIds.has(originalTransport.id)) {
-                const transportData = {
-                  id: originalTransport.id,
-                  orderNumber: originalTransport.orderNumber || originalTransport.order_number,
-                  mpk: originalTransport.mpk,
-                  documents: originalTransport.documents,
-                  clientName: originalTransport.clientName || originalTransport.client_name,
-                  responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
-                  location: originalTransport.location,
-                  delivery_data: originalTransport.delivery_data,
-                  route: originalTransport.route,
-                  distance_km: originalTransport.distance_km || originalTransport.distanceKm,
-                  distanceKm: originalTransport.distanceKm || originalTransport.distance_km
-                };
-                allTransports.push(transportData);
-                addedIds.add(originalTransport.id);
-              }
-            });
-          }
-        } catch (e) {
-          console.error('Błąd parsowania merged_transports:', e);
+          responseData.routeSequence.forEach((routePoint, index) => {
+            if (index === 0) return; // Skip first point (current transport)
+            
+            const routeId = `route-${index}`;
+            if (!addedIds.has(routeId)) {
+              const transportData = {
+                id: routeId,
+                orderNumber: routePoint.orderNumber || `Route-${index}`,
+                mpk: routePoint.mpk || 'Brak',
+                documents: routePoint.documents || 'Brak',
+                clientName: routePoint.clientName || routePoint.companyName || 'Brak',
+                responsiblePerson: routePoint.responsiblePerson || transport.responsible_person,
+                location: routePoint.startLocation || routePoint.location,
+                delivery_data: routePoint.endLocation,
+                route: `${routePoint.startLocation || routePoint.location} → ${routePoint.endLocation || routePoint.destination}`,
+                distance_km: routePoint.distance || 0,
+                distanceKm: routePoint.distance || 0
+              };
+              allTransports.push(transportData);
+              addedIds.add(routeId);
+            }
+          });
         }
+      } catch (e) {
+        console.error('Błąd parsowania response_data:', e);
       }
     }
 
-    console.log(`🐛 Finalne transporty (${allTransports.length}):`, allTransports.map(t => `ID: ${t.id}, Order: ${t.orderNumber}`));
+    // 3. Sprawdź merged_transports (backup)
+    if (transport.merged_transports) {
+      try {
+        const mergedTransportsData = typeof transport.merged_transports === 'string' 
+          ? JSON.parse(transport.merged_transports) 
+          : transport.merged_transports;
+        
+        if (mergedTransportsData.originalTransports && Array.isArray(mergedTransportsData.originalTransports)) {
+          mergedTransportsData.originalTransports.forEach(originalTransport => {
+            if (!addedIds.has(originalTransport.id)) {
+              const transportData = {
+                id: originalTransport.id,
+                orderNumber: originalTransport.orderNumber || originalTransport.order_number,
+                mpk: originalTransport.mpk,
+                documents: originalTransport.documents,
+                clientName: originalTransport.clientName || originalTransport.client_name,
+                responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
+                location: originalTransport.location,
+                delivery_data: originalTransport.delivery_data,
+                route: originalTransport.route,
+                distance_km: originalTransport.distance_km || originalTransport.distanceKm,
+                distanceKm: originalTransport.distanceKm || originalTransport.distance_km
+              };
+              allTransports.push(transportData);
+              addedIds.add(originalTransport.id);
+            }
+          });
+        }
+      } catch (e) {
+        console.error('Błąd parsowania merged_transports:', e);
+      }
+    }
+
+    console.log(`🐛 Finalne transporty (${allTransports.length}):`, allTransports.map(t => `ID: ${t.id}, Order: ${t.orderNumber}, Route: ${t.route}`));
     
     return allTransports;
   };
