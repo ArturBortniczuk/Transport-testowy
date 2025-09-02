@@ -551,12 +551,9 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
             <h4 className="font-semibold text-gray-800">Klienci ({allClients.length})</h4>
           </div>
           <div className="text-sm text-gray-600 space-y-1">
-            {allClients.slice(0, 2).map((client, idx) => (
+            {allClients.map((client, idx) => (
               <div key={idx} className="truncate">{client}</div>
             ))}
-            {allClients.length > 2 && (
-              <div className="text-xs text-gray-500">...i {allClients.length - 2} więcej</div>
-            )}
           </div>
         </div>
 
@@ -567,12 +564,9 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
             <h4 className="font-semibold text-gray-800">Dokumenty ({allDocuments.length})</h4>
           </div>
           <div className="text-sm text-gray-600 space-y-1">
-            {allDocuments.slice(0, 2).map((doc, idx) => (
+            {allDocuments.map((doc, idx) => (
               <div key={idx} className="truncate">{doc}</div>
             ))}
-            {allDocuments.length > 2 && (
-              <div className="text-xs text-gray-500">...i {allDocuments.length - 2} więcej</div>
-            )}
           </div>
         </div>
 
@@ -583,12 +577,9 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
             <h4 className="font-semibold text-gray-800">Odpowiedzialni ({allResponsible.length})</h4>
           </div>
           <div className="text-sm text-gray-600 space-y-1">
-            {allResponsible.slice(0, 2).map((person, idx) => (
+            {allResponsible.map((person, idx) => (
               <div key={idx} className="truncate">{person}</div>
             ))}
-            {allResponsible.length > 2 && (
-              <div className="text-xs text-gray-500">...i {allResponsible.length - 2} więcej</div>
-            )}
           </div>
         </div>
       </div>

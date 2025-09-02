@@ -395,18 +395,11 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
             )}
           </div>
           
-          {/* DEBUG CONSOLE LOGS */}
-          {console.log('🔍 DEBUG TransportOrderForm:')}
-          {console.log('🔍 isMergedTransport:', isMergedTransport)}
-          {console.log('🔍 mergedData:', mergedData)}
-          {console.log('🔍 mergedTransportsDetails:', mergedTransportsDetails)}
-          {console.log('🔍 aggregatedMergedData:', aggregatedMergedData)}
-          
           <div className="bg-white rounded-lg p-4 border">
             <MergedTransportSummary 
               transport={zamowienie}
-              mergedData={mergedData}
-              allTransports={mergedTransportsDetails}
+              mergedData={null}
+              allTransports={[]}
             />
           </div>
           
@@ -549,7 +542,7 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
                   
                   <div>
                     <span className="font-medium text-gray-700">Łączna odległość:</span>
-                    <span className="ml-2 text-gray-900">{getRouteDistanceFromData()} km</span>
+                    <span className="ml-2 text-gray-900">{aggregatedMergedData.totalDistance} km</span>
                   </div>
                   
                   <div>
@@ -559,19 +552,16 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
                 </div>
               </div>
 
-              {/* POPRAWIONE Szczegóły połączonych transportów */}
+              {/* POPRAWIONE Szczegóły połączonych transportów - WSZYSTKIE DANE */}
               <div className="col-span-2 pt-4 border-t border-gray-200">
                 <h4 className="font-medium text-gray-700 mb-2">Szczegóły połączonych transportów:</h4>
                 
                 <div className="grid grid-cols-2 gap-6">
-                  {/* POPRAWIONE Numery zleceń */}
+                  {/* WSZYSTKIE Numery zleceń */}
                   <div>
-                    <span className="font-medium text-gray-700">Numery zleceń:</span>
+                    <span className="font-medium text-gray-700">Numery zleceń ({allOrderNumbers.length}):</span>
                     <div className="mt-1 space-y-1">
-                      {(isMergedTransport && aggregatedMergedData?.allOrderNumbers 
-                        ? aggregatedMergedData.allOrderNumbers 
-                        : [zamowienie.orderNumber || zamowienie.id]
-                      ).map((orderNum, index) => (
+                      {allOrderNumbers.map((orderNum, index) => (
                         <div key={index} className="ml-4 text-sm bg-white px-2 py-1 rounded border">
                           {index + 1}. {orderNum}
                         </div>
@@ -579,14 +569,11 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
                     </div>
                   </div>
 
-                  {/* POPRAWIONE MPK - w oddzielnych liniach */}
+                  {/* WSZYSTKIE MPK */}
                   <div>
-                    <span className="font-medium text-gray-700">MPK:</span>
+                    <span className="font-medium text-gray-700">MPK ({allMPKs.length}):</span>
                     <div className="mt-1 space-y-1">
-                      {(isMergedTransport && aggregatedMergedData?.allMpks 
-                        ? aggregatedMergedData.allMpks 
-                        : [zamowienie.mpk].filter(Boolean)
-                      ).map((mpk, index) => (
+                      {allMPKs.map((mpk, index) => (
                         <div key={index} className="ml-4 text-sm bg-white px-2 py-1 rounded border">
                           {index + 1}. {mpk}
                         </div>
@@ -594,14 +581,11 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
                     </div>
                   </div>
 
-                  {/* POPRAWIONE Dokumenty - w oddzielnych liniach */}
+                  {/* WSZYSTKIE Dokumenty */}
                   <div>
-                    <span className="font-medium text-gray-700">Dokumenty:</span>
+                    <span className="font-medium text-gray-700">Dokumenty ({allDocuments.length}):</span>
                     <div className="mt-1 space-y-1">
-                      {(isMergedTransport && aggregatedMergedData?.allDocuments 
-                        ? aggregatedMergedData.allDocuments 
-                        : [zamowienie.documents].filter(Boolean)
-                      ).map((doc, index) => (
+                      {allDocuments.map((doc, index) => (
                         <div key={index} className="ml-4 text-sm bg-white px-2 py-1 rounded border">
                           {index + 1}. {doc}
                         </div>
@@ -609,15 +593,12 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
                     </div>
                   </div>
 
-                  {/* POPRAWIONE Klienci - w oddzielnych liniach */}
-                  {((zamowienie.clientName) || (isMergedTransport && aggregatedMergedData?.allClients?.length > 0)) && (
+                  {/* WSZYSCY Klienci */}
+                  {allClients.length > 0 && (
                     <div>
-                      <span className="font-medium text-gray-700">Klienci:</span>
+                      <span className="font-medium text-gray-700">Klienci ({allClients.length}):</span>
                       <div className="mt-1 space-y-1">
-                        {(isMergedTransport && aggregatedMergedData?.allClients 
-                          ? aggregatedMergedData.allClients 
-                          : [zamowienie.clientName].filter(Boolean)
-                        ).map((client, index) => (
+                        {allClients.map((client, index) => (
                           <div key={index} className="ml-4 text-sm bg-white px-2 py-1 rounded border">
                             {index + 1}. {client}
                           </div>
@@ -625,7 +606,52 @@ export default function TransportOrderForm({ onSubmit, onCancel, zamowienie }) {
                       </div>
                     </div>
                   )}
+
+                  {/* WSZYSCY Odpowiedzialni */}
+                  {allResponsible.length > 0 && (
+                    <div>
+                      <span className="font-medium text-gray-700">Odpowiedzialni ({allResponsible.length}):</span>
+                      <div className="mt-1 space-y-1">
+                        {allResponsible.map((person, index) => (
+                          <div key={index} className="ml-4 text-sm bg-white px-2 py-1 rounded border">
+                            {index + 1}. {person}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* WSZYSTKIE Trasy */}
+                  <div className="col-span-2">
+                    <span className="font-medium text-gray-700">Sekwencja trasy ({allRoutes.length}):</span>
+                    <div className="mt-1 space-y-2">
+                      {allRoutes.map((route, index) => (
+                        <div key={index} className="ml-4 text-sm bg-white px-3 py-2 rounded border flex items-center gap-2">
+                          <span className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center">
+                            {index + 1}
+                          </span>
+                          {route}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
+
+                {/* Numery połączonych zleceń - jak w MergedTransportSummary */}
+                {isMergedTransport && allOrderNumbers.length > 0 && (
+                  <div className="pt-4 border-t border-gray-200 mt-4">
+                    <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                      <h4 className="font-semibold text-blue-800 mb-2">Numery połączonych zleceń:</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {allOrderNumbers.map((orderNum, idx) => (
+                          <span key={idx} className="bg-blue-600 text-white px-3 py-1 rounded-full text-sm font-medium">
+                            {orderNum}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           )}
