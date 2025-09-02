@@ -1,3 +1,4 @@
+// src/app/spedycja/components/MergedTransportSummary.js
 import React from 'react';
 import { 
   Truck, 
@@ -108,7 +109,7 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
     return null;
   };
 
-  // Funkcja do pobierania wszystkich danych transportów (zarówno głównego jak i połączonych)
+  // Funkcja do pobrania wszystkich danych transportów (zarówno głównego jak i połączonych)
   const getAllTransportsData = () => {
     const allTransports = [];
     const addedIds = new Set(); // Śledź już dodane transporty
@@ -128,11 +129,11 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
     // ZAWSZE dodaj obecny transport jako pierwszy
     const currentTransportData = {
       id: transport.id,
-      orderNumber: transport.order_number,
+      orderNumber: transport.order_number || transport.orderNumber,
       mpk: transport.mpk,
       documents: transport.documents,
-      clientName: transport.client_name,
-      responsiblePerson: transport.responsible_person,
+      clientName: transport.client_name || transport.clientName,
+      responsiblePerson: transport.responsible_person || transport.responsiblePerson,
       location: transport.location,
       delivery_data: transport.delivery_data,
       route: getTransportRoute(transport),
@@ -175,19 +176,8 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
             ? JSON.parse(transport.response_data) 
             : transport.response_data;
           
-          // Sprawdź różne możliwe struktury danych
-          let originalTransports = null;
-          
-          if (responseData.originalTransports) {
-            originalTransports = responseData.originalTransports;
-          } else if (responseData.transports) {
-            originalTransports = responseData.transports;
-          } else if (responseData.mergedTransports) {
-            originalTransports = responseData.mergedTransports;
-          }
-          
-          if (originalTransports && Array.isArray(originalTransports)) {
-            originalTransports.forEach(originalTransport => {
+          if (responseData.originalTransports && Array.isArray(responseData.originalTransports)) {
+            responseData.originalTransports.forEach(originalTransport => {
               if (!addedIds.has(originalTransport.id)) {
                 const transportData = {
                   id: originalTransport.id,
@@ -198,7 +188,7 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
                   responsiblePerson: originalTransport.responsiblePerson || originalTransport.responsible_person,
                   location: originalTransport.location,
                   delivery_data: originalTransport.delivery_data,
-                  route: originalTransport.route || getTransportRoute(originalTransport),
+                  route: originalTransport.route,
                   distance_km: originalTransport.distance_km || originalTransport.distanceKm,
                   distanceKm: originalTransport.distanceKm || originalTransport.distance_km
                 };
@@ -211,7 +201,7 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
           console.error('Błąd parsowania response_data:', e);
         }
       }
-
+      
       // 3. Sprawdź merged_transports (backup)
       if (transport.merged_transports) {
         try {
@@ -344,20 +334,14 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
     const allTransports = getAllTransportsData();
     
     const routes = allTransports.map(transportData => {
-      const route = transportData.route || getTransportRoute(transportData) || 'Nie podano';
-      
-      return {
-        id: transportData.id,
-        orderNumber: transportData.orderNumber,
-        route: route,
-        mpk: transportData.mpk
-      };
-    });
+      const route = transportData.route || getTransportRoute(transportData);
+      return route;
+    }).filter(route => route && route !== 'Brak danych');
     
     return routes;
   };
 
-  // NOWA FUNKCJA: Oblicz łączną odległość wszystkich transportów - Z WSPARCIEM DLA TRANSPORTÓW DODATKOWYCH
+  // NOWA FUNKCJA: Oblicz rzeczywistą odległość trasy - Z WSPARCIEM DLA TRANSPORTÓW DODATKOWYCH
   const getRealDistance = () => {
     try {
       const effectiveTransport = getEffectiveTransportData();
@@ -366,13 +350,6 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
       const mainTransport = getMainTransportData();
       if (mainTransport) {
         console.log('🔄 Transport dodatkowy - sprawdzam odległość z głównego transportu');
-        
-        // Użyj mergedData z komponentu rodzica - ale dla transportów dodatkowych będą puste
-        // Na razie sprawdzę czy mogę użyć danych z głównego transportu
-        if (mergedData?.totalDistance && mergedData.totalDistance > 0) {
-          console.log('✅ Używam totalDistance z mergedData:', mergedData.totalDistance);
-          return mergedData.totalDistance;
-        }
       }
       
       // 1. Sprawdź w mergedData przekazanych z rodzica (najważniejsze dla głównego transportu)
@@ -381,7 +358,7 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
         return mergedData.totalDistance;
       }
       
-      // 2. Sprawdź w response_data czy jest już obliczona łączna odległość
+      // 2. Sprawdź w response_data czy jest już obliczona odległość trasy
       if (effectiveTransport.response_data) {
         const responseData = typeof effectiveTransport.response_data === 'string' 
           ? JSON.parse(effectiveTransport.response_data) 
@@ -563,7 +540,7 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
             <h4 className="font-semibold text-gray-800">Łączna wartość</h4>
           </div>
           <div className="text-2xl font-bold text-green-600">
-            {totalValue > 0 ? `${totalValue.toLocaleString()} PLN` : 'Brak danych'}
+            {totalValue > 0 ? `${totalValue} PLN` : 'Brak danych'}
           </div>
         </div>
 
@@ -573,14 +550,12 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
             <Users size={18} className="text-blue-600" />
             <h4 className="font-semibold text-gray-800">Klienci ({allClients.length})</h4>
           </div>
-          <div className="space-y-1 max-h-20 overflow-y-auto">
-            {allClients.map((client, index) => (
-              <div key={index} className="text-sm text-gray-700 border-l-2 border-blue-200 pl-2">
-                {client}
-              </div>
+          <div className="text-sm text-gray-600 space-y-1">
+            {allClients.slice(0, 2).map((client, idx) => (
+              <div key={idx} className="truncate">{client}</div>
             ))}
-            {allClients.length === 0 && (
-              <div className="text-sm text-gray-400">Brak danych</div>
+            {allClients.length > 2 && (
+              <div className="text-xs text-gray-500">...i {allClients.length - 2} więcej</div>
             )}
           </div>
         </div>
@@ -591,14 +566,12 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
             <FileText size={18} className="text-orange-600" />
             <h4 className="font-semibold text-gray-800">Dokumenty ({allDocuments.length})</h4>
           </div>
-          <div className="space-y-1 max-h-20 overflow-y-auto">
-            {allDocuments.map((doc, index) => (
-              <div key={index} className="text-sm text-gray-700 border-l-2 border-orange-200 pl-2">
-                {doc}
-              </div>
+          <div className="text-sm text-gray-600 space-y-1">
+            {allDocuments.slice(0, 2).map((doc, idx) => (
+              <div key={idx} className="truncate">{doc}</div>
             ))}
-            {allDocuments.length === 0 && (
-              <div className="text-sm text-gray-400">Brak danych</div>
+            {allDocuments.length > 2 && (
+              <div className="text-xs text-gray-500">...i {allDocuments.length - 2} więcej</div>
             )}
           </div>
         </div>
@@ -606,113 +579,55 @@ const MergedTransportSummary = ({ transport, mergedData, allTransports }) => {
         {/* Odpowiedzialni */}
         <div className="bg-white rounded-lg p-4 shadow-sm border border-purple-100">
           <div className="flex items-center gap-2 mb-2">
-            <Users size={18} className="text-purple-600" />
+            <Users size={18} className="text-indigo-600" />
             <h4 className="font-semibold text-gray-800">Odpowiedzialni ({allResponsible.length})</h4>
           </div>
-          <div className="space-y-1 max-h-20 overflow-y-auto">
-            {allResponsible.map((person, index) => (
-              <div key={index} className="text-sm text-gray-700 border-l-2 border-purple-200 pl-2">
-                {person}
-              </div>
+          <div className="text-sm text-gray-600 space-y-1">
+            {allResponsible.slice(0, 2).map((person, idx) => (
+              <div key={idx} className="truncate">{person}</div>
             ))}
-            {allResponsible.length === 0 && (
-              <div className="text-sm text-gray-400">Brak danych</div>
+            {allResponsible.length > 2 && (
+              <div className="text-xs text-gray-500">...i {allResponsible.length - 2} więcej</div>
             )}
           </div>
         </div>
       </div>
 
       {/* Sekwencja trasy */}
-      <div className="bg-white rounded-lg p-4 border border-purple-100">
-        <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+      <div className="bg-white rounded-lg p-4 border border-purple-100 mb-4">
+        <div className="flex items-center gap-2 mb-3">
           <MapPin size={18} className="text-purple-600" />
-          Sekwencja trasy
-        </h4>
-        
-        {(() => {
-          // Sprawdź czy mamy routeSequence w mergedData
-          if (mergedData?.routeSequence && Array.isArray(mergedData.routeSequence) && mergedData.routeSequence.length > 0) {
-            return (
-              <div className="space-y-3">
-                {mergedData.routeSequence.map((point, index) => {
-                  const isFirst = index === 0;
-                  const isLast = index === mergedData.routeSequence.length - 1;
-                  
-                  return (
-                    <div key={index} className="flex items-center gap-3">
-                      {/* Numer punktu */}
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white ${
-                        isFirst ? 'bg-green-500' : isLast ? 'bg-red-500' : 'bg-purple-500'
-                      }`}>
-                        {index + 1}
-                      </div>
-                      
-                      {/* Szczegóły punktu */}
-                      <div className="flex-1">
-                        <div className="font-medium text-gray-800">
-                          {point.city || point.location || 'Nieznane miasto'}
-                        </div>
-                        <div className="text-sm text-gray-600">
-                          {point.company || point.clientName || point.firmName || 'Nieznana firma'}
-                        </div>
-                        {point.type && (
-                          <div className="text-xs text-gray-500">
-                            {point.type === 'pickup' ? 'Załadunek' : 
-                             point.type === 'delivery' ? 'Rozładunek' : 
-                             point.type === 'loading' ? 'Załadunek' :
-                             point.type === 'unloading' ? 'Rozładunek' :
-                             point.type}
-                          </div>
-                        )}
-                      </div>
-                      
-                      {/* Informacje dodatkowe */}
-                      <div className="text-right">
-                        {point.mpk && (
-                          <div className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded mb-1">
-                            MPK: {point.mpk}
-                          </div>
-                        )}
-                        {point.orderNumber && (
-                          <div className="text-xs text-gray-500">
-                            {point.orderNumber}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+          <h4 className="font-semibold text-gray-800">Sekwencja trasy</h4>
+        </div>
+        <div className="space-y-2">
+          {allRoutes.map((route, idx) => (
+            <div key={idx} className="flex items-center gap-3 p-2 bg-gray-50 rounded-md">
+              <div className="bg-purple-600 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center">
+                {idx + 1}
               </div>
-            );
-          } else {
-            // Fallback - pokaż standardową listę tras jeśli nie ma routeSequence
-            return (
-              <div className="space-y-2">
-                {allRoutes.map((route, index) => (
-                  <div key={route.id} className="flex items-center justify-between py-2 px-3 bg-purple-50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="bg-purple-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
-                        {index + 1}
-                      </div>
-                      <div>
-                        <div className="font-medium text-gray-800">{route.route}</div>
-                        <div className="text-xs text-gray-500">Zlecenie: {route.orderNumber}</div>
-                      </div>
-                    </div>
-                    {route.mpk && (
-                      <div className="text-xs bg-purple-200 text-purple-800 px-2 py-1 rounded">
-                        MPK: {route.mpk}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            );
-          }
-        })()}
+              <span className="text-sm font-medium text-gray-700">{route}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
+      {/* Numery zleceń */}
+      <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+        <h4 className="font-semibold text-blue-800 mb-2">Numery połączonych zleceń:</h4>
+        <div className="flex flex-wrap gap-2">
+          {collectUniqueValues('orderNumber').map((orderNum, idx) => (
+            <span key={idx} className="bg-blue-600 text-white px-3 py-1 rounded-full text-sm font-medium">
+              {orderNum}
+            </span>
+          ))}
+        </div>
+      </div>
 
+      {/* Podsumowanie */}
+      <div className="mt-4 text-sm text-purple-700 bg-purple-100 p-3 rounded-md">
+        <strong>Informacja:</strong> To zlecenie obejmuje {allRoutes.length} połączonych transportów. 
+        Wszystkie szczegóły tras i punktów dostawy są wyświetlone powyżej.
+      </div>
     </div>
   );
 };
