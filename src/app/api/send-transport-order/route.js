@@ -1,4 +1,26 @@
-// UPROSZCZONA FUNKCJA generująca HTML zamówienia (bez emoji i skomplikowanych elementów)
+// src/app/api/send-transport-order/route.js
+import { NextResponse } from 'next/server';
+import db from '@/database/db';
+import { Resend } from 'resend';
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+// Funkcja pomocnicza do weryfikacji sesji
+const validateSession = async (authToken) => {
+  if (!authToken) {
+    return null;
+  }
+  
+  const session = await db('sessions')
+    .where('token', authToken)
+    .whereRaw('expires_at > NOW()')
+    .select('user_id')
+    .first();
+  
+  return session?.user_id;
+};
+
+// Funkcja generująca HTML dla zlecenia transportowego
 function generateTransportOrderHTML({ spedycja, producerAddress, delivery, responseData, mergedTransports, user, orderData }) {
   const { towar, terminPlatnosci, waga, dataZaladunku, dataRozladunku } = orderData;
   
@@ -30,7 +52,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     return spedycja.distance_km || 0;
   };
 
-  // Zbierz wszystkie numery zleceń (główny + połączone)
+  // Zbierz wszystkie numery zleceń
   const getAllOrderNumbers = () => {
     const orderNumbers = [spedycja.order_number || spedycja.id];
     
@@ -46,7 +68,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     return orderNumbers.filter(Boolean);
   };
   
-  // Zbierz wszystkie MPK (główny + połączone)
+  // Zbierz wszystkie MPK
   const getAllMPKs = () => {
     const mpks = [];
     
@@ -62,386 +84,475 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       });
     }
     
-    return mpks.filter(Boolean);
+    return mpks;
   };
   
-  // Zbierz wszystkie dokumenty (główny + połączone)
+  // Zbierz wszystkie dokumenty
   const getAllDocuments = () => {
-    const documents = [];
+    const docs = [];
     
     if (spedycja.documents) {
-      documents.push(spedycja.documents);
+      docs.push(spedycja.documents);
     }
     
     if (mergedTransports && mergedTransports.originalTransports && Array.isArray(mergedTransports.originalTransports)) {
       mergedTransports.originalTransports.forEach(transport => {
-        if (transport.documents && !documents.includes(transport.documents)) {
-          documents.push(transport.documents);
+        if (transport.documents && !docs.includes(transport.documents)) {
+          docs.push(transport.documents);
         }
       });
     }
     
-    return documents.filter(Boolean);
+    return docs;
   };
   
-  // Generuj sekwencję trasy w punktach
-  const generateRouteSequence = () => {
-    const sequence = [];
+  // Przygotuj punkty trasy dla transportów łączonych
+  const getRoutePoints = () => {
+    const points = [];
+    let pointNumber = 1;
     
-    // Sprawdź czy mamy routePoints z responseData
-    if (responseData.routePoints && Array.isArray(responseData.routePoints)) {
-      responseData.routePoints.forEach((point, index) => {
-        let pointType = point.type === 'loading' ? 'ZAŁADUNEK' : 'ROZŁADUNEK';
-        let pointCompany = 'Nie podano firmy';
-        let pointAddress = 'Nie podano adresu';
+    // Główny transport - załadunek
+    points.push({
+      number: pointNumber++,
+      type: 'ZAŁADUNEK',
+      companyName: spedycja.location || 'Nie podano',
+      address: producerAddress ? 
+        `${producerAddress.address || ''}, ${producerAddress.postalCode || ''} ${producerAddress.city || ''}` : 
+        'Adres nie podany',
+      date: dataZaladunku || spedycja.delivery_date
+    });
+    
+    // Główny transport - rozładunek
+    points.push({
+      number: pointNumber++,
+      type: 'ROZŁADUNEK',
+      companyName: spedycja.client_name || delivery?.city || 'Nie podano',
+      address: delivery ? 
+        `${delivery.address || ''}, ${delivery.postalCode || ''} ${delivery.city || ''}` : 
+        'Adres nie podany',
+      date: dataRozladunku || spedycja.delivery_date
+    });
+    
+    // Dodaj punkty z transportów łączonych
+    if (mergedTransports && mergedTransports.originalTransports && Array.isArray(mergedTransports.originalTransports)) {
+      mergedTransports.originalTransports.forEach(transport => {
+        // Załadunek
+        points.push({
+          number: pointNumber++,
+          type: 'ZAŁADUNEK',
+          companyName: transport.location || 'Nie podano',
+          address: transport.location_data ? 
+            `${transport.location_data.address || ''}, ${transport.location_data.postalCode || ''} ${transport.location_data.city || ''}` : 
+            'Adres nie podany',
+          date: transport.delivery_date
+        });
         
-        if (point.description) {
-          pointCompany = point.description;
-        }
-        
-        if (point.address) {
-          pointAddress = point.address;
-        }
-        
-        sequence.push({
-          number: index + 1,
-          type: pointType,
-          companyName: pointCompany,
-          address: pointAddress,
-          date: point.type === 'loading' ? dataZaladunku : dataRozladunku
+        // Rozładunek
+        points.push({
+          number: pointNumber++,
+          type: 'ROZŁADUNEK',  
+          companyName: transport.clientName || transport.delivery_data?.city || 'Nie podano',
+          address: transport.delivery_data ? 
+            `${transport.delivery_data.address || ''}, ${transport.delivery_data.postalCode || ''} ${transport.delivery_data.city || ''}` : 
+            'Adres nie podany',
+          date: transport.delivery_date
         });
       });
-      
-      return sequence;
     }
     
-    // Fallback: Podstawowa sekwencja
-    let loadingAddress = 'Nie podano adresu';
-    let loadingCompany = 'Nie podano firmy';
-    
-    if (spedycja.location === 'Magazyn Białystok') {
-      loadingAddress = 'Białystok, 15-169, ul. Wysockiego 69B';
-      loadingCompany = 'Grupa Eltron Sp. z o.o.';
-    } else if (spedycja.location === 'Magazyn Zielonka') {
-      loadingAddress = 'Zielonka, 05-220, ul. Żeglarska 1';
-      loadingCompany = 'Grupa Eltron Sp. z o.o.';
-    } else if (spedycja.location === 'Odbiory własne' && producerAddress) {
-      loadingAddress = (producerAddress.city || '') + ', ' + (producerAddress.postalCode || '') + ', ' + (producerAddress.street || '');
-      loadingCompany = producerAddress.company || 'Nie podano';
-    }
-    
-    sequence.push({
-      number: 1,
-      type: 'ZAŁADUNEK',
-      companyName: loadingCompany,
-      address: loadingAddress,
-      date: dataZaladunku
-    });
-    
-    // Rozładunek główny
-    let unloadingAddress = 'Nie podano adresu';
-    let unloadingCompany = 'Nie podano firmy';
-    
-    if (delivery) {
-      unloadingAddress = (delivery.city || '') + ', ' + (delivery.postalCode || '') + ', ' + (delivery.street || '');
-      unloadingCompany = delivery.companyName || delivery.company || 'Nie podano';
-    }
-    
-    sequence.push({
-      number: 2,
-      type: 'ROZŁADUNEK',
-      companyName: unloadingCompany,
-      address: unloadingAddress,
-      date: dataRozladunku
-    });
-    
-    return sequence;
+    return points;
   };
-  
-  // Oblicz liczbę transportów
-  const getTransportCount = () => {
-    if (mergedTransports && mergedTransports.originalTransports && Array.isArray(mergedTransports.originalTransports)) {
-      return mergedTransports.originalTransports.length + 1;
-    }
-    return 1;
-  };
-  
+
   const allOrderNumbers = getAllOrderNumbers();
   const allMPKs = getAllMPKs();
   const allDocuments = getAllDocuments();
-  const totalPrice = responseData.deliveryPrice || responseData.totalPrice || 0;
   const totalDistance = getTotalDistance();
-  const routeSequence = generateRouteSequence();
-  const transportCount = getTransportCount();
+  const totalPrice = parseFloat(responseData.deliveryPrice || 0);
+  const transportCount = mergedTransports?.originalTransports?.length ? mergedTransports.originalTransports.length + 1 : 1;
+  const routePoints = getRoutePoints();
   
-  // Generowanie HTML punktów trasy
+  // Generuj HTML punktów trasy
   let routePointsHtml = '';
-  routeSequence.forEach(point => {
-    const numberClass = point.type.includes('ZAŁADUNEK') ? 'loading' : 'unloading';
-    routePointsHtml += '<div class="route-point">';
-    routePointsHtml += '<div class="route-number ' + numberClass + '">' + point.number + '</div>';
-    routePointsHtml += '<div class="route-details">';
-    routePointsHtml += '<div class="route-type">' + point.type + '</div>';
-    routePointsHtml += '<div class="route-company">' + point.companyName + '</div>';
-    routePointsHtml += '<div class="route-address">' + point.address + '</div>';
-    routePointsHtml += '<div class="route-info">';
-    routePointsHtml += '<div><strong>Data:</strong> ' + formatDate(point.date) + '</div>';
-    routePointsHtml += '</div>';
-    routePointsHtml += '</div>';
-    routePointsHtml += '</div>';
+  routePoints.forEach(point => {
+    const bgColor = point.type === 'ZAŁADUNEK' ? '#28a745' : '#dc3545';
+    routePointsHtml += `
+      <div style="display: flex; align-items: flex-start; margin-bottom: 20px; padding: 20px; background-color: #f8f9fa; border: 2px solid #e0e0e0; border-radius: 10px;">
+        <div style="width: 50px; height: 50px; border-radius: 50%; background-color: ${bgColor}; color: white; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; margin-right: 20px; flex-shrink: 0;">
+          ${point.number}
+        </div>
+        <div style="flex: 1;">
+          <div style="font-size: 16px; font-weight: bold; color: #1a71b5; margin-bottom: 8px;">
+            ${point.type}
+          </div>
+          <div style="font-size: 18px; font-weight: bold; color: #1a1a1a; margin-bottom: 8px;">
+            ${point.companyName}
+          </div>
+          <div style="font-size: 14px; color: #555555; margin-bottom: 8px;">
+            ${point.address}
+          </div>
+          <div style="font-size: 13px; color: #666666;">
+            <strong>Data:</strong> ${formatDate(point.date)}
+          </div>
+        </div>
+      </div>
+    `;
   });
   
-  // Informacja o transporcie łączonym
+  // Generuj informację o transporcie łączonym
   let mergedInfoHtml = '';
   if (transportCount > 1) {
-    mergedInfoHtml = '<div class="merged-info">';
-    mergedInfoHtml += '<strong>TRANSPORT ŁĄCZONY</strong><br>';
-    mergedInfoHtml += 'To zlecenie obejmuje ' + transportCount + ' połączonych transportów w jednej trasie.<br>';
-    mergedInfoHtml += 'Łączna odległość wszystkich tras: ' + totalDistance + ' km';
-    mergedInfoHtml += '</div>';
+    mergedInfoHtml = `
+      <div style="background-color: #e3f2fd; border: 3px solid #2196f3; padding: 20px; margin: 20px 0; border-radius: 10px; text-align: center;">
+        <strong style="color: #0d47a1; font-size: 18px;">TRANSPORT ŁĄCZONY</strong><br>
+        <span style="color: #0d47a1;">To zlecenie obejmuje ${transportCount} połączonych transportów w jednej trasie.</span><br>
+        <span style="color: #0d47a1;">Łączna odległość wszystkich tras: <strong>${totalDistance} km</strong></span>
+      </div>
+    `;
   }
   
-  return '<!DOCTYPE html>' +
-    '<html lang="pl">' +
-    '<head>' +
-      '<meta charset="UTF-8">' +
-      '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-      '<title>Zlecenie Transportowe</title>' +
-      '<style>' +
-        'body {' +
-          'font-family: Arial, sans-serif;' +
-          'line-height: 1.5;' +
-          'color: #1a1a1a !important;' +
-          'max-width: 800px;' +
-          'margin: 0 auto;' +
-          'padding: 20px;' +
-          'background-color: #ffffff !important;' +
-        '}' +
-        '.header {' +
-          'background: #1a71b5 !important;' +
-          'color: #ffffff !important;' +
-          'padding: 25px;' +
-          'text-align: center;' +
-          'border-radius: 10px;' +
-          'margin-bottom: 20px;' +
-        '}' +
-        '.header h1 {' +
-          'margin: 0;' +
-          'font-size: 26px;' +
-          'font-weight: bold;' +
-          'color: #ffffff !important;' +
-        '}' +
-        '.header p {' +
-          'margin: 10px 0 0 0;' +
-          'font-size: 14px;' +
-          'color: #e6f2ff !important;' +
-        '}' +
-        '.important-note {' +
-          'background-color: #fff8dc !important;' +
-          'border: 3px solid #ffc107 !important;' +
-          'padding: 18px;' +
-          'margin: 20px 0;' +
-          'font-weight: bold;' +
-          'color: #664d00 !important;' +
-          'text-align: center;' +
-          'border-radius: 8px;' +
-        '}' +
-        '.important-warning {' +
-          'background-color: #ffe6e6 !important;' +
-          'border: 3px solid #dc3545 !important;' +
-          'padding: 18px;' +
-          'margin: 20px 0;' +
-          'font-weight: bold;' +
-          'color: #8b0000 !important;' +
-          'text-align: center;' +
-          'border-radius: 8px;' +
-        '}' +
-        '.section {' +
-          'background-color: #ffffff !important;' +
-          'padding: 25px;' +
-          'margin: 15px 0;' +
-          'border: 2px solid #e0e0e0;' +
-          'border-radius: 10px;' +
-        '}' +
-        '.section h2 {' +
-          'color: #1a71b5 !important;' +
-          'margin-top: 0;' +
-          'margin-bottom: 20px;' +
-          'font-size: 20px;' +
-          'font-weight: bold;' +
-          'border-bottom: 3px solid #e0e0e0;' +
-          'padding-bottom: 10px;' +
-        '}' +
-        '.info-table {' +
-          'width: 100%;' +
-          'border-collapse: collapse;' +
-          'margin-bottom: 15px;' +
-        '}' +
-        '.info-table th {' +
-          'text-align: left;' +
-          'padding: 12px;' +
-          'background-color: #f8f9fa !important;' +
-          'font-weight: bold;' +
-          'width: 220px;' +
-          'color: #333333 !important;' +
-          'border: 1px solid #dee2e6;' +
-        '}' +
-        '.info-table td {' +
-          'padding: 12px;' +
-          'border: 1px solid #dee2e6;' +
-          'color: #1a1a1a !important;' +
-          'background-color: #ffffff !important;' +
-        '}' +
-        '.route-sequence {' +
-          'margin: 20px 0;' +
-        '}' +
-        '.route-point {' +
-          'display: flex;' +
-          'align-items: center;' +
-          'margin-bottom: 20px;' +
-          'padding: 20px;' +
-          'background-color: #f8f9fa !important;' +
-          'border: 2px solid #e0e0e0;' +
-          'border-radius: 10px;' +
-        '}' +
-        '.route-number {' +
-          'width: 50px;' +
-          'height: 50px;' +
-          'border-radius: 50%;' +
-          'display: flex;' +
-          'align-items: center;' +
-          'justify-content: center;' +
-          'font-size: 18px;' +
-          'font-weight: bold;' +
-          'color: #ffffff !important;' +
-          'margin-right: 20px;' +
-        '}' +
-        '.route-number.loading {' +
-          'background-color: #28a745 !important;' +
-        '}' +
-        '.route-number.unloading {' +
-          'background-color: #dc3545 !important;' +
-        '}' +
-        '.route-details {' +
-          'flex: 1;' +
-        '}' +
-        '.route-type {' +
-          'font-size: 16px;' +
-          'font-weight: bold;' +
-          'color: #1a71b5 !important;' +
-          'margin-bottom: 8px;' +
-        '}' +
-        '.route-company {' +
-          'font-size: 18px;' +
-          'font-weight: bold;' +
-          'color: #1a1a1a !important;' +
-          'margin-bottom: 8px;' +
-        '}' +
-        '.route-address {' +
-          'font-size: 14px;' +
-          'color: #555555 !important;' +
-          'margin-bottom: 8px;' +
-        '}' +
-        '.route-info {' +
-          'font-size: 13px;' +
-          'color: #666666 !important;' +
-        '}' +
-        '.merged-info {' +
-          'background-color: #e3f2fd !important;' +
-          'border: 3px solid #2196f3 !important;' +
-          'padding: 20px;' +
-          'margin: 20px 0;' +
-          'border-radius: 10px;' +
-          'color: #0d47a1 !important;' +
-          'text-align: center;' +
-          'font-weight: bold;' +
-        '}' +
-        '.footer {' +
-          'background-color: #f8f9fa !important;' +
-          'padding: 20px;' +
-          'text-align: center;' +
-          'border-radius: 10px;' +
-          'font-size: 12px;' +
-          'color: #666666 !important;' +
-          'border: 1px solid #e0e0e0;' +
-        '}' +
-      '</style>' +
-    '</head>' +
-    '<body>' +
-      '<div class="header">' +
-        '<h1>ZLECENIE TRANSPORTOWE</h1>' +
-        '<p>Numery zleceń: ' + allOrderNumbers.join(', ') + ' | Data utworzenia: ' + formatDate(new Date().toISOString()) + '</p>' +
-      '</div>' +
+  return `<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zlecenie Transportowe</title>
+  <style>
+    @media (prefers-color-scheme: dark) {
+      body { background-color: #ffffff !important; }
+      * { color: #1a1a1a !important; }
+    }
+  </style>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.5; color: #1a1a1a; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #ffffff;">
+  
+  <div style="background-color: #1a71b5; color: white; padding: 30px; text-align: center; border-radius: 10px; margin-bottom: 30px;">
+    <h1 style="margin: 0; font-size: 32px; color: white;">ZLECENIE TRANSPORTOWE</h1>
+    <p style="margin: 10px 0 0 0; font-size: 16px; color: white;">
+      Numery zleceń: <strong>${allOrderNumbers.join(', ')}</strong> | 
+      Data utworzenia: ${formatDate(new Date().toISOString())}
+    </p>
+  </div>
+  
+  <div style="background-color: #fff3cd; border: 2px solid #ffc107; padding: 20px; margin-bottom: 30px; border-radius: 10px;">
+    <p style="margin: 0; font-size: 16px; color: #856404;">
+      <strong>WAŻNE:</strong> Proszę o dopisanie na fakturze zamieszczonych poniżej numerów zleceń: 
+      <strong>${allOrderNumbers.join(', ')}</strong>
+    </p>
+  </div>
+  
+  <div style="background-color: #f8d7da; border: 2px solid #dc3545; padding: 20px; margin-bottom: 30px; border-radius: 10px;">
+    <p style="margin: 0; font-size: 16px; color: #721c24;">
+      <strong>UWAGA!</strong> Na fakturze musi być podany numer zlecenia: <strong>${allOrderNumbers.join(', ')}</strong>. 
+      Faktury bez numeru zlecenia nie będą opłacane.
+    </p>
+  </div>
+  
+  ${mergedInfoHtml}
+  
+  <div style="margin-bottom: 30px;">
+    <h2 style="font-size: 24px; color: #1a71b5; border-bottom: 3px solid #e0e0e0; padding-bottom: 10px;">
+      Informacje o transporcie
+    </h2>
+    <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+      <tr>
+        <th style="text-align: left; padding: 12px; background-color: #f8f9fa; font-weight: bold; width: 220px; border: 1px solid #dee2e6; color: #333333;">
+          Rodzaj towaru:
+        </th>
+        <td style="padding: 12px; border: 1px solid #dee2e6; color: #1a1a1a; background-color: #ffffff;">
+          ${towar || 'Nie podano'}
+        </td>
+      </tr>
+      <tr>
+        <th style="text-align: left; padding: 12px; background-color: #f8f9fa; font-weight: bold; width: 220px; border: 1px solid #dee2e6; color: #333333;">
+          Waga towaru:
+        </th>
+        <td style="padding: 12px; border: 1px solid #dee2e6; color: #1a1a1a; background-color: #ffffff;">
+          ${waga || 'Nie podano'}
+        </td>
+      </tr>
+      <tr>
+        <th style="text-align: left; padding: 12px; background-color: #f8f9fa; font-weight: bold; width: 220px; border: 1px solid #dee2e6; color: #333333;">
+          Łączna odległość${transportCount > 1 ? ' wszystkich tras' : ''}:
+        </th>
+        <td style="padding: 12px; border: 1px solid #dee2e6; color: #1a1a1a; background-color: #ffffff;">
+          <strong>${totalDistance} km</strong>
+        </td>
+      </tr>
+      <tr>
+        <th style="text-align: left; padding: 12px; background-color: #f8f9fa; font-weight: bold; width: 220px; border: 1px solid #dee2e6; color: #333333;">
+          MPK${allMPKs.length > 1 ? ' (wszystkie)' : ''}:
+        </th>
+        <td style="padding: 12px; border: 1px solid #dee2e6; color: #1a1a1a; background-color: #ffffff;">
+          ${allMPKs.join(', ') || 'Nie podano'}
+        </td>
+      </tr>
+      <tr>
+        <th style="text-align: left; padding: 12px; background-color: #f8f9fa; font-weight: bold; width: 220px; border: 1px solid #dee2e6; color: #333333;">
+          Dokumenty${allDocuments.length > 1 ? ' (wszystkie)' : ''}:
+        </th>
+        <td style="padding: 12px; border: 1px solid #dee2e6; color: #1a1a1a; background-color: #ffffff;">
+          ${allDocuments.join(', ') || 'Nie podano'}
+        </td>
+      </tr>
+    </table>
+  </div>
+  
+  <div style="margin-bottom: 30px;">
+    <h2 style="font-size: 24px; color: #1a71b5; border-bottom: 3px solid #e0e0e0; padding-bottom: 10px;">
+      Sekwencja trasy
+    </h2>
+    <div style="margin-top: 20px;">
+      ${routePointsHtml}
+    </div>
+  </div>
+  
+  <div style="margin-bottom: 30px;">
+    <h2 style="font-size: 24px; color: #1a71b5; border-bottom: 3px solid #e0e0e0; padding-bottom: 10px;">
+      Dane przewoźnika
+    </h2>
+    <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+      <tr>
+        <th style="text-align: left; padding: 12px; background-color: #f8f9fa; font-weight: bold; width: 220px; border: 1px solid #dee2e6; color: #333333;">
+          Przewoźnik:
+        </th>
+        <td style="padding: 12px; border: 1px solid #dee2e6; color: #1a1a1a; background-color: #ffffff;">
+          ${(responseData.driverName || '')} ${(responseData.driverSurname || '')}
+        </td>
+      </tr>
+      <tr>
+        <th style="text-align: left; padding: 12px; background-color: #f8f9fa; font-weight: bold; width: 220px; border: 1px solid #dee2e6; color: #333333;">
+          Numer rejestracyjny:
+        </th>
+        <td style="padding: 12px; border: 1px solid #dee2e6; color: #1a1a1a; background-color: #ffffff;">
+          ${responseData.vehicleNumber || 'Nie podano'}
+        </td>
+      </tr>
+      <tr>
+        <th style="text-align: left; padding: 12px; background-color: #f8f9fa; font-weight: bold; width: 220px; border: 1px solid #dee2e6; color: #333333;">
+          Telefon do kierowcy:
+        </th>
+        <td style="padding: 12px; border: 1px solid #dee2e6; color: #1a1a1a; background-color: #ffffff;">
+          ${responseData.driverPhone || 'Nie podano'}
+        </td>
+      </tr>
+    </table>
+  </div>
+  
+  <div style="margin-bottom: 30px;">
+    <h2 style="font-size: 24px; color: #1a71b5; border-bottom: 3px solid #e0e0e0; padding-bottom: 10px;">
+      Płatność
+    </h2>
+    <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+      <tr>
+        <th style="text-align: left; padding: 12px; background-color: #f8f9fa; font-weight: bold; width: 220px; border: 1px solid #dee2e6; color: #333333;">
+          Całkowita cena transportu:
+        </th>
+        <td style="padding: 12px; border: 1px solid #dee2e6; color: #1a1a1a; background-color: #ffffff;">
+          <strong style="font-size: 18px; color: #28a745;">${formatPrice(totalPrice)}</strong>
+        </td>
+      </tr>
+      <tr>
+        <th style="text-align: left; padding: 12px; background-color: #f8f9fa; font-weight: bold; width: 220px; border: 1px solid #dee2e6; color: #333333;">
+          Termin płatności:
+        </th>
+        <td style="padding: 12px; border: 1px solid #dee2e6; color: #1a1a1a; background-color: #ffffff;">
+          ${terminPlatnosci || 'Nie podano'}
+        </td>
+      </tr>
+    </table>
+  </div>
+  
+  <div style="margin-bottom: 30px;">
+    <h2 style="font-size: 24px; color: #1a71b5; border-bottom: 3px solid #e0e0e0; padding-bottom: 10px;">
+      Uwagi
+    </h2>
+    <p style="margin-top: 15px; padding: 15px; background-color: #f8f9fa; border-radius: 10px; color: #1a1a1a;">
+      ${spedycja.notes || 'Brak uwag'}
+    </p>
+    ${responseData.adminNotes ? `
+      <p style="margin-top: 15px; padding: 15px; background-color: #fff3cd; border-radius: 10px;">
+        <strong style="color: #856404;">Uwagi przewoźnika:</strong> 
+        <span style="color: #1a1a1a;">${responseData.adminNotes}</span>
+      </p>
+    ` : ''}
+  </div>
+  
+  <div style="margin-bottom: 30px; background-color: #e8f5e9; padding: 20px; border-radius: 10px;">
+    <h2 style="font-size: 20px; color: #2e7d32; margin-bottom: 15px;">
+      Adres do wysyłki faktur i dokumentów
+    </h2>
+    <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #1a1a1a;">
+      <strong>Grupa Eltron Sp. z o.o.</strong><br>
+      ul. Główna 7<br>
+      18-100 Łapy<br>
+      tel. 85 715 27 05<br>
+      NIP: 9662112843<br>
+      <a href="mailto:ksiegowosc@grupaeltron.pl" style="color: #1a71b5; text-decoration: none;">
+        ksiegowosc@grupaeltron.pl
+      </a>
+    </p>
+  </div>
+  
+  <div style="background-color: #f8f9fa; padding: 20px; text-align: center; border-radius: 10px; margin-top: 30px;">
+    <p style="margin: 0; font-size: 14px; color: #666666;">
+      <strong>Zlecenie wygenerowane automatycznie przez System Transportowy</strong>
+    </p>
+    <p style="margin: 5px 0 0 0; font-size: 12px; color: #666666;">
+      Data: ${formatDate(new Date().toISOString())} | 
+      Użytkownik: ${user.name || user.email} | 
+      Typ transportu: ${transportCount > 1 ? `Łączony (${transportCount} tras)` : 'Pojedynczy'}
+    </p>
+  </div>
+  
+</body>
+</html>`;
+}
+
+// POST - Wysyłanie zlecenia transportowego emailem
+export async function POST(request) {
+  try {
+    console.log('=== START POST /api/send-transport-order ===');
+    
+    // Sprawdzamy uwierzytelnienie
+    const authToken = request.cookies.get('authToken')?.value;
+    const userId = await validateSession(authToken);
+    
+    if (!userId) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Unauthorized' 
+      }, { status: 401 });
+    }
+    
+    // Pobierz dane użytkownika
+    const user = await db('users')
+      .where('email', userId)
+      .select('email', 'name', 'role', 'is_admin')
+      .first();
       
-      '<div class="important-note">' +
-        'Proszę o dopisanie na fakturze zamieszczonych poniżej numerów zleceń: ' + allOrderNumbers.join(', ') + '.' +
-      '</div>' +
+    if (!user) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'User not found' 
+      }, { status: 404 });
+    }
+    
+    // Pobierz dane z żądania
+    const { spedycjaId, towar, waga, dataZaladunku, dataRozladunku, terminPlatnosci, emailOdbiorcy } = await request.json();
+    
+    console.log('Otrzymane dane:', { spedycjaId, towar, waga, dataZaladunku, dataRozladunku, terminPlatnosci, emailOdbiorcy });
+    
+    // Pobierz szczegóły zlecenia spedycji
+    const spedycja = await db('spedycje')
+      .where('id', spedycjaId)
+      .first();
       
-      '<div class="important-warning">' +
-        '<strong>UWAGA!</strong> Na fakturze musi być podany numer zlecenia: ' + allOrderNumbers.join(', ') + '. ' +
-        'Faktury bez numeru zlecenia nie będą opłacane.' +
-      '</div>' +
+    if (!spedycja) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Nie znaleziono zlecenia spedycji' 
+      }, { status: 404 });
+    }
+    
+    // Parsuj dane JSON
+    let producerAddress = null;
+    let delivery = null;
+    let responseData = {};
+    let mergedTransports = null;
+    
+    try {
+      if (spedycja.location_data) {
+        producerAddress = typeof spedycja.location_data === 'string' ? 
+          JSON.parse(spedycja.location_data) : spedycja.location_data;
+      }
       
-      mergedInfoHtml +
+      if (spedycja.delivery_data) {
+        delivery = typeof spedycja.delivery_data === 'string' ? 
+          JSON.parse(spedycja.delivery_data) : spedycja.delivery_data;
+      }
       
-      '<div class="section">' +
-        '<h2>Informacje o transporcie</h2>' +
-        '<table class="info-table">' +
-          '<tr><th>Rodzaj towaru:</th><td>' + (towar || 'Nie podano') + '</td></tr>' +
-          '<tr><th>Waga towaru:</th><td>' + (waga || 'Nie podano') + '</td></tr>' +
-          '<tr><th>Łączna odległość' + (transportCount > 1 ? ' wszystkich tras' : '') + ':</th><td><strong>' + totalDistance + ' km</strong></td></tr>' +
-          '<tr><th>MPK' + (allMPKs.length > 1 ? ' (wszystkie)' : '') + ':</th><td>' + (allMPKs.join(', ') || 'Nie podano') + '</td></tr>' +
-          '<tr><th>Dokumenty' + (allDocuments.length > 1 ? ' (wszystkie)' : '') + ':</th><td>' + (allDocuments.join(', ') || 'Nie podano') + '</td></tr>' +
-        '</table>' +
-      '</div>' +
+      if (spedycja.response_data) {
+        responseData = typeof spedycja.response_data === 'string' ? 
+          JSON.parse(spedycja.response_data) : spedycja.response_data;
+      }
       
-      '<div class="section">' +
-        '<h2>Sekwencja trasy</h2>' +
-        '<div class="route-sequence">' +
-          routePointsHtml +
-        '</div>' +
-      '</div>' +
+      // Sprawdź czy to transport łączony
+      if (spedycja.merged_transports) {
+        mergedTransports = typeof spedycja.merged_transports === 'string' ? 
+          JSON.parse(spedycja.merged_transports) : spedycja.merged_transports;
+      }
+    } catch (error) {
+      console.error('Błąd parsowania danych JSON:', error);
+    }
+    
+    // Generuj HTML zlecenia
+    const htmlContent = generateTransportOrderHTML({
+      spedycja,
+      producerAddress,
+      delivery,
+      responseData,
+      mergedTransports,
+      user,
+      orderData: { towar, waga, dataZaladunku, dataRozladunku, terminPlatnosci }
+    });
+    
+    // Przygotuj listę odbiorców
+    const recipients = [emailOdbiorcy];
+    
+    // Dodaj email przewoźnika jeśli jest dostępny
+    if (responseData.driverEmail) {
+      recipients.push(responseData.driverEmail);
+    }
+    
+    // Dodaj kopię do nadawcy
+    recipients.push(user.email);
+    
+    // Wyślij email przez Resend
+    try {
+      const emailResult = await resend.emails.send({
+        from: 'System Transportowy <transport@grupaeltron.pl>',
+        to: recipients,
+        subject: `Zlecenie Transportowe - ${spedycja.order_number || spedycja.id}`,
+        html: htmlContent,
+        headers: {
+          'X-Priority': '1',
+          'Importance': 'High'
+        }
+      });
       
-      '<div class="section">' +
-        '<h2>Dane przewoźnika</h2>' +
-        '<table class="info-table">' +
-          '<tr><th>Przewoźnik:</th><td>' + (responseData.driverName || '') + ' ' + (responseData.driverSurname || '') + '</td></tr>' +
-          '<tr><th>Numer rejestracyjny:</th><td>' + (responseData.vehicleNumber || 'Nie podano') + '</td></tr>' +
-          '<tr><th>Telefon do kierowcy:</th><td>' + (responseData.driverPhone || 'Nie podano') + '</td></tr>' +
-        '</table>' +
-      '</div>' +
+      console.log('Email wysłany pomyślnie:', emailResult);
       
-      '<div class="section">' +
-        '<h2>Płatność</h2>' +
-        '<table class="info-table">' +
-          '<tr><th>Całkowita cena transportu:</th><td><strong>' + formatPrice(totalPrice) + '</strong></td></tr>' +
-          '<tr><th>Termin płatności:</th><td>' + (terminPlatnosci || 'Nie podano') + '</td></tr>' +
-        '</table>' +
-      '</div>' +
+      // Zaktualizuj status zlecenia spedycji
+      await db('spedycje')
+        .where('id', spedycjaId)
+        .update({
+          status: 'sent',
+          order_sent_at: db.fn.now(),
+          order_sent_by: userId,
+          order_data: JSON.stringify({ towar, waga, dataZaladunku, dataRozladunku, terminPlatnosci })
+        });
       
-      '<div class="section">' +
-        '<h2>Uwagi</h2>' +
-        '<p>' + (spedycja.notes || 'Brak uwag') + '</p>' +
-        (responseData.adminNotes ? '<p><strong>Uwagi przewoźnika:</strong> ' + responseData.adminNotes + '</p>' : '') +
-      '</div>' +
+      return NextResponse.json({ 
+        success: true,
+        message: 'Zlecenie transportowe zostało wysłane pomyślnie',
+        emailId: emailResult.id
+      });
       
-      '<div class="section">' +
-        '<h2>Adres do wysyłki faktur i dokumentów</h2>' +
-        '<p>' +
-          '<strong>Grupa Eltron Sp. z o.o.</strong><br>' +
-          'ul. Główna 7<br>' +
-          '18-100 Łapy<br>' +
-          'tel. 85 715 27 05<br>' +
-          'NIP: 9662112843<br>' +
-          'ksiegowosc@grupaeltron.pl' +
-        '</p>' +
-      '</div>' +
+    } catch (emailError) {
+      console.error('Błąd wysyłania emaila:', emailError);
       
-      '<div class="footer">' +
-        '<p><strong>Zlecenie wygenerowane automatycznie przez System Transportowy</strong></p>' +
-        '<p>Data: ' + formatDate(new Date().toISOString()) + ' | Użytkownik: ' + (user.name || user.email) + '</p>' +
-        '<p>Typ transportu: ' + (transportCount > 1 ? 'Łączony (' + transportCount + ' tras)' : 'Pojedynczy') + '</p>' +
-      '</div>' +
-    '</body>' +
-    '</html>';
+      return NextResponse.json({ 
+        success: false, 
+        error: `Błąd wysyłania emaila: ${emailError.message}`
+      }, { status: 500 });
+    }
+    
+  } catch (error) {
+    console.error('Error in POST /api/send-transport-order:', error);
+    
+    return NextResponse.json({ 
+      success: false, 
+      error: `Błąd serwera: ${error.message}`
+    }, { status: 500 });
+  }
 }
