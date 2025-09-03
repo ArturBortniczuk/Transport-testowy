@@ -1,9 +1,7 @@
 // src/app/api/send-transport-order/route.js
 import { NextResponse } from 'next/server';
 import db from '@/database/db';
-import { Resend } from 'resend';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import nodemailer from 'nodemailer';
 
 // Funkcja pomocnicza do weryfikacji sesji
 const validateSession = async (authToken) => {
@@ -507,20 +505,34 @@ export async function POST(request) {
     // Dodaj kopię do nadawcy
     recipients.push(user.email);
     
-    // Wyślij email przez Resend
+    // Konfiguracja transportera email
+    const transporter = nodemailer.createTransporter({
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      }
+    });
+    
+    // Opcje emaila
+    const mailOptions = {
+      from: `System Transportowy <${process.env.SMTP_USER || 'transport@grupaeltron.pl'}>`,
+      to: recipients.join(', '),
+      subject: `Zlecenie Transportowe - ${spedycja.order_number || spedycja.id}`,
+      html: htmlContent,
+      priority: 'high',
+      headers: {
+        'X-Priority': '1',
+        'Importance': 'High'
+      }
+    };
+    
+    // Wyślij email
     try {
-      const emailResult = await resend.emails.send({
-        from: 'System Transportowy <transport@grupaeltron.pl>',
-        to: recipients,
-        subject: `Zlecenie Transportowe - ${spedycja.order_number || spedycja.id}`,
-        html: htmlContent,
-        headers: {
-          'X-Priority': '1',
-          'Importance': 'High'
-        }
-      });
-      
-      console.log('Email wysłany pomyślnie:', emailResult);
+      const info = await transporter.sendMail(mailOptions);
+      console.log('Email wysłany pomyślnie:', info);
       
       // Zaktualizuj status zlecenia spedycji
       await db('spedycje')
@@ -535,7 +547,7 @@ export async function POST(request) {
       return NextResponse.json({ 
         success: true,
         message: 'Zlecenie transportowe zostało wysłane pomyślnie',
-        emailId: emailResult.id
+        messageId: info.messageId
       });
       
     } catch (emailError) {
