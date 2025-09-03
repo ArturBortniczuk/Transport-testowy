@@ -1,6 +1,6 @@
 // src/app/api/send-transport-order/route.js
 import { NextResponse } from 'next/server';
-import * as nodemailer from 'nodemailer';
+import nodemailer from 'nodemailer';  // ← POPRAWIONY IMPORT (usunąłem "* as")
 import db from '@/database/db';
 
 export async function POST(request) {
@@ -133,8 +133,8 @@ export async function POST(request) {
       }
     });
     
-    // Konfiguracja transportera mailowego
-    const transporter = nodemailer.createTransporter({
+    // Konfiguracja transportera mailowego - POPRAWIONA FUNKCJA
+    const transporter = nodemailer.createTransport({  // ← POPRAWIONE: createTransport zamiast createTransporter
       host: process.env.SMTP_HOST,
       port: parseInt(process.env.SMTP_PORT || '465'),
       secure: process.env.SMTP_SECURE === 'true',
@@ -198,7 +198,7 @@ export async function POST(request) {
   }
 }
 
-// POPRAWIONA FUNKCJA generująca HTML zamówienia
+// FUNKCJA generująca HTML zamówienia (bez zmian - pozostaje taka jak była)
 function generateTransportOrderHTML({ spedycja, producerAddress, delivery, responseData, mergedTransports, user, orderData }) {
   const { towar, terminPlatnosci, waga, dataZaladunku, dataRozladunku } = orderData;
   
@@ -243,7 +243,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     return formattedLines.join('<br>');
   };
 
-  // POPRAWIONA FUNKCJA do zbierania wszystkich numerów zleceń
+  // FUNKCJA do zbierania wszystkich numerów zleceń
   const getAllOrderNumbers = () => {
     const orderNumbers = [spedycja.order_number || spedycja.id];
     
@@ -259,7 +259,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     return orderNumbers.filter(Boolean);
   };
   
-  // POPRAWIONA FUNKCJA do zbierania wszystkich MPK
+  // FUNKCJA do zbierania wszystkich MPK
   const getAllMPKs = () => {
     const mpks = [spedycja.mpk];
     
@@ -274,7 +274,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     return mpks.filter(Boolean);
   };
   
-  // POPRAWIONA FUNKCJA do zbierania wszystkich dokumentów
+  // FUNKCJA do zbierania wszystkich dokumentów
   const getAllDocuments = () => {
     const documents = [];
     
@@ -293,12 +293,12 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     return documents.filter(Boolean);
   };
   
-  // POPRAWIONA FUNKCJA do obliczania łącznej ceny
+  // FUNKCJA do obliczania łącznej ceny
   const getTotalPrice = () => {
     return responseData.deliveryPrice || responseData.totalPrice || 0;
   };
   
-  // POPRAWIONA FUNKCJA do obliczania łącznej odległości
+  // FUNKCJA do obliczania łącznej odległości
   const getTotalDistance = () => {
     return responseData.realRouteDistance || 
            responseData.totalDistance || 
@@ -306,7 +306,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
            0;
   };
   
-  // POPRAWIONA FUNKCJA do generowania sekwencji trasy
+  // FUNKCJA do generowania sekwencji trasy
   const generateRouteSequence = () => {
     const sequence = [];
     
@@ -321,8 +321,8 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       loadingAddress = 'Zielonka, 05-220, ul. Żeglarska 1';
       loadingCompany = 'Grupa Eltron Sp. z o.o.';
     } else if (spedycja.location === 'Odbiory własne' && producerAddress) {
-      loadingAddress = `${producerAddress.city || ''}, ${producerAddress.postalCode || ''}, ${producerAddress.street || ''}`.replace(/^,\s*|,\s*$/g, '');
-      loadingCompany = producerAddress.companyName || producerAddress.company || 'Nie podano';
+      loadingAddress = formatAddressNice(producerAddress, producerAddress.pinLocation);
+      loadingCompany = producerAddress.company || 'Nie podano';
     }
     
     sequence.push({
@@ -333,30 +333,14 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       contact: spedycja.loading_contact || 'Brak kontaktu'
     });
     
-    // POPRAWIONE: Punkty z sekwencji trasy (jeśli są dostępne)
-    if (mergedTransports?.routeSequence && Array.isArray(mergedTransports.routeSequence)) {
-      mergedTransports.routeSequence.forEach((point, index) => {
-        if (point.type !== 'loading' || index > 0) { // Pomijamy pierwszy załadunek, bo już go dodaliśmy
-          
-          let pointAddress = 'Nie podano adresu';
-          let pointCompany = 'Nie podano firmy';
-          
-          // Formatowanie adresu punktu
-          if (point.address) {
-            pointAddress = point.address;
-          } else if (point.location) {
-            pointAddress = `${point.location.city || ''}, ${point.location.postalCode || ''}, ${point.location.street || ''}`.replace(/^,\s*|,\s*$/g, '');
-          }
-          
-          // Nazwa firmy
-          if (point.description) {
-            pointCompany = point.description;
-          }
-          
+    // Sprawdź czy mamy dane routePoints z połączonych transportów
+    if (mergedTransports?.routePoints && Array.isArray(mergedTransports.routePoints)) {
+      mergedTransports.routePoints.forEach(point => {
+        if (point.type !== 'loading' || point.transportId !== 'main') {
           sequence.push({
             type: point.type === 'loading' ? 'ZAŁADUNEK' : 'ROZŁADUNEK',
-            companyName: pointCompany,
-            address: pointAddress,
+            companyName: point.companyName || 'Nie podano',
+            address: point.address || 'Brak adresu',
             date: point.type === 'loading' ? dataZaladunku : dataRozladunku,
             contact: point.contact || 'Brak kontaktu'
           });
@@ -384,7 +368,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     return sequence;
   };
   
-  // POPRAWIONE OBLICZANIE LICZBY TRANSPORTÓW
+  // OBLICZANIE LICZBY TRANSPORTÓW
   const getTransportCount = () => {
     if (mergedTransports?.originalTransports && Array.isArray(mergedTransports.originalTransports)) {
       return mergedTransports.originalTransports.length + 1; // +1 za główny transport
@@ -418,70 +402,70 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
           background-color: #f8f9fa;
         }
         .header {
-          background-color: #1a71b5;
+          background: linear-gradient(135deg, #1a71b5 0%, #0d5a9a 100%);
           color: white;
           padding: 20px;
           text-align: center;
           border-radius: 8px 8px 0 0;
+          margin-bottom: 0;
         }
         .header h1 {
           margin: 0;
-          font-size: 28px;
+          font-size: 24px;
           font-weight: bold;
         }
         .header p {
-          margin: 10px 0 0 0;
+          margin: 8px 0 0 0;
           font-size: 14px;
+          opacity: 0.9;
         }
         .important-note {
           background-color: #fff3cd;
           border: 2px solid #ffc107;
           padding: 15px;
-          margin: 20px 0;
-          border-radius: 5px;
+          margin: 0;
           font-weight: bold;
-          text-align: center;
           color: #856404;
+          text-align: center;
         }
         .important-warning {
           background-color: #f8d7da;
           border: 2px solid #dc3545;
           padding: 15px;
-          margin: 20px 0;
-          border-radius: 5px;
+          margin: 0;
           font-weight: bold;
-          text-align: center;
           color: #721c24;
+          text-align: center;
         }
         .section {
           background-color: white;
-          margin: 20px 0;
           padding: 20px;
-          border-radius: 8px;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+          margin: 0;
+          border-left: 4px solid #1a71b5;
         }
         .section h2 {
           color: #1a71b5;
-          border-bottom: 2px solid #1a71b5;
-          padding-bottom: 10px;
+          margin-top: 0;
           margin-bottom: 15px;
-          font-size: 20px;
+          font-size: 18px;
+          border-bottom: 2px solid #e9ecef;
+          padding-bottom: 8px;
         }
         .info-table {
           width: 100%;
           border-collapse: collapse;
           margin-bottom: 15px;
         }
-        .info-table th,
-        .info-table td {
-          padding: 10px;
-          text-align: left;
-          border-bottom: 1px solid #ddd;
-        }
         .info-table th {
+          text-align: left;
+          padding: 8px;
           background-color: #f8f9fa;
           font-weight: bold;
           width: 200px;
+        }
+        .info-table td {
+          padding: 8px;
+          border-bottom: 1px solid #e9ecef;
         }
         .route-item {
           margin-bottom: 20px;
@@ -558,16 +542,8 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       ` : ''}
       
       <div class="section">
-        <h2>Dane podstawowe</h2>
+        <h2>Informacje o transporcie</h2>
         <table class="info-table">
-          <tr>
-            <th>Numery MPK:</th>
-            <td>${allMPKs.join(', ') || 'Nie podano'}</td>
-          </tr>
-          <tr>
-            <th>Dokumenty:</th>
-            <td>${allDocuments.join(', ') || 'Nie podano'}</td>
-          </tr>
           <tr>
             <th>Rodzaj towaru:</th>
             <td>${towar || 'Nie podano'}</td>
@@ -581,8 +557,12 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
             <td>${totalDistance} km</td>
           </tr>
           <tr>
-            <th>Liczba tras:</th>
-            <td>${transportCount}</td>
+            <th>MPK:</th>
+            <td>${allMPKs.join(', ') || 'Nie podano'}</td>
+          </tr>
+          <tr>
+            <th>Dokumenty:</th>
+            <td>${allDocuments.join(', ') || 'Nie podano'}</td>
           </tr>
         </table>
       </div>
