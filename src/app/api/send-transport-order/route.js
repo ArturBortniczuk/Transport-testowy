@@ -1,4 +1,4 @@
-// ULEPSZONA FUNKCJA generująca HTML zamówienia
+// NAPRAWIONA FUNKCJA generująca HTML zamówienia
 function generateTransportOrderHTML({ spedycja, producerAddress, delivery, responseData, mergedTransports, user, orderData }) {
   const { towar, terminPlatnosci, waga, dataZaladunku, dataRozladunku } = orderData;
   
@@ -114,7 +114,10 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
         if (point.address) {
           pointAddress = point.address;
         } else if (point.location) {
-          pointAddress = `${point.location.city || ''}, ${point.location.postalCode || ''}, ${point.location.street || ''}`.replace(/^,\\s*|,\\s*$/g, '');
+          const city = point.location.city || '';
+          const postalCode = point.location.postalCode || '';
+          const street = point.location.street || '';
+          pointAddress = `${city}, ${postalCode}, ${street}`.replace(/^,\s*|,\s*$/g, '');
         }
         
         sequence.push({
@@ -142,7 +145,10 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       loadingAddress = 'Zielonka, 05-220, ul. Żeglarska 1';
       loadingCompany = 'Grupa Eltron Sp. z o.o.';
     } else if (spedycja.location === 'Odbiory własne' && producerAddress) {
-      loadingAddress = `${producerAddress.city || ''}, ${producerAddress.postalCode || ''}, ${producerAddress.street || ''}`.replace(/^,\\s*|,\\s*$/g, '');
+      const city = producerAddress.city || '';
+      const postalCode = producerAddress.postalCode || '';
+      const street = producerAddress.street || '';
+      loadingAddress = `${city}, ${postalCode}, ${street}`.replace(/^,\s*|,\s*$/g, '');
       loadingCompany = producerAddress.company || 'Nie podano';
     }
     
@@ -160,7 +166,10 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     let unloadingCompany = 'Nie podano firmy';
     
     if (delivery) {
-      unloadingAddress = `${delivery.city || ''}, ${delivery.postalCode || ''}, ${delivery.street || ''}`.replace(/^,\\s*|,\\s*$/g, '');
+      const city = delivery.city || '';
+      const postalCode = delivery.postalCode || '';
+      const street = delivery.street || '';
+      unloadingAddress = `${city}, ${postalCode}, ${street}`.replace(/^,\s*|,\s*$/g, '');
       unloadingCompany = delivery.companyName || delivery.company || 'Nie podano';
     }
     
@@ -191,6 +200,23 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
   const totalDistance = getTotalDistance();
   const routeSequence = generateRouteSequence();
   const transportCount = getTransportCount();
+  
+  // NAPRAWIONE: Generowanie HTML punktów trasy bez zagnieżdżonych template literals
+  const routePointsHtml = routeSequence.map(point => {
+    const numberClass = point.type.toLowerCase().includes('załadunek') ? 'loading' : 'unloading';
+    return '<div class="route-point">' +
+      '<div class="route-number ' + numberClass + '">' + point.number + '</div>' +
+      '<div class="route-details">' +
+        '<div class="route-type">' + point.type + '</div>' +
+        '<div class="route-company">' + point.companyName + '</div>' +
+        '<div class="route-address">' + point.address + '</div>' +
+        '<div class="route-info">' +
+          '<div><strong>Data ' + point.type.toLowerCase() + ':</strong> ' + formatDate(point.date) + '</div>' +
+          '<div><strong>Kontakt:</strong> ' + point.contact + '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
   
   return `
     <!DOCTYPE html>
@@ -460,22 +486,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       <div class="section">
         <h2>🗺️ Sekwencja trasy</h2>
         <div class="route-sequence">
-          ${routeSequence.map(point => `
-            <div class="route-point">
-              <div class="route-number ${point.type.toLowerCase().includes('załadunek') ? 'loading' : 'unloading'}">
-                ${point.number}
-              </div>
-              <div class="route-details">
-                <div class="route-type">${point.type}</div>
-                <div class="route-company">${point.companyName}</div>
-                <div class="route-address">${point.address}</div>
-                <div class="route-info">
-                  <div><strong>Data ${point.type.toLowerCase()}:</strong> ${formatDate(point.date)}</div>
-                  <div><strong>Kontakt:</strong> ${point.contact}</div>
-                </div>
-              </div>
-            </div>
-          `).join('')}
+          ${routePointsHtml}
         </div>
       </div>
       
