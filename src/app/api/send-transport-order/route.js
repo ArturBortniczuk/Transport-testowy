@@ -218,8 +218,8 @@ export async function POST(request) {
     const info = await transporter.sendMail(mailOptions);
     
     // POPRAWIONE OBLICZANIE LICZBY TRANSPORTÓW
-    const transportCount = mergedTransports?.originalTransports?.length 
-      ? mergedTransports.originalTransports.length + 1  // +1 za główny transport
+    const transportCount = allConnectedTransports && allConnectedTransports.length > 0 
+      ? allConnectedTransports.length  // Użyj rzeczywistej liczby pobranych transportów
       : 1;
     
     // Zapisz informacje o wysłanym zleceniu
