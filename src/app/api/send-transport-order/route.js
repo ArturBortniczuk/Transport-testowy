@@ -1,6 +1,6 @@
 // src/app/api/send-transport-order/route.js
 import { NextResponse } from 'next/server';
-import nodemailer from 'nodemailer';  // ← POPRAWIONY IMPORT (usunąłem "* as")
+import nodemailer from 'nodemailer';
 import db from '@/database/db';
 
 export async function POST(request) {
@@ -55,33 +55,33 @@ export async function POST(request) {
     }
     
     // Sprawdź czy użytkownik ma uprawnienie do wysyłania zlecenia transportowego
-    const isAdmin = user.is_admin === 1 || user.is_admin === true || user.role === 'admin';
-    const canSendTransportOrder = isAdmin || permissions?.spedycja?.sendOrder === true;
-    
-    if (!canSendTransportOrder) {
+    if (!permissions.spedycja?.canSendOrder && user.role !== 'admin') {
       return NextResponse.json({
         success: false,
-        error: 'Brak uprawnień do wysyłania zlecenia transportowego'
+        error: 'Brak uprawnień do wysyłania zleceń transportowych'
       }, { status: 403 });
     }
     
-    // Pobierz dane z żądania
+    // Pobierz dane z body
     const { 
       spedycjaId, 
+      emailOdbiorcy, 
       towar, 
       terminPlatnosci, 
       waga, 
       dataZaladunku, 
-      dataRozladunku, 
-      emailOdbiorcy,
-      isMerged = false,
-      mergedTransportsData = null
+      dataRozladunku 
     } = await request.json();
     
-    console.log('Wysyłanie zlecenia dla:', { spedycjaId, isMerged, mergedCount: mergedTransportsData?.originalTransports?.length || 0 });
+    if (!spedycjaId || !emailOdbiorcy) {
+      return NextResponse.json({
+        success: false,
+        error: 'Brak wymaganych danych (spedycjaId, emailOdbiorcy)'
+      }, { status: 400 });
+    }
     
     // Pobierz dane spedycji
-    const spedycja = await db('spedycje')
+    let spedycja = await db('spedycje')
       .where('id', spedycjaId)
       .select('*')
       .first();
@@ -93,11 +93,9 @@ export async function POST(request) {
       }, { status: 404 });
     }
     
-    // Parsowanie danych JSON
-    let producerAddress = {};
-    let delivery = {};
-    let responseData = {};
-    let mergedTransports = null;
+    // Parsuj dane dotyczące adresów
+    let producerAddress = null;
+    let delivery = null;
     
     try {
       if (spedycja.location_data) {
@@ -106,6 +104,14 @@ export async function POST(request) {
       if (spedycja.delivery_data) {
         delivery = JSON.parse(spedycja.delivery_data);
       }
+    } catch (error) {
+      console.error('Błąd parsowania adresów:', error);
+    }
+    
+    // Parsuj dane JSON
+    let responseData = {};
+    let mergedTransports = null;
+    try {
       if (spedycja.response_data) {
         responseData = JSON.parse(spedycja.response_data);
       }
@@ -115,6 +121,59 @@ export async function POST(request) {
     } catch (error) {
       console.error('Błąd parsowania danych JSON:', error);
     }
+
+    // NOWE: Sprawdź czy to transport dodatkowy - jeśli tak, pobierz dane głównego
+    if (mergedTransports && mergedTransports.isSecondary && mergedTransports.mainTransportId) {
+      console.log('Transport dodatkowy - pobieranie danych głównego transportu:', mergedTransports.mainTransportId);
+      
+      try {
+        // Pobierz dane głównego transportu
+        const mainTransport = await db('spedycje')
+          .where('id', mergedTransports.mainTransportId)
+          .select('*')
+          .first();
+        
+        if (!mainTransport) {
+          return NextResponse.json({
+            success: false,
+            error: 'Nie znaleziono głównego transportu dla tego zlecenia'
+          }, { status: 404 });
+        }
+        
+        // Zastąp dane obecnego transportu danymi głównego
+        spedycja = mainTransport;
+        
+        // Parsuj dane głównego transportu
+        responseData = {};
+        mergedTransports = null;
+        
+        if (mainTransport.response_data) {
+          responseData = JSON.parse(mainTransport.response_data);
+        }
+        if (mainTransport.merged_transports) {
+          mergedTransports = JSON.parse(mainTransport.merged_transports);
+        }
+        
+        // Parsuj też adresy głównego transportu
+        if (mainTransport.location_data) {
+          producerAddress = JSON.parse(mainTransport.location_data);
+        }
+        if (mainTransport.delivery_data) {
+          delivery = JSON.parse(mainTransport.delivery_data);
+        }
+        
+        console.log('Użyto danych głównego transportu:', mainTransport.id);
+      } catch (error) {
+        console.error('Błąd pobierania głównego transportu:', error);
+        return NextResponse.json({
+          success: false,
+          error: 'Błąd pobierania danych głównego transportu: ' + error.message
+        }, { status: 500 });
+      }
+    }
+    
+    // Sprawdź czy transport jest połączony
+    const isMerged = responseData.isMerged || false;
     
     // Tworzenie HTML zamówienia
     const htmlContent = generateTransportOrderHTML({
@@ -133,8 +192,8 @@ export async function POST(request) {
       }
     });
     
-    // Konfiguracja transportera mailowego - POPRAWIONA FUNKCJA
-    const transporter = nodemailer.createTransport({  // ← POPRAWIONE: createTransport zamiast createTransporter
+    // Konfiguracja transportera mailowego
+    const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: parseInt(process.env.SMTP_PORT || '465'),
       secure: process.env.SMTP_SECURE === 'true',
@@ -247,19 +306,9 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
   const getAllOrderNumbers = () => {
     const orderNumbers = [spedycja.order_number || spedycja.id];
     
-    // Sprawdź merged_transports
+    // TYLKO sprawdź merged_transports (to jedyne źródło danych o połączonych transportach)
     if (mergedTransports && mergedTransports.originalTransports && Array.isArray(mergedTransports.originalTransports)) {
       mergedTransports.originalTransports.forEach(transport => {
-        const orderNum = transport.orderNumber || transport.order_number || transport.id;
-        if (orderNum && !orderNumbers.includes(orderNum)) {
-          orderNumbers.push(orderNum);
-        }
-      });
-    }
-    
-    // Sprawdź response_data dla dodatkowych transportów
-    if (responseData && responseData.originalTransports && Array.isArray(responseData.originalTransports)) {
-      responseData.originalTransports.forEach(transport => {
         const orderNum = transport.orderNumber || transport.order_number || transport.id;
         if (orderNum && !orderNumbers.includes(orderNum)) {
           orderNumbers.push(orderNum);
@@ -279,18 +328,9 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       mpks.push(spedycja.mpk);
     }
     
-    // Sprawdź merged_transports
+    // TYLKO sprawdź merged_transports (to jedyne źródło danych o połączonych transportach)
     if (mergedTransports && mergedTransports.originalTransports && Array.isArray(mergedTransports.originalTransports)) {
       mergedTransports.originalTransports.forEach(transport => {
-        if (transport.mpk && !mpks.includes(transport.mpk)) {
-          mpks.push(transport.mpk);
-        }
-      });
-    }
-    
-    // Sprawdź response_data dla dodatkowych transportów
-    if (responseData && responseData.originalTransports && Array.isArray(responseData.originalTransports)) {
-      responseData.originalTransports.forEach(transport => {
         if (transport.mpk && !mpks.includes(transport.mpk)) {
           mpks.push(transport.mpk);
         }
@@ -309,18 +349,9 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       documents.push(spedycja.documents);
     }
     
-    // Sprawdź merged_transports
+    // TYLKO sprawdź merged_transports (to jedyne źródło danych o połączonych transportach)
     if (mergedTransports && mergedTransports.originalTransports && Array.isArray(mergedTransports.originalTransports)) {
       mergedTransports.originalTransports.forEach(transport => {
-        if (transport.documents && !documents.includes(transport.documents)) {
-          documents.push(transport.documents);
-        }
-      });
-    }
-    
-    // Sprawdź response_data dla dodatkowych transportów
-    if (responseData && responseData.originalTransports && Array.isArray(responseData.originalTransports)) {
-      responseData.originalTransports.forEach(transport => {
         if (transport.documents && !documents.includes(transport.documents)) {
           documents.push(transport.documents);
         }
@@ -330,7 +361,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     return documents.filter(Boolean);
   };
 
-  // NOWA FUNKCJA do zbierania wszystkich klientów
+  // POPRAWIONA FUNKCJA do zbierania wszystkich klientów
   const getAllClients = () => {
     const clients = [];
     
@@ -343,25 +374,9 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       });
     }
     
-    // Sprawdź merged_transports
+    // TYLKO sprawdź merged_transports (to jedyne źródło danych o połączonych transportach)
     if (mergedTransports && mergedTransports.originalTransports && Array.isArray(mergedTransports.originalTransports)) {
       mergedTransports.originalTransports.forEach(transport => {
-        if (transport.client_name || transport.clientName) {
-          const clientName = transport.client_name || transport.clientName;
-          if (!clients.some(c => c.name === clientName)) {
-            clients.push({
-              name: clientName,
-              mpk: transport.mpk || '',
-              orderNumber: transport.orderNumber || transport.order_number || transport.id
-            });
-          }
-        }
-      });
-    }
-    
-    // Sprawdź response_data dla dodatkowych transportów
-    if (responseData && responseData.originalTransports && Array.isArray(responseData.originalTransports)) {
-      responseData.originalTransports.forEach(transport => {
         if (transport.client_name || transport.clientName) {
           const clientName = transport.client_name || transport.clientName;
           if (!clients.some(c => c.name === clientName)) {
@@ -520,13 +535,11 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     return sequence;
   };
   
-  // OBLICZANIE LICZBY TRANSPORTÓW
+  // POPRAWIONA FUNKCJA obliczania liczby transportów
   const getTransportCount = () => {
+    // TYLKO sprawdź merged_transports (to jedyne źródło danych o liczbie połączonych transportów)
     if (mergedTransports?.originalTransports && Array.isArray(mergedTransports.originalTransports)) {
       return mergedTransports.originalTransports.length + 1; // +1 za główny transport
-    }
-    if (responseData?.originalTransports && Array.isArray(responseData.originalTransports)) {
-      return responseData.originalTransports.length + 1;
     }
     return 1;
   };
