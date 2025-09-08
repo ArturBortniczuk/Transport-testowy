@@ -503,28 +503,59 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     // Sprawdź czy mamy route points z response_data
     if (responseData && responseData.routeSequence && Array.isArray(responseData.routeSequence)) {
       responseData.routeSequence.forEach((point, index) => {
+        // Pobierz dane transportu dla tego punktu
+        const transport = allConnectedTransports.find(t => t.id === point.transportId);
+        
+        // Ustal nazwę firmy i kontakt
+        let companyName = 'Nie podano firmy';
+        let contact = 'Brak kontaktu';
+        let mpk = '';
+        let orderNumber = '';
+        
+        if (point.type === 'loading') {
+          // Punkt załadunku
+          if (point.company) {
+            companyName = point.company;
+          } else {
+            companyName = 'Grupa Eltron Sp. z o.o.';
+          }
+          
+          if (transport) {
+            contact = transport.loading_contact || 'Brak kontaktu';
+            mpk = transport.mpk || '';
+            orderNumber = transport.orderNumber || '';
+          }
+        } else {
+          // Punkt rozładunku
+          if (transport) {
+            companyName = transport.clientName || 'Nie podano firmy';
+            contact = transport.unloading_contact || 'Brak kontaktu';
+            mpk = transport.mpk || '';
+            orderNumber = transport.orderNumber || '';
+          }
+        }
+        
         sequence.push({
           type: point.type === 'loading' ? 'ZAŁADUNEK' : 'ROZŁADUNEK',
-          companyName: point.companyName || point.client_name || `Punkt ${index + 1}`,
+          companyName: companyName,
           address: point.address || 'Brak adresu',
-          date: point.type === 'loading' ? dataZaladunku : dataRozladunku,
-          contact: point.contact || 'Brak kontaktu',
-          mpk: point.mpk || '',
-          orderNumber: point.orderNumber || ''
+          contact: contact,
+          mpk: mpk,
+          orderNumber: orderNumber
         });
       });
       return sequence;
     }
     
-    // Fallback - dodaj główny załadunek
+    // Fallback - jeśli nie ma routeSequence, stwórz podstawową trasę
     let loadingAddress = 'Nie podano adresu';
-    let loadingCompany = 'Nie podano firmy';
+    let loadingCompany = 'Grupa Eltron Sp. z o.o.';
     
     if (producerAddress) {
       loadingAddress = `${producerAddress.city || ''}, ${producerAddress.postalCode || ''}, ${producerAddress.street || ''}`.replace(/^,\s*|,\s*$/g, '');
-      loadingCompany = producerAddress.companyName || producerAddress.company || 'Nie podano';
+      loadingCompany = producerAddress.companyName || producerAddress.company || 'Grupa Eltron Sp. z o.o.';
     } else if (spedycja.location) {
-      loadingCompany = spedycja.location;
+      loadingCompany = 'Grupa Eltron Sp. z o.o.';
       if (spedycja.location.includes('Białystok')) {
         loadingAddress = 'ul. Wysockiego 69B, 15-169 Białystok';
       } else if (spedycja.location.includes('Zielonka')) {
@@ -536,7 +567,6 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       type: 'ZAŁADUNEK',
       companyName: loadingCompany,
       address: loadingAddress,
-      date: dataZaladunku,
       contact: spedycja.loading_contact || 'Brak kontaktu',
       mpk: spedycja.mpk || '',
       orderNumber: spedycja.order_number || ''
@@ -572,7 +602,6 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
         type: 'ROZŁADUNEK',
         companyName: client.name,
         address: unloadingAddress,
-        date: dataRozladunku,
         contact: unloadingContact,
         mpk: client.mpk,
         orderNumber: client.orderNumber
