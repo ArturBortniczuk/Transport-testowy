@@ -850,10 +850,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
             <div class="route-company">${point.companyName}</div>
             <div class="route-address">${point.address}</div>
             <div class="route-details">
-              <div><strong>Data ${point.type.toLowerCase()}:</strong> ${formatDate(point.date)}</div>
               <div><strong>Kontakt:</strong> ${point.contact}</div>
-              ${point.mpk ? `<div><strong>MPK:</strong> ${point.mpk}</div>` : ''}
-              ${point.orderNumber ? `<div><strong>Nr zlecenia:</strong> ${point.orderNumber}</div>` : ''}
             </div>
           </div>
         `).join('')}
