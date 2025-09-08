@@ -198,7 +198,7 @@ export async function POST(request) {
   }
 }
 
-// FUNKCJA generująca HTML zamówienia (bez zmian - pozostaje taka jak była)
+// FUNKCJA generująca HTML zamówienia (POPRAWIONA - uwzględnia wszystkie dane połączonych transportów)
 function generateTransportOrderHTML({ spedycja, producerAddress, delivery, responseData, mergedTransports, user, orderData }) {
   const { towar, terminPlatnosci, waga, dataZaladunku, dataRozladunku } = orderData;
   
@@ -243,12 +243,23 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     return formattedLines.join('<br>');
   };
 
-  // FUNKCJA do zbierania wszystkich numerów zleceń
+  // POPRAWIONA FUNKCJA do zbierania wszystkich numerów zleceń
   const getAllOrderNumbers = () => {
     const orderNumbers = [spedycja.order_number || spedycja.id];
     
+    // Sprawdź merged_transports
     if (mergedTransports && mergedTransports.originalTransports && Array.isArray(mergedTransports.originalTransports)) {
       mergedTransports.originalTransports.forEach(transport => {
+        const orderNum = transport.orderNumber || transport.order_number || transport.id;
+        if (orderNum && !orderNumbers.includes(orderNum)) {
+          orderNumbers.push(orderNum);
+        }
+      });
+    }
+    
+    // Sprawdź response_data dla dodatkowych transportów
+    if (responseData && responseData.originalTransports && Array.isArray(responseData.originalTransports)) {
+      responseData.originalTransports.forEach(transport => {
         const orderNum = transport.orderNumber || transport.order_number || transport.id;
         if (orderNum && !orderNumbers.includes(orderNum)) {
           orderNumbers.push(orderNum);
@@ -259,12 +270,27 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     return orderNumbers.filter(Boolean);
   };
   
-  // FUNKCJA do zbierania wszystkich MPK
+  // POPRAWIONA FUNKCJA do zbierania wszystkich MPK
   const getAllMPKs = () => {
-    const mpks = [spedycja.mpk];
+    const mpks = [];
     
+    // Dodaj MPK głównego transportu
+    if (spedycja.mpk) {
+      mpks.push(spedycja.mpk);
+    }
+    
+    // Sprawdź merged_transports
     if (mergedTransports && mergedTransports.originalTransports && Array.isArray(mergedTransports.originalTransports)) {
       mergedTransports.originalTransports.forEach(transport => {
+        if (transport.mpk && !mpks.includes(transport.mpk)) {
+          mpks.push(transport.mpk);
+        }
+      });
+    }
+    
+    // Sprawdź response_data dla dodatkowych transportów
+    if (responseData && responseData.originalTransports && Array.isArray(responseData.originalTransports)) {
+      responseData.originalTransports.forEach(transport => {
         if (transport.mpk && !mpks.includes(transport.mpk)) {
           mpks.push(transport.mpk);
         }
@@ -274,14 +300,16 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     return mpks.filter(Boolean);
   };
   
-  // FUNKCJA do zbierania wszystkich dokumentów
+  // POPRAWIONA FUNKCJA do zbierania wszystkich dokumentów
   const getAllDocuments = () => {
     const documents = [];
     
+    // Dodaj dokumenty głównego transportu
     if (spedycja.documents) {
       documents.push(spedycja.documents);
     }
     
+    // Sprawdź merged_transports
     if (mergedTransports && mergedTransports.originalTransports && Array.isArray(mergedTransports.originalTransports)) {
       mergedTransports.originalTransports.forEach(transport => {
         if (transport.documents && !documents.includes(transport.documents)) {
@@ -290,39 +318,151 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       });
     }
     
+    // Sprawdź response_data dla dodatkowych transportów
+    if (responseData && responseData.originalTransports && Array.isArray(responseData.originalTransports)) {
+      responseData.originalTransports.forEach(transport => {
+        if (transport.documents && !documents.includes(transport.documents)) {
+          documents.push(transport.documents);
+        }
+      });
+    }
+    
     return documents.filter(Boolean);
   };
-  
-  // FUNKCJA do obliczania łącznej ceny
+
+  // NOWA FUNKCJA do zbierania wszystkich klientów
+  const getAllClients = () => {
+    const clients = [];
+    
+    // Dodaj klienta głównego transportu
+    if (spedycja.client_name) {
+      clients.push({
+        name: spedycja.client_name,
+        mpk: spedycja.mpk || '',
+        orderNumber: spedycja.order_number || spedycja.id
+      });
+    }
+    
+    // Sprawdź merged_transports
+    if (mergedTransports && mergedTransports.originalTransports && Array.isArray(mergedTransports.originalTransports)) {
+      mergedTransports.originalTransports.forEach(transport => {
+        if (transport.client_name || transport.clientName) {
+          const clientName = transport.client_name || transport.clientName;
+          if (!clients.some(c => c.name === clientName)) {
+            clients.push({
+              name: clientName,
+              mpk: transport.mpk || '',
+              orderNumber: transport.orderNumber || transport.order_number || transport.id
+            });
+          }
+        }
+      });
+    }
+    
+    // Sprawdź response_data dla dodatkowych transportów
+    if (responseData && responseData.originalTransports && Array.isArray(responseData.originalTransports)) {
+      responseData.originalTransports.forEach(transport => {
+        if (transport.client_name || transport.clientName) {
+          const clientName = transport.client_name || transport.clientName;
+          if (!clients.some(c => c.name === clientName)) {
+            clients.push({
+              name: clientName,
+              mpk: transport.mpk || '',
+              orderNumber: transport.orderNumber || transport.order_number || transport.id
+            });
+          }
+        }
+      });
+    }
+    
+    return clients.filter(c => c.name);
+  };
+
+  // POPRAWIONA FUNKCJA do obliczania całkowitej ceny
   const getTotalPrice = () => {
-    return responseData.deliveryPrice || responseData.totalPrice || 0;
+    if (responseData) {
+      // Sprawdź różne pola gdzie może być cena
+      if (responseData.totalDeliveryPrice && responseData.totalDeliveryPrice > 0) {
+        return responseData.totalDeliveryPrice;
+      }
+      if (responseData.deliveryPrice && responseData.deliveryPrice > 0) {
+        return responseData.deliveryPrice;
+      }
+    }
+    
+    // Sprawdź w merged_transports
+    if (mergedTransports && mergedTransports.totalMergedCost && mergedTransports.totalMergedCost > 0) {
+      return mergedTransports.totalMergedCost;
+    }
+    
+    return 0;
   };
   
-  // FUNKCJA do obliczania łącznej odległości
+  // POPRAWIONA FUNKCJA do obliczania całkowitej odległości
   const getTotalDistance = () => {
-    return responseData.realRouteDistance || 
-           responseData.totalDistance || 
-           spedycja.distance_km || 
-           0;
+    // Sprawdź response_data dla rzeczywistej odległości trasy
+    if (responseData) {
+      if (responseData.realRouteDistance && responseData.realRouteDistance > 0) {
+        return responseData.realRouteDistance;
+      }
+      if (responseData.totalDistance && responseData.totalDistance > 0) {
+        return responseData.totalDistance;
+      }
+      if (responseData.distance && responseData.distance > 0) {
+        return responseData.distance;
+      }
+    }
+    
+    // Sprawdź w merged_transports
+    if (mergedTransports && mergedTransports.totalDistance && mergedTransports.totalDistance > 0) {
+      return mergedTransports.totalDistance;
+    }
+    
+    // Fallback - suma odległości podstawowych
+    let totalDistance = spedycja.distance_km || 0;
+    if (mergedTransports && mergedTransports.originalTransports && Array.isArray(mergedTransports.originalTransports)) {
+      mergedTransports.originalTransports.forEach(transport => {
+        totalDistance += transport.distance_km || transport.distanceKm || 0;
+      });
+    }
+    
+    return totalDistance || 'Do ustalenia';
   };
   
-  // FUNKCJA do generowania sekwencji trasy
+  // POPRAWIONA FUNKCJA do generowania sekwencji trasy
   const generateRouteSequence = () => {
     const sequence = [];
     
-    // Punkt 1: Załadunek główny
+    // Sprawdź czy mamy route points z response_data
+    if (responseData && responseData.routePoints && Array.isArray(responseData.routePoints)) {
+      responseData.routePoints.forEach((point, index) => {
+        sequence.push({
+          type: point.type === 'loading' ? 'ZAŁADUNEK' : 'ROZŁADUNEK',
+          companyName: point.companyName || point.client_name || `Punkt ${index + 1}`,
+          address: point.address || 'Brak adresu',
+          date: point.type === 'loading' ? dataZaladunku : dataRozladunku,
+          contact: point.contact || 'Brak kontaktu',
+          mpk: point.mpk || '',
+          orderNumber: point.orderNumber || ''
+        });
+      });
+      return sequence;
+    }
+    
+    // Fallback - dodaj główny załadunek
     let loadingAddress = 'Nie podano adresu';
     let loadingCompany = 'Nie podano firmy';
     
-    if (spedycja.location === 'Magazyn Białystok') {
-      loadingAddress = 'Białystok, 15-169, ul. Wysockiego 69B';
-      loadingCompany = 'Grupa Eltron Sp. z o.o.';
-    } else if (spedycja.location === 'Magazyn Zielonka') {
-      loadingAddress = 'Zielonka, 05-220, ul. Żeglarska 1';
-      loadingCompany = 'Grupa Eltron Sp. z o.o.';
-    } else if (spedycja.location === 'Odbiory własne' && producerAddress) {
-      loadingAddress = formatAddressNice(producerAddress, producerAddress.pinLocation);
-      loadingCompany = producerAddress.company || 'Nie podano';
+    if (producerAddress) {
+      loadingAddress = `${producerAddress.city || ''}, ${producerAddress.postalCode || ''}, ${producerAddress.street || ''}`.replace(/^,\s*|,\s*$/g, '');
+      loadingCompany = producerAddress.companyName || producerAddress.company || 'Nie podano';
+    } else if (spedycja.location) {
+      loadingCompany = spedycja.location;
+      if (spedycja.location.includes('Białystok')) {
+        loadingAddress = 'ul. Wysockiego 69B, 15-169 Białystok';
+      } else if (spedycja.location.includes('Zielonka')) {
+        loadingAddress = 'ul. Krótka 2, 05-220 Zielonka';
+      }
     }
     
     sequence.push({
@@ -330,40 +470,52 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       companyName: loadingCompany,
       address: loadingAddress,
       date: dataZaladunku,
-      contact: spedycja.loading_contact || 'Brak kontaktu'
+      contact: spedycja.loading_contact || 'Brak kontaktu',
+      mpk: spedycja.mpk || '',
+      orderNumber: spedycja.order_number || ''
     });
     
-    // Sprawdź czy mamy dane routePoints z połączonych transportów
-    if (mergedTransports?.routePoints && Array.isArray(mergedTransports.routePoints)) {
-      mergedTransports.routePoints.forEach(point => {
-        if (point.type !== 'loading' || point.transportId !== 'main') {
-          sequence.push({
-            type: point.type === 'loading' ? 'ZAŁADUNEK' : 'ROZŁADUNEK',
-            companyName: point.companyName || 'Nie podano',
-            address: point.address || 'Brak adresu',
-            date: point.type === 'loading' ? dataZaladunku : dataRozladunku,
-            contact: point.contact || 'Brak kontaktu'
-          });
-        }
-      });
-    } else {
-      // Fallback - dodaj główny rozładunek
+    // Dodaj wszystkie rozładunki z połączonych transportów
+    const allClients = getAllClients();
+    allClients.forEach((client, index) => {
       let unloadingAddress = 'Nie podano adresu';
-      let unloadingCompany = 'Nie podano firmy';
+      let unloadingContact = 'Brak kontaktu';
       
-      if (delivery) {
+      // Próbuj znaleźć adres dla tego klienta
+      if (index === 0 && delivery) {
+        // Główny transport
         unloadingAddress = `${delivery.city || ''}, ${delivery.postalCode || ''}, ${delivery.street || ''}`.replace(/^,\s*|,\s*$/g, '');
-        unloadingCompany = delivery.companyName || delivery.company || 'Nie podano';
+        unloadingContact = spedycja.unloading_contact || 'Brak kontaktu';
+      } else {
+        // Połączone transporty - szukaj w danych
+        if (mergedTransports && mergedTransports.originalTransports) {
+          const transportData = mergedTransports.originalTransports.find(t => 
+            (t.client_name === client.name || t.clientName === client.name)
+          );
+          if (transportData && transportData.delivery_data) {
+            try {
+              const deliveryData = typeof transportData.delivery_data === 'string' 
+                ? JSON.parse(transportData.delivery_data) 
+                : transportData.delivery_data;
+              unloadingAddress = `${deliveryData.city || ''}, ${deliveryData.postalCode || ''}, ${deliveryData.street || ''}`.replace(/^,\s*|,\s*$/g, '');
+            } catch (e) {
+              console.error('Błąd parsowania delivery_data:', e);
+            }
+            unloadingContact = transportData.unloading_contact || 'Brak kontaktu';
+          }
+        }
       }
       
       sequence.push({
         type: 'ROZŁADUNEK',
-        companyName: unloadingCompany,
+        companyName: client.name,
         address: unloadingAddress,
         date: dataRozladunku,
-        contact: spedycja.unloading_contact || 'Brak kontaktu'
+        contact: unloadingContact,
+        mpk: client.mpk,
+        orderNumber: client.orderNumber
       });
-    }
+    });
     
     return sequence;
   };
@@ -373,12 +525,16 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     if (mergedTransports?.originalTransports && Array.isArray(mergedTransports.originalTransports)) {
       return mergedTransports.originalTransports.length + 1; // +1 za główny transport
     }
+    if (responseData?.originalTransports && Array.isArray(responseData.originalTransports)) {
+      return responseData.originalTransports.length + 1;
+    }
     return 1;
   };
   
   const allOrderNumbers = getAllOrderNumbers();
   const allMPKs = getAllMPKs();
   const allDocuments = getAllDocuments();
+  const allClients = getAllClients();
   const totalPrice = getTotalPrice();
   const totalDistance = getTotalDistance();
   const routeSequence = generateRouteSequence();
@@ -402,31 +558,30 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
           background-color: #f8f9fa;
         }
         .header {
-          background: linear-gradient(135deg, #1a71b5 0%, #0d5a9a 100%);
+          background: linear-gradient(135deg, #1a71b5, #0056b3);
           color: white;
-          padding: 20px;
+          padding: 30px;
           text-align: center;
           border-radius: 8px 8px 0 0;
           margin-bottom: 0;
         }
         .header h1 {
-          margin: 0;
-          font-size: 24px;
+          margin: 0 0 10px 0;
+          font-size: 28px;
           font-weight: bold;
         }
         .header p {
-          margin: 8px 0 0 0;
+          margin: 0;
           font-size: 14px;
           opacity: 0.9;
         }
         .important-note {
           background-color: #fff3cd;
-          border: 2px solid #ffc107;
+          border: 2px solid #856404;
           padding: 15px;
           margin: 0;
           font-weight: bold;
           color: #856404;
-          text-align: center;
         }
         .important-warning {
           background-color: #f8d7da;
@@ -435,37 +590,53 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
           margin: 0;
           font-weight: bold;
           color: #721c24;
-          text-align: center;
         }
         .section {
           background-color: white;
-          padding: 20px;
           margin: 0;
-          border-left: 4px solid #1a71b5;
+          padding: 20px;
+          border-bottom: 1px solid #dee2e6;
         }
         .section h2 {
           color: #1a71b5;
           margin-top: 0;
           margin-bottom: 15px;
-          font-size: 18px;
+          font-size: 20px;
           border-bottom: 2px solid #e9ecef;
           padding-bottom: 8px;
         }
         .info-table {
           width: 100%;
           border-collapse: collapse;
-          margin-bottom: 15px;
+          margin: 15px 0;
         }
         .info-table th {
-          text-align: left;
-          padding: 8px;
           background-color: #f8f9fa;
+          text-align: left;
+          padding: 12px;
+          border: 1px solid #dee2e6;
           font-weight: bold;
-          width: 200px;
+          color: #495057;
+          width: 30%;
         }
         .info-table td {
-          padding: 8px;
-          border-bottom: 1px solid #e9ecef;
+          padding: 12px;
+          border: 1px solid #dee2e6;
+          background-color: white;
+        }
+        .clients-section {
+          background-color: #e7f3ff;
+          border: 2px solid #0066cc;
+          padding: 15px;
+          margin: 20px 0;
+          border-radius: 5px;
+        }
+        .client-item {
+          margin-bottom: 10px;
+          padding: 10px;
+          background-color: white;
+          border-radius: 4px;
+          border-left: 4px solid #1a71b5;
         }
         .route-item {
           margin-bottom: 20px;
@@ -513,9 +684,9 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
           background-color: #e7f3ff;
           border: 2px solid #0066cc;
           padding: 15px;
-          margin: 20px 0;
-          border-radius: 5px;
+          margin: 0;
           color: #003d7a;
+          font-weight: bold;
         }
       </style>
     </head>
@@ -541,6 +712,17 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       </div>
       ` : ''}
       
+      ${allClients.length > 1 ? `
+      <div class="clients-section">
+        <h3>Lista wszystkich klientów w tym transporcie:</h3>
+        ${allClients.map(client => `
+          <div class="client-item">
+            <strong>${client.name}</strong> ${client.mpk ? `(MPK: ${client.mpk})` : ''} ${client.orderNumber ? `[Zlecenie: ${client.orderNumber}]` : ''}
+          </div>
+        `).join('')}
+      </div>
+      ` : ''}
+      
       <div class="section">
         <h2>Informacje o transporcie</h2>
         <table class="info-table">
@@ -557,12 +739,16 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
             <td>${totalDistance} km</td>
           </tr>
           <tr>
-            <th>MPK:</th>
+            <th>Wszystkie MPK:</th>
             <td>${allMPKs.join(', ') || 'Nie podano'}</td>
           </tr>
           <tr>
-            <th>Dokumenty:</th>
+            <th>Wszystkie dokumenty:</th>
             <td>${allDocuments.join(', ') || 'Nie podano'}</td>
+          </tr>
+          <tr>
+            <th>Liczba klientów:</th>
+            <td>${allClients.length}</td>
           </tr>
         </table>
       </div>
@@ -577,6 +763,8 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
             <div class="route-details">
               <div><strong>Data ${point.type.toLowerCase()}:</strong> ${formatDate(point.date)}</div>
               <div><strong>Kontakt:</strong> ${point.contact}</div>
+              ${point.mpk ? `<div><strong>MPK:</strong> ${point.mpk}</div>` : ''}
+              ${point.orderNumber ? `<div><strong>Nr zlecenia:</strong> ${point.orderNumber}</div>` : ''}
             </div>
           </div>
         `).join('')}
@@ -617,7 +805,8 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       <div class="section">
         <h2>Uwagi</h2>
         <p>${spedycja.notes || 'Brak uwag'}</p>
-        ${responseData.adminNotes ? `<p><strong>Uwagi przewoźnika:</strong> ${responseData.adminNotes}</p>` : ''}
+        ${responseData.adminNotes ? 
+          `<p><strong>Uwagi przewoźnika:</strong> ${responseData.adminNotes}</p>` : ''}
       </div>
       
       <div class="section">
