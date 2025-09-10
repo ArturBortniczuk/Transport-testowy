@@ -1,10 +1,50 @@
+// src/app/archiwum-spedycji/page.js - KOMPLETNA WERSJA
 'use client'
 import React, { useState, useEffect, Fragment } from 'react'
 import { format } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import * as XLSX from 'xlsx'
 import { generateCMR } from '@/lib/utils/generateCMR'
-import { ChevronLeft, ChevronRight, FileText, Download, Search, Truck, Package, MapPin, Phone, Calendar, DollarSign, User, Clipboard, ArrowRight, ChevronDown, ChevronUp, AlertCircle, Building, ShoppingBag, Weight, Mail, Hash, Clock, CheckCircle, Printer } from 'lucide-react'
+import { 
+  ChevronLeft, 
+  ChevronRight, 
+  FileText, 
+  Download, 
+  Search, 
+  Truck, 
+  Package, 
+  MapPin, 
+  Phone, 
+  Calendar, 
+  DollarSign, 
+  User, 
+  Clipboard, 
+  ArrowRight, 
+  ChevronDown, 
+  ChevronUp, 
+  AlertCircle, 
+  Building, 
+  ShoppingBag, 
+  Weight, 
+  Mail, 
+  Hash, 
+  Clock, 
+  CheckCircle, 
+  Printer,
+  Eye,
+  EyeOff,
+  Filter,
+  X,
+  Container,
+  Route,
+  Users,
+  Target,
+  Settings,
+  Edit,
+  Trash2,
+  Plus,
+  Minus
+} from 'lucide-react'
 
 export default function ArchiwumSpedycjiPage() {
   const [archiwum, setArchiwum] = useState([])
@@ -17,14 +57,14 @@ export default function ArchiwumSpedycjiPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage] = useState(10)
   const [expandedRowId, setExpandedRowId] = useState(null)
+  const [showFilters, setShowFilters] = useState(false)
   
-  // Filtry
+  // Wszystkie filtry - jak w oryginale
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [selectedMonth, setSelectedMonth] = useState('all')
   const [mpkFilter, setMpkFilter] = useState('')
   const [orderNumberFilter, setOrderNumberFilter] = useState('')
-  const [mpkOptions, setMpkOptions] = useState([])
-  // Wszystkie filtry
+  const [locationFilter, setLocationFilter] = useState('all')
   const [transportTypeFilter, setTransportTypeFilter] = useState('all')
   const [vehicleTypeFilter, setVehicleTypeFilter] = useState('all')
   const [mergedFilter, setMergedFilter] = useState('all')
@@ -32,55 +72,45 @@ export default function ArchiwumSpedycjiPage() {
   const [mergedOriginFilter, setMergedOriginFilter] = useState('all')
   const [driverNameFilter, setDriverNameFilter] = useState('')
   const [clientNameFilter, setClientNameFilter] = useState('')
-  const [createdByFilter, setCreatedByFilter] = useState('')
-  const [cityFromFilter, setCityFromFilter] = useState('')
-  const [cityToFilter, setCityToFilter] = useState('')
-  const [priceMinFilter, setPriceMinFilter] = useState('')
-  const [priceMaxFilter, setPriceMaxFilter] = useState('')
-  const [distanceMinFilter, setDistanceMinFilter] = useState('')
-  const [distanceMaxFilter, setDistanceMaxFilter] = useState('')
+  const [responsiblePersonFilter, setResponsiblePersonFilter] = useState('')
+  const [deliveryCityFilter, setDeliveryCityFilter] = useState('')
+  const [documentsFilter, setDocumentsFilter] = useState('')
+  const [notesFilter, setNotesFilter] = useState('')
+  const [minPriceFilter, setMinPriceFilter] = useState('')
+  const [maxPriceFilter, setMaxPriceFilter] = useState('')
+  const [minDistanceFilter, setMinDistanceFilter] = useState('')
+  const [maxDistanceFilter, setMaxDistanceFilter] = useState('')
   
-  // Lista dostępnych lat i miesięcy
-  const currentYear = new Date().getFullYear()
-  const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
-  const months = [
-    { value: 'all', label: 'Wszystkie miesiące' },
-    { value: '0', label: 'Styczeń' },
-    { value: '1', label: 'Luty' },
-    { value: '2', label: 'Marzec' },
-    { value: '3', label: 'Kwiecień' },
-    { value: '4', label: 'Maj' },
-    { value: '5', label: 'Czerwiec' },
-    { value: '6', label: 'Lipiec' },
-    { value: '7', label: 'Sierpień' },
-    { value: '8', label: 'Wrzesień' },
-    { value: '9', label: 'Październik' },
-    { value: '10', label: 'Listopad' },
-    { value: '11', label: 'Grudzień' }
-  ]
+  // Opcje dla filtrów
+  const [mpkOptions, setMpkOptions] = useState([])
+  const [responsiblePersonOptions, setResponsiblePersonOptions] = useState([])
+  const [clientNameOptions, setClientNameOptions] = useState([])
+  const [driverNameOptions, setDriverNameOptions] = useState([])
+  const [locationOptions, setLocationOptions] = useState([])
+  const [transportTypeOptions, setTransportTypeOptions] = useState([])
+  const [vehicleTypeOptions, setVehicleTypeOptions] = useState([])
 
-  const buttonClasses = {
-    primary: "px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors flex items-center gap-2",
-    outline: "px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors flex items-center gap-2",
-    success: "px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors flex items-center gap-2"
-  }
-
+  // Pobierz dane przy ładowaniu
   useEffect(() => {
-    // Sprawdź czy użytkownik jest administratorem
-    const checkAdmin = async () => {
-      try {
-        const response = await fetch('/api/check-admin')
-        const data = await response.json()
-        setIsAdmin(data.isAdmin)
-      } catch (error) {
-        console.error('Błąd sprawdzania uprawnień administratora:', error)
-        setIsAdmin(false)
-      }
-    }
-
     checkAdmin()
     fetchArchiveData()
   }, [])
+
+  // Sprawdź uprawnienia administratora
+  const checkAdmin = async () => {
+    try {
+      const response = await fetch('/api/user')
+      const data = await response.json()
+      if (data.isAuthenticated) {
+        setIsAdmin(data.isAdmin || false)
+      } else {
+        setIsAdmin(false)
+      }
+    } catch (error) {
+      console.error('Błąd sprawdzania uprawnień:', error)
+      setIsAdmin(false)
+    }
+  }
 
   // Pobierz dane archiwum z API
   const fetchArchiveData = async () => {
@@ -102,7 +132,10 @@ export default function ArchiwumSpedycjiPage() {
           const uniqueMpks = [...new Set(data.spedycje.map(item => item.mpk).filter(Boolean))]
           setMpkOptions(uniqueMpks)
           
-          applyFilters(data.spedycje, selectedYear, selectedMonth, '', '', 'all', 'all', 'all', 'all', 'all', '', '', '', '', '', '', '', '', '')
+          // Zbierz inne opcje filtrów
+          extractFilterOptions(data.spedycje)
+          
+          applyFilters(data.spedycje)
         } else {
           throw new Error(data.error || 'Błąd pobierania danych')
         }
@@ -127,695 +160,755 @@ export default function ArchiwumSpedycjiPage() {
           const uniqueMpks = [...new Set(transporty.map(item => item.mpk).filter(Boolean))]
           setMpkOptions(uniqueMpks)
           
-          applyFilters(transporty, selectedYear, selectedMonth, '', '', 'all', 'all', 'all', 'all', 'all', '', '', '', '', '', '', '', '', '')
+          extractFilterOptions(transporty)
+          applyFilters(transporty)
         }
-      } catch (localStorageError) {
-        console.error('Błąd fallbacku localStorage:', localStorageError)
+      } catch (fallbackError) {
+        console.error('Błąd fallback localStorage:', fallbackError)
       }
     } finally {
       setLoading(false)
     }
   }
 
-  // Funkcja pomocnicza do określania nazwy firmy załadunku
-  const getLoadingCompanyName = (transport) => {
-    if (transport.location === 'Odbiory własne' && transport.sourceClientName) {
-      return transport.sourceClientName;
-    } else if (transport.location === 'Magazyn Białystok') {
-      return 'Magazyn Białystok';
-    } else if (transport.location === 'Magazyn Zielonka') {
-      return 'Magazyn Zielonka';
-    }
-    return transport.location || 'Nie podano';
-  }
-
-  // Funkcja pomocnicza do określania nazwy firmy rozładunku
-  const getUnloadingCompanyName = (transport) => {
-    return transport.clientName || 'Nie podano';
-  }
-
-  // Funkcja pomocnicza do określania miasta załadunku
-  const getLoadingCity = (transport) => {
-    if (transport.location === 'Odbiory własne' && transport.producerAddress) {
-      return transport.producerAddress.city || 'Brak miasta';
-    } else if (transport.location === 'Magazyn Białystok') {
-      return 'Białystok';
-    } else if (transport.location === 'Magazyn Zielonka') {
-      return 'Zielonka';
-    }
-    return transport.location || 'Nie podano';
-  }
-  
-  // Funkcja pomocnicza do określania miasta dostawy
-  const getDeliveryCity = (transport) => {
-    return transport.delivery?.city || 'Nie podano';
-  }
-
-  // NOWA FUNKCJA: Pobieranie danych towaru z zlecenia transportowego
-  const getGoodsDataFromTransportOrder = (transport) => {
-    // Sprawdź order_data w bazie danych
-    if (transport.order_data) {
-      try {
-        const orderData = typeof transport.order_data === 'string' ? 
-          JSON.parse(transport.order_data) : transport.order_data;
-        
-        return {
-          description: orderData.towar || '',
-          weight: orderData.waga || ''
-        };
-      } catch (error) {
-        console.error('Błąd parsowania order_data:', error);
-      }
-    }
+  // Wyciągnij opcje dla filtrów z danych
+  const extractFilterOptions = (data) => {
+    // MPK
+    const mpks = [...new Set(data.map(item => item.mpk).filter(Boolean))]
+    setMpkOptions(mpks)
     
-    // Fallback do danych z formularza spedycyjnego
-    if (transport.goodsDescription) {
-      return {
-        description: transport.goodsDescription.description || '',
-        weight: transport.goodsDescription.weight || ''
-      };
-    }
+    // Odpowiedzialni
+    const responsiblePersons = [...new Set(data.map(item => 
+      item.responsiblePerson || item.responsible_person
+    ).filter(Boolean))]
+    setResponsiblePersonOptions(responsiblePersons)
     
-    return { description: '', weight: '' };
-  }
-
-  // NOWA FUNKCJA: Pobieranie odpowiedzialnego (osoba lub budowa)
-  const getResponsibleInfo = (transport) => {
-    // Jeśli są odpowiedzialne budowy, zwróć pierwszą budowę
-    if (transport.responsibleConstructions && transport.responsibleConstructions.length > 0) {
-      const construction = transport.responsibleConstructions[0];
-      return {
-        name: construction.name,
-        type: 'construction',
-        mpk: construction.mpk || ''
-      };
-    }
+    // Klienci
+    const clientNames = [...new Set(data.map(item => 
+      item.clientName || item.client_name
+    ).filter(Boolean))]
+    setClientNameOptions(clientNames)
     
-    // W przeciwnym razie zwróć osobę odpowiedzialną
-    return {
-      name: transport.responsiblePerson || transport.createdBy || 'Brak',
-      type: 'person',
-      mpk: transport.mpk || ''
-    };
-  }
-
-  // NOWA FUNKCJA: Pobieranie aktualnego MPK (z budowy lub transportu)
-  const getCurrentMPK = (transport) => {
-    // Jeśli są odpowiedzialne budowy, użyj MPK z pierwszej budowy
-    if (transport.responsibleConstructions && transport.responsibleConstructions.length > 0) {
-      return transport.responsibleConstructions[0].mpk || transport.mpk || '';
-    }
+    // Lokalizacje
+    const locations = [...new Set(data.map(item => item.location).filter(Boolean))]
+    setLocationOptions(locations)
     
-    // W przeciwnym razie użyj MPK z transportu
-    return transport.mpk || '';
-  }
-
-  // Funkcja do pobierania odległości transportu - zwraca obiekt z podstawową i łączną odległością
-  const getTransportDistance = (transport) => {
-    let baseDistance = null; // Podstawowa odległość punktu do punktu
-    let routeDistance = null; // Rzeczywista odległość całej trasy (dla połączonych)
-
-    // 1. Pobierz podstawową odległość
-    if (transport.distanceKm && transport.distanceKm > 0) {
-      baseDistance = transport.distanceKm;
-    } else if (transport.distance_km && transport.distance_km > 0) {
-      baseDistance = transport.distance_km;
-    }
-
-    // 2. Jeśli transport jest połączony, pobierz rzeczywistą odległość trasy
-    if (transport.is_merged || transport.isMerged) {
-      try {
-        if (transport.response_data) {
-          const responseData = typeof transport.response_data === 'string' 
-            ? JSON.parse(transport.response_data) 
-            : transport.response_data;
-          
-          // Sprawdź różne pola rzeczywistej odległości trasy
-          if (responseData.realRouteDistance) {
-            routeDistance = responseData.realRouteDistance;
-          } else if (responseData.totalDistance) {
-            routeDistance = responseData.totalDistance;
-          } else if (responseData.distance) {
-            routeDistance = responseData.distance;
+    // Typy transportu
+    const transportTypes = [...new Set(data.map(item => 
+      item.transportType || item.transport_type
+    ).filter(Boolean))]
+    setTransportTypeOptions(transportTypes)
+    
+    // Typy pojazdów
+    const vehicleTypes = [...new Set(data.map(item => 
+      item.vehicleType || item.vehicle_type
+    ).filter(Boolean))]
+    setVehicleTypeOptions(vehicleTypes)
+    
+    // Kierowcy z response_data
+    const driverNames = [...new Set(data.map(item => {
+      if (item.response_data || item.response) {
+        const response = item.response_data || item.response
+        if (typeof response === 'string') {
+          try {
+            const parsed = JSON.parse(response)
+            return parsed.driverInfo?.name || parsed.driver?.name
+          } catch (e) {
+            return null
           }
         }
-      } catch (e) {
-        console.error('Błąd parsowania response_data dla odległości:', e);
+        return response.driverInfo?.name || response.driver?.name
       }
-    }
-
-    return {
-      base: baseDistance,
-      route: routeDistance,
-      isMerged: transport.is_merged || transport.isMerged || false
-    };
+      return null
+    }).filter(Boolean))]
+    setDriverNameOptions(driverNames)
   }
 
-  // Funkcja do wyświetlania odległości w rozwinięciu (szczegółowym widoku)
-  const renderDistanceInfo = (distanceData) => {
-    if (!distanceData.base && !distanceData.route) {
-      return null;
+  // Funkcje pomocnicze do wyświetlania danych - jak w oryginale
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Brak daty'
+    try {
+      return format(new Date(dateString), 'dd.MM.yyyy', { locale: pl })
+    } catch (error) {
+      console.error("Błąd formatowania daty:", error, dateString)
+      return 'Nieprawidłowa data'
     }
-
-    if (distanceData.isMerged && distanceData.route && distanceData.base) {
-      // Transport połączony - pokaż obie odległości
-      return (
-        <div>
-          <span className="font-medium">Odległość:</span>
-          <div className="ml-1">
-            <div>{distanceData.base} km (bezpośrednia)</div>
-            <div className="text-blue-600 font-medium">{distanceData.route} km (cała trasa)</div>
-          </div>
-        </div>
-      );
-    } else if (distanceData.route) {
-      return (
-        <div>
-          <span className="font-medium">Odległość:</span> {distanceData.route} km
-        </div>
-      );
-    } else if (distanceData.base) {
-      return (
-        <div>
-          <span className="font-medium">Odległość:</span> {distanceData.base} km
-        </div>
-      );
-    }
-
-    return null;
   }
 
-  // Funkcja pomocnicza do formatowania adresu
-  const formatAddress = (address) => {
-    if (!address) return 'Brak danych';
-    const parts = [];
-    if (address.city) parts.push(address.city);
-    if (address.postalCode) parts.push(address.postalCode);
-    if (address.street) parts.push(address.street);
-    return parts.join(', ') || 'Brak danych';
+  const formatDateTime = (dateString) => {
+    if (!dateString) return 'Brak daty'
+    try {
+      return format(new Date(dateString), 'dd.MM.yyyy HH:mm', { locale: pl })
+    } catch (error) {
+      return 'Nieprawidłowa data'
+    }
   }
 
-  // Funkcja pomocnicza do pełnego adresu załadunku
-  const getFullLoadingAddress = (transport) => {
-    if (transport.location === 'Odbiory własne' && transport.producerAddress) {
-      return formatAddress(transport.producerAddress);
-    } else if (transport.location === 'Magazyn Białystok') {
-      return 'Grupa Eltron Sp. z o.o., ul. Wysockiego 69B, 15-169 Białystok';
-    } else if (transport.location === 'Magazyn Zielonka') {
-      return 'Grupa Eltron Sp. z o.o., ul. Krótka 2, 05-220 Zielonka';
-    }
-    return transport.location || 'Nie podano';
-  }
-
-  // Funkcja filtrująca transporty - uwzględnia wszystkie filtry
-  const applyFilters = (transports, year, month, mpkValue, orderNumberValue, transportTypeValue, vehicleTypeValue, mergedValue, drumsValue, mergedOriginValue, driverName, clientName, createdBy, cityFrom, cityTo, priceMin, priceMax, distanceMin, distanceMax) => {
-    if (!transports || transports.length === 0) {
-      setFilteredArchiwum([])
-      return
-    }
+  // Funkcja sprawdzająca czy data dostawy została zmieniona
+  const isDeliveryDateChanged = (transport) => {
+    if (!transport.deliveryDate && !transport.delivery_date) return false
     
-    const filtered = transports.filter(transport => {
-      // Pobierz datę z completed_at lub created_at
-      const date = new Date(transport.completedAt || transport.createdAt)
-      const transportYear = date.getFullYear()
-      
-      // Najpierw sprawdź rok
-      if (transportYear !== parseInt(year)) {
+    const response = transport.response || transport.response_data
+    if (!response) return false
+    
+    let responseData = response
+    if (typeof response === 'string') {
+      try {
+        responseData = JSON.parse(response)
+      } catch (e) {
         return false
       }
-      
-      // Jeśli wybrany "wszystkie miesiące", nie filtruj po miesiącu
-      if (month !== 'all') {
-        const transportMonth = date.getMonth()
-        if (transportMonth !== parseInt(month)) {
-          return false
-        }
-      }
-      
-      // Filtrowanie po MPK - użyj funkcji getCurrentMPK
-      if (mpkValue) {
-        const currentMPK = getCurrentMPK(transport);
-        if (!currentMPK.toLowerCase().includes(mpkValue.toLowerCase())) {
-          return false;
-        }
-      }
-      
-      // Filtrowanie po numerze zamówienia
-      if (orderNumberValue) {
-        const orderNumber = transport.orderNumber || transport.order_number || ''
-        if (!orderNumber.toLowerCase().includes(orderNumberValue.toLowerCase())) {
-          return false
-        }
-      }
-      
-      // Filtrowanie po nazwie kierowcy
-      if (driverName) {
-        const driverFullName = `${transport.response?.driverName || ''} ${transport.response?.driverSurname || ''}`.trim()
-        if (!driverFullName.toLowerCase().includes(driverName.toLowerCase())) {
-          return false
-        }
-      }
-      
-      // Filtrowanie po nazwie klienta
-      if (clientName) {
-        const client = transport.clientName || ''
-        if (!client.toLowerCase().includes(clientName.toLowerCase())) {
-          return false
-        }
-      }
-      
-      // Filtrowanie po osobie tworzącej
-      if (createdBy) {
-        const creator = transport.createdBy || ''
-        if (!creator.toLowerCase().includes(createdBy.toLowerCase())) {
-          return false
-        }
-      }
-      
-      // Filtrowanie po mieście źródłowym
-      if (cityFrom) {
-        const fromCity = getLoadingCity(transport)
-        if (!fromCity.toLowerCase().includes(cityFrom.toLowerCase())) {
-          return false
-        }
-      }
-      
-      // Filtrowanie po mieście docelowym
-      if (cityTo) {
-        const toCity = getDeliveryCity(transport)
-        if (!toCity.toLowerCase().includes(cityTo.toLowerCase())) {
-          return false
-        }
-      }
-      
-      // Filtrowanie po cenie (min)
-      if (priceMin) {
-        const price = parseFloat(transport.response?.deliveryPrice) || 0
-        if (price < parseFloat(priceMin)) {
-          return false
-        }
-      }
-      
-      // Filtrowanie po cenie (max)
-      if (priceMax) {
-        const price = parseFloat(transport.response?.deliveryPrice) || 0
-        if (price > parseFloat(priceMax)) {
-          return false
-        }
-      }
-      
-      // Filtrowanie po odległości (min)
-      if (distanceMin) {
-        const distance = transport.response?.distanceKm || transport.distanceKm || 0
-        if (distance < parseFloat(distanceMin)) {
-          return false
-        }
-      }
-      
-      // Filtrowanie po odległości (max)
-      if (distanceMax) {
-        const distance = transport.response?.distanceKm || transport.distanceKm || 0
-        if (distance > parseFloat(distanceMax)) {
-          return false
-        }
-      }
-      
-      // Filtrowanie po typie transportu
-      if (transportTypeValue && transportTypeValue !== 'all') {
-        // Sprawdź w response_data
-        let transportType = 'standard';
-        try {
-          if (transport.response_data) {
-            const responseData = typeof transport.response_data === 'string' 
-              ? JSON.parse(transport.response_data) 
-              : transport.response_data;
-            transportType = responseData.transportType || 'standard';
-          } else if (transport.response?.transportType) {
-            transportType = transport.response.transportType;
-          }
-        } catch (e) {
-          transportType = 'standard';
-        }
-        
-        if (transportType !== transportTypeValue) {
-          return false
-        }
-      }
-      
-      // Filtrowanie po typie pojazdu
-      if (vehicleTypeValue && vehicleTypeValue !== 'all') {
-        // Sprawdź w response_data
-        let vehicleType = '';
-        try {
-          if (transport.response_data) {
-            const responseData = typeof transport.response_data === 'string' 
-              ? JSON.parse(transport.response_data) 
-              : transport.response_data;
-            vehicleType = responseData.vehicleType || '';
-          } else if (transport.response?.vehicleType) {
-            vehicleType = transport.response.vehicleType;
-          }
-        } catch (e) {
-          vehicleType = '';
-        }
-        
-        if (!vehicleType || vehicleType.toLowerCase() !== vehicleTypeValue.toLowerCase()) {
-          return false
-        }
-      }
-      
-      // Filtrowanie po transporcie łączonym
-      if (mergedValue && mergedValue !== 'all') {
-        // Sprawdź w response_data
-        let isMerged = false;
-        try {
-          if (transport.response_data) {
-            const responseData = typeof transport.response_data === 'string' 
-              ? JSON.parse(transport.response_data) 
-              : transport.response_data;
-            isMerged = responseData.isMerged || false;
-          } else if (transport.response?.isMerged) {
-            isMerged = transport.response.isMerged;
-          }
-        } catch (e) {
-          isMerged = false;
-        }
-        
-        if ((mergedValue === 'merged' && !isMerged) || 
-            (mergedValue === 'single' && isMerged)) {
-          return false
-        }
-      }
-      
-      // Filtrowanie po transporcie bębnów (sprawdź czy transportType to "opakowaniowy")
-      if (drumsValue && drumsValue !== 'all') {
-        let isDrumsTransport = false;
-        try {
-          if (transport.response_data) {
-            const responseData = typeof transport.response_data === 'string' 
-              ? JSON.parse(transport.response_data) 
-              : transport.response_data;
-            isDrumsTransport = responseData.transportType === 'opakowaniowy';
-          } else if (transport.response?.transportType) {
-            isDrumsTransport = transport.response.transportType === 'opakowaniowy';
-          }
-        } catch (e) {
-          isDrumsTransport = false;
-        }
-        
-        if ((drumsValue === 'drums' && !isDrumsTransport) || 
-            (drumsValue === 'normal' && isDrumsTransport)) {
-          return false
-        }
-      }
-      
-      // Filtrowanie po pochodzeniu transportu (z łączonych czy nie)
-      if (mergedOriginValue && mergedOriginValue !== 'all') {
-        let isFromMerged = false;
-        try {
-          if (transport.response_data) {
-            const responseData = typeof transport.response_data === 'string' 
-              ? JSON.parse(transport.response_data) 
-              : transport.response_data;
-            isFromMerged = responseData.isFromMergedTransport || false;
-          } else if (transport.response?.isFromMergedTransport) {
-            isFromMerged = transport.response.isFromMergedTransport;
-          }
-        } catch (e) {
-          isFromMerged = false;
-        }
-        
-        if ((mergedOriginValue === 'from_merged' && !isFromMerged) || 
-            (mergedOriginValue === 'original' && isFromMerged)) {
-          return false
-        }
-      }
-      
-      return true
-    })
-    
-    setFilteredArchiwum(filtered)
-    setCurrentPage(1) // Reset to first page when filters change
-  }
-
-  // Obsługa zmiany filtrów
-  useEffect(() => {
-    applyFilters(archiwum, selectedYear, selectedMonth, mpkFilter, orderNumberFilter, transportTypeFilter, vehicleTypeFilter, mergedFilter, drumsFilter, mergedOriginFilter, driverNameFilter, clientNameFilter, createdByFilter, cityFromFilter, cityToFilter, priceMinFilter, priceMaxFilter, distanceMinFilter, distanceMaxFilter)
-  }, [selectedYear, selectedMonth, mpkFilter, orderNumberFilter, transportTypeFilter, vehicleTypeFilter, mergedFilter, drumsFilter, mergedOriginFilter, driverNameFilter, clientNameFilter, createdByFilter, cityFromFilter, cityToFilter, priceMinFilter, priceMaxFilter, distanceMinFilter, distanceMaxFilter, archiwum])
-
-  // Funkcja do usuwania transportu
-  const handleDeleteTransport = async (id) => {
-    if (!confirm('Czy na pewno chcesz usunąć ten transport?')) {
-      return
     }
     
+    const originalDate = transport.deliveryDate || transport.delivery_date
+    const responseDate = responseData.deliveryDate
+    
+    if (!originalDate || !responseDate) return false
+    
+    try {
+      const original = new Date(originalDate).toDateString()
+      const changed = new Date(responseDate).toDateString()
+      return original !== changed
+    } catch (e) {
+      return false
+    }
+  }
+
+  // Funkcja pobierająca aktualną datę dostawy
+  const getActualDeliveryDate = (transport) => {
+    const response = transport.response || transport.response_data
+    if (response) {
+      let responseData = response
+      if (typeof response === 'string') {
+        try {
+          responseData = JSON.parse(response)
+        } catch (e) {
+          // ignore
+        }
+      }
+      
+      if (responseData.deliveryDate) {
+        return responseData.deliveryDate
+      }
+    }
+    
+    return transport.deliveryDate || transport.delivery_date
+  }
+
+  // Funkcja pobierająca informacje o odpowiedzialnym
+  const getResponsibleInfo = (transport) => {
+    // Sprawdź czy istnieją dane w responsibleConstructions
+    const constructions = transport.responsibleConstructions || transport.responsible_constructions
+    if (constructions && Array.isArray(constructions) && constructions.length > 0) {
+      if (constructions.length === 1) {
+        return {
+          type: 'construction',
+          name: constructions[0].name,
+          mpk: constructions[0].mpk
+        }
+      } else {
+        return {
+          type: 'multiple_constructions',
+          count: constructions.length,
+          names: constructions.map(c => c.name).join(', ')
+        }
+      }
+    }
+    
+    // Fallback do responsiblePerson
+    const responsiblePerson = transport.responsiblePerson || transport.responsible_person
+    if (responsiblePerson) {
+      return {
+        type: 'person',
+        name: responsiblePerson
+      }
+    }
+    
+    return {
+      type: 'none',
+      name: 'Nie przypisano'
+    }
+  }
+
+  // Funkcja pobierająca aktualny MPK
+  const getCurrentMPK = (transport) => {
+    const constructions = transport.responsibleConstructions || transport.responsible_constructions
+    if (constructions && Array.isArray(constructions) && constructions.length > 0) {
+      if (constructions.length === 1) {
+        return constructions[0].mpk
+      } else {
+        return constructions.map(c => c.mpk).filter(Boolean).join(', ')
+      }
+    }
+    
+    return transport.mpk || 'Brak MPK'
+  }
+
+  // Funkcja renderująca odpowiedzialne budowy
+  const renderResponsibleConstructions = (transport) => {
+    const constructions = transport.responsibleConstructions || transport.responsible_constructions
+    if (!constructions || !Array.isArray(constructions) || constructions.length === 0) {
+      return null
+    }
+
+    return (
+      <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-2">
+        <div className="text-xs font-medium text-green-700 mb-2 flex items-center">
+          <Building size={14} className="mr-1" />
+          Odpowiedzialne budowy:
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {constructions.map((construction, index) => (
+            <div key={index} className="bg-green-100 text-green-700 px-2 py-1 rounded-md text-xs flex items-center border border-green-300">
+              <Building size={12} className="mr-1" />
+              {construction.name}
+              {construction.mpk && (
+                <span className="ml-1 text-green-600 font-medium">({construction.mpk})</span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Funkcja pobierająca lokalizację załadunku
+  const getLoadingLocation = (transport) => {
+    if (transport.location === 'Odbiory własne') {
+      let producerAddress = transport.producerAddress || transport.location_data
+      if (typeof producerAddress === 'string') {
+        try {
+          producerAddress = JSON.parse(producerAddress)
+        } catch (e) {
+          return 'Odbiory własne'
+        }
+      }
+      return producerAddress?.city || 'Odbiory własne'
+    }
+    return transport.location?.replace('Magazyn ', '') || 'Nie podano'
+  }
+
+  // Funkcja pobierająca miasto dostawy
+  const getDeliveryCity = (transport) => {
+    let delivery = transport.delivery || transport.delivery_data
+    if (typeof delivery === 'string') {
+      try {
+        delivery = JSON.parse(delivery)
+      } catch (e) {
+        return 'Nie podano'
+      }
+    }
+    return delivery?.city || 'Nie podano'
+  }
+
+  // Funkcja pobierająca informacje o kierowcy
+  const getDriverInfo = (transport) => {
+    const response = transport.response || transport.response_data
+    if (!response) return 'Nie przypisano'
+    
+    let responseData = response
+    if (typeof response === 'string') {
+      try {
+        responseData = JSON.parse(response)
+      } catch (e) {
+        return 'Nie przypisano'
+      }
+    }
+    
+    if (responseData.driverInfo) {
+      return `${responseData.driverInfo.name} (${responseData.driverInfo.phone || 'brak tel.'})`
+    }
+    
+    if (responseData.driver) {
+      return `${responseData.driver.name} (${responseData.driver.phone || 'brak tel.'})`
+    }
+    
+    return 'Nie przypisano'
+  }
+
+  // Funkcja pobierająca informacje o pojeździe
+  const getVehicleInfo = (transport) => {
+    const response = transport.response || transport.response_data
+    if (!response) return 'Nie podano'
+    
+    let responseData = response
+    if (typeof response === 'string') {
+      try {
+        responseData = JSON.parse(response)
+      } catch (e) {
+        return 'Nie podano'
+      }
+    }
+    
+    if (responseData.vehicleInfo) {
+      return `${responseData.vehicleInfo.plates} - ${responseData.vehicleInfo.model}`
+    }
+    
+    if (responseData.vehicle) {
+      return `${responseData.vehicle.plates} - ${responseData.vehicle.model}`
+    }
+    
+    return 'Nie podano'
+  }
+
+  // Funkcja pobierająca cenę
+  const getTotalPrice = (transport) => {
+    const response = transport.response || transport.response_data
+    if (!response) return 'Nie podano'
+    
+    let responseData = response
+    if (typeof response === 'string') {
+      try {
+        responseData = JSON.parse(response)
+      } catch (e) {
+        return 'Nie podano'
+      }
+    }
+    
+    return responseData.totalPrice || responseData.deliveryPrice || 'Nie podano'
+  }
+
+  // Funkcje sprawdzające typy transportu
+  const isTransportMerged = (transport) => {
+    return transport.isMerged || transport.is_merged || false
+  }
+
+  const isDrumsTransport = (transport) => {
+    return transport.isDrumsTransport || transport.is_drums_transport || false
+  }
+
+  const isFromMergedTransport = (transport) => {
+    const response = transport.response || transport.response_data
+    if (!response) return false
+    
+    let responseData = response
+    if (typeof response === 'string') {
+      try {
+        responseData = JSON.parse(response)
+      } catch (e) {
+        return false
+      }
+    }
+    
+    return responseData.isFromMergedTransport || false
+  }
+
+  // Funkcja pobierająca typ transportu z badge'ami
+  const getTransportTypeDisplay = (transport) => {
+    const badges = []
+    
+    if (isTransportMerged(transport)) {
+      badges.push({ 
+        text: 'ŁĄCZONY', 
+        color: 'bg-blue-100 text-blue-800 border-blue-200', 
+        icon: <Users size={12} /> 
+      })
+    }
+    
+    if (isFromMergedTransport(transport)) {
+      badges.push({ 
+        text: 'CZĘŚĆ ŁĄCZONEGO', 
+        color: 'bg-orange-100 text-orange-800 border-orange-200', 
+        icon: <Route size={12} /> 
+      })
+    }
+    
+    if (isDrumsTransport(transport)) {
+      badges.push({ 
+        text: 'BĘBNY', 
+        color: 'bg-yellow-100 text-yellow-800 border-yellow-200', 
+        icon: <Container size={12} /> 
+      })
+    }
+    
+    const transportType = transport.transportType || transport.transport_type
+    if (transportType === 'opakowaniowy') {
+      badges.push({ 
+        text: 'OPAKOWANIOWY', 
+        color: 'bg-purple-100 text-purple-800 border-purple-200', 
+        icon: <Package size={12} /> 
+      })
+    }
+    
+    const vehicleType = transport.vehicleType || transport.vehicle_type
+    if (vehicleType) {
+      badges.push({ 
+        text: vehicleType.toUpperCase(), 
+        color: 'bg-green-100 text-green-800 border-green-200', 
+        icon: <Truck size={12} /> 
+      })
+    }
+    
+    return badges
+  }
+
+  // Funkcja renderująca szczegóły połączonych transportów
+  const renderMergedTransportDetails = (transport) => {
+    const mergedData = transport.merged_transports
+    if (!mergedData) return null
+    
+    let mergedTransports = mergedData
+    if (typeof mergedData === 'string') {
+      try {
+        mergedTransports = JSON.parse(mergedData)
+      } catch (e) {
+        return null
+      }
+    }
+    
+    if (!mergedTransports.originalTransports || mergedTransports.originalTransports.length === 0) {
+      return null
+    }
+
+    return (
+      <div className="bg-gradient-to-br from-cyan-50 to-cyan-100 p-5 rounded-xl shadow-sm border border-cyan-200 mt-4">
+        <h4 className="font-bold text-cyan-700 mb-4 pb-2 border-b border-cyan-300 flex items-center text-lg">
+          <Truck size={20} className="mr-2" />
+          Transporty łączone ({mergedTransports.originalTransports.length})
+        </h4>
+        
+        <div className="space-y-3">
+          {mergedTransports.originalTransports.map((originalTransport, index) => (
+            <div key={originalTransport.id} className="bg-white p-3 rounded-lg border border-cyan-200">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+                <div>
+                  <span className="font-medium text-gray-700">Nr zamówienia:</span>
+                  <div className="font-semibold text-gray-900">{originalTransport.orderNumber}</div>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-700">MPK:</span>
+                  <div className="font-semibold text-gray-900">{originalTransport.mpk || 'Brak'}</div>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-700">Koszt przypisany:</span>
+                  <div className="font-semibold text-gray-900">{originalTransport.costAssigned} zł</div>
+                </div>
+              </div>
+              
+              {originalTransport.route && (
+                <div className="mt-2 text-sm text-gray-600 flex items-center">
+                  <Route size={14} className="mr-1" />
+                  <span className="font-medium">Trasa:</span> 
+                  <span className="ml-1">{originalTransport.route}</span>
+                </div>
+              )}
+              
+              {originalTransport.responsiblePerson && (
+                <div className="mt-1 text-sm text-gray-600 flex items-center">
+                  <User size={14} className="mr-1" />
+                  <span className="font-medium">Odpowiedzialny:</span> 
+                  <span className="ml-1">{originalTransport.responsiblePerson}</span>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <div className="bg-white p-3 rounded border border-cyan-300">
+            <span className="font-medium text-gray-700 flex items-center">
+              <DollarSign size={16} className="mr-1" />
+              Łączny koszt połączonych:
+            </span>
+            <div className="font-bold text-cyan-600 text-lg">{mergedTransports.totalMergedCost} zł</div>
+          </div>
+          <div className="bg-white p-3 rounded border border-cyan-300">
+            <span className="font-medium text-gray-700 flex items-center">
+              <Route size={16} className="mr-1" />
+              Łączna odległość:
+            </span>
+            <div className="font-bold text-cyan-600 text-lg">{mergedTransports.totalDistance} km</div>
+          </div>
+          <div className="bg-white p-3 rounded border border-cyan-300">
+            <span className="font-medium text-gray-700 flex items-center">
+              <Calendar size={16} className="mr-1" />
+              Data połączenia:
+            </span>
+            <div className="font-bold text-cyan-600">{formatDateTime(mergedTransports.mergedAt)}</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Funkcja stosująca filtry
+  const applyFilters = (data = archiwum) => {
+    let filtered = [...data]
+
+    // Filtr roku
+    if (selectedYear) {
+      filtered = filtered.filter(item => {
+        const itemYear = new Date(item.completedAt || item.completed_at || item.createdAt || item.created_at).getFullYear()
+        return itemYear === selectedYear
+      })
+    }
+
+    // Filtr miesiąca
+    if (selectedMonth !== 'all') {
+      filtered = filtered.filter(item => {
+        const itemMonth = new Date(item.completedAt || item.completed_at || item.createdAt || item.created_at).getMonth()
+        return itemMonth === parseInt(selectedMonth)
+      })
+    }
+
+    // Filtr MPK
+    if (mpkFilter) {
+      filtered = filtered.filter(item => 
+        (item.mpk && item.mpk.toLowerCase().includes(mpkFilter.toLowerCase()))
+      )
+    }
+
+    // Filtr numeru zamówienia
+    if (orderNumberFilter) {
+      filtered = filtered.filter(item => 
+        (item.orderNumber || item.order_number || '').toLowerCase().includes(orderNumberFilter.toLowerCase())
+      )
+    }
+
+    // Filtr lokalizacji
+    if (locationFilter !== 'all') {
+      filtered = filtered.filter(item => item.location === locationFilter)
+    }
+
+    // Filtr typu transportu
+    if (transportTypeFilter !== 'all') {
+      filtered = filtered.filter(item => 
+        (item.transportType || item.transport_type) === transportTypeFilter
+      )
+    }
+
+    // Filtr typu pojazdu
+    if (vehicleTypeFilter !== 'all') {
+      filtered = filtered.filter(item => 
+        (item.vehicleType || item.vehicle_type) === vehicleTypeFilter
+      )
+    }
+
+    // Filtr statusu łączenia
+    if (mergedFilter !== 'all') {
+      filtered = filtered.filter(item => {
+        const isMerged = isTransportMerged(item)
+        if (mergedFilter === 'merged') return isMerged
+        if (mergedFilter === 'single') return !isMerged
+        return true
+      })
+    }
+
+    // Filtr transportu bębnów
+    if (drumsFilter !== 'all') {
+      filtered = filtered.filter(item => {
+        const isDrums = isDrumsTransport(item)
+        if (drumsFilter === 'drums') return isDrums
+        if (drumsFilter === 'standard') return !isDrums
+        return true
+      })
+    }
+
+    // Filtr nazwy kierowcy
+    if (driverNameFilter) {
+      filtered = filtered.filter(item => 
+        getDriverInfo(item).toLowerCase().includes(driverNameFilter.toLowerCase())
+      )
+    }
+
+    // Filtr nazwy klienta
+    if (clientNameFilter) {
+      filtered = filtered.filter(item => 
+        (item.clientName || item.client_name || '').toLowerCase().includes(clientNameFilter.toLowerCase())
+      )
+    }
+
+    // Filtr odpowiedzialnej osoby
+    if (responsiblePersonFilter) {
+      filtered = filtered.filter(item => 
+        (item.responsiblePerson || item.responsible_person || '').toLowerCase().includes(responsiblePersonFilter.toLowerCase())
+      )
+    }
+
+    // Filtr miasta dostawy
+    if (deliveryCityFilter) {
+      filtered = filtered.filter(item => 
+        getDeliveryCity(item).toLowerCase().includes(deliveryCityFilter.toLowerCase())
+      )
+    }
+
+    // Filtr dokumentów
+    if (documentsFilter) {
+      filtered = filtered.filter(item => 
+        (item.documents || '').toLowerCase().includes(documentsFilter.toLowerCase())
+      )
+    }
+
+    // Filtr uwag
+    if (notesFilter) {
+      filtered = filtered.filter(item => 
+        (item.notes || '').toLowerCase().includes(notesFilter.toLowerCase())
+      )
+    }
+
+    // Filtr ceny (min)
+    if (minPriceFilter) {
+      filtered = filtered.filter(item => {
+        const price = parseFloat(getTotalPrice(item)) || 0
+        return price >= parseFloat(minPriceFilter)
+      })
+    }
+
+    // Filtr ceny (max)
+    if (maxPriceFilter) {
+      filtered = filtered.filter(item => {
+        const price = parseFloat(getTotalPrice(item)) || 0
+        return price <= parseFloat(maxPriceFilter)
+      })
+    }
+
+    // Filtr odległości (min)
+    if (minDistanceFilter) {
+      filtered = filtered.filter(item => {
+        const distance = item.distanceKm || item.distance_km || 0
+        return distance >= parseFloat(minDistanceFilter)
+      })
+    }
+
+    // Filtr odległości (max)
+    if (maxDistanceFilter) {
+      filtered = filtered.filter(item => {
+        const distance = item.distanceKm || item.distance_km || 0
+        return distance <= parseFloat(maxDistanceFilter)
+      })
+    }
+
+    setFilteredArchiwum(filtered)
+    setCurrentPage(1) // Reset paginacji
+  }
+
+  // Stosuj filtry przy każdej zmianie
+  useEffect(() => {
+    applyFilters()
+  }, [
+    archiwum, selectedYear, selectedMonth, mpkFilter, orderNumberFilter, 
+    locationFilter, transportTypeFilter, vehicleTypeFilter, mergedFilter, 
+    drumsFilter, driverNameFilter, clientNameFilter, responsiblePersonFilter,
+    deliveryCityFilter, documentsFilter, notesFilter, minPriceFilter, 
+    maxPriceFilter, minDistanceFilter, maxDistanceFilter
+  ])
+
+  // Reset filtrów
+  const resetFilters = () => {
+    setSelectedYear(new Date().getFullYear())
+    setSelectedMonth('all')
+    setMpkFilter('')
+    setOrderNumberFilter('')
+    setLocationFilter('all')
+    setTransportTypeFilter('all')
+    setVehicleTypeFilter('all')
+    setMergedFilter('all')
+    setDrumsFilter('all')
+    setDriverNameFilter('')
+    setClientNameFilter('')
+    setResponsiblePersonFilter('')
+    setDeliveryCityFilter('')
+    setDocumentsFilter('')
+    setNotesFilter('')
+    setMinPriceFilter('')
+    setMaxPriceFilter('')
+    setMinDistanceFilter('')
+    setMaxDistanceFilter('')
+  }
+
+  // Funkcja usuwania transportu (dla adminów)
+  const handleDeleteTransport = async (transportId) => {
+    if (!confirm('Czy na pewno chcesz usunąć ten transport? Ta operacja jest nieodwracalna.')) {
+      return
+    }
+
     try {
       setDeleteStatus({ type: 'loading', message: 'Usuwanie transportu...' })
       
-      // Wywołanie API do usunięcia transportu
-      const response = await fetch(`/api/spedycje?id=${id}`, {
+      const response = await fetch(`/api/spedycje/${transportId}`, {
         method: 'DELETE'
       })
       
       const data = await response.json()
       
       if (data.success) {
-        // Usuń transport z lokalnego stanu
-        const updatedArchiwum = archiwum.filter(transport => transport.id !== id)
-        setArchiwum(updatedArchiwum)
-        applyFilters(updatedArchiwum, selectedYear, selectedMonth, mpkFilter, orderNumberFilter, transportTypeFilter, vehicleTypeFilter, mergedFilter, drumsFilter, mergedOriginFilter, driverNameFilter, clientNameFilter, createdByFilter, cityFromFilter, cityToFilter, priceMinFilter, priceMaxFilter, distanceMinFilter, distanceMaxFilter)
-        
-        setDeleteStatus({ type: 'success', message: 'Transport został usunięty' })
-        
-        // Wyczyść status po 3 sekundach
-        setTimeout(() => {
-          setDeleteStatus(null)
-        }, 3000)
+        setDeleteStatus({ type: 'success', message: 'Transport został pomyślnie usunięty' })
+        // Odśwież dane
+        fetchArchiveData()
       } else {
-        setDeleteStatus({ type: 'error', message: data.error || 'Nie udało się usunąć transportu' })
+        setDeleteStatus({ type: 'error', message: data.error || 'Błąd usuwania transportu' })
       }
     } catch (error) {
       console.error('Błąd usuwania transportu:', error)
       setDeleteStatus({ type: 'error', message: 'Wystąpił błąd podczas usuwania transportu' })
     }
+    
+    // Ukryj komunikat po 5 sekundach
+    setTimeout(() => setDeleteStatus(null), 5000)
   }
 
-  // Obliczanie ceny za kilometr
-  const calculatePricePerKm = (price, distance) => {
-    if (!price || !distance || distance === 0) return 0;
-    return (price / distance).toFixed(2);
-  }
-  
-  // Funkcja eksportująca dane do pliku
-  const exportData = () => {
+  // Funkcja eksportu - ulepszona
+  const handleExport = () => {
     if (filteredArchiwum.length === 0) {
       alert('Brak danych do eksportu')
       return
     }
-    
-    // Przygotuj dane do eksportu
+
     const dataToExport = filteredArchiwum.map(transport => {
-      const distanceKm = transport.response?.distanceKm || transport.distanceKm || 0
-      // Dla transportów pochodzących z łączonego transportu, użyj podzielonej ceny
-      const price = transport.response?.deliveryPrice || 0
-      const pricePerKm = calculatePricePerKm(price, distanceKm)
       const responsibleInfo = getResponsibleInfo(transport)
-      const goodsData = getGoodsDataFromTransportOrder(transport)
       
       return {
-        'Numer zamówienia': transport.orderNumber || '',
-        'Data zlecenia': formatDate(transport.createdAt),
-        'Data realizacji': transport.completedAt ? formatDate(transport.completedAt) : 'Brak',
-        'Trasa': `${getLoadingCity(transport)} → ${getDeliveryCity(transport)}`,
+        'Nr zamówienia': transport.orderNumber || transport.order_number,
+        'Data utworzenia': formatDate(transport.createdAt || transport.created_at),
+        'Data realizacji': formatDate(transport.completedAt || transport.completed_at),
         'MPK': getCurrentMPK(transport),
-        'Dokumenty': transport.documents || '',
-        'Nazwa klienta': transport.clientName || '',
-        'Osoba dodająca': transport.createdBy || '',
-        'Osoba odpowiedzialna': responsibleInfo.name,
+        'Źródło': getLoadingLocation(transport),
+        'Cel': getDeliveryCity(transport),
+        'Klient': transport.clientName || transport.client_name || '',
+        'Odpowiedzialny': responsibleInfo.name,
         'Typ odpowiedzialnego': responsibleInfo.type === 'construction' ? 'Budowa' : 'Osoba',
-        'Przewoźnik': (transport.response?.driverName || '') + ' ' + (transport.response?.driverSurname || ''),
-        'Numer auta': transport.response?.vehicleNumber || '',
-        'Telefon': transport.response?.driverPhone || '',
-        'Cena (PLN)': price,
-'Odległość podstawowa (km)': (() => {
-          const distanceData = getTransportDistance(transport);
-          return distanceData.base || '';
-        })(),
-        'Odległość trasy (km)': (() => {
-          const distanceData = getTransportDistance(transport);
-          return distanceData.route || '';
-        })(),
-        'Typ odległości': (() => {
-          const distanceData = getTransportDistance(transport);
-          if (distanceData.isMerged && distanceData.route && distanceData.base) {
-            return 'Połączony (obie odległości)';
-          } else if (distanceData.route) {
-            return 'Trasa rzeczywista';
-          } else if (distanceData.base) {
-            return 'Podstawowa';
-          }
-          return 'Brak danych';
-        })(),
-        'Cena za km (PLN/km)': pricePerKm,
-        'Kontakt załadunek': transport.loadingContact || '',
-        'Kontakt rozładunek': transport.unloadingContact || '',
-        'Opis towaru (zlecenie)': goodsData.description,
-        'Waga towaru (zlecenie)': goodsData.weight,
+        'Kierowca': getDriverInfo(transport),
+        'Pojazd': getVehicleInfo(transport),
+        'Cena': getTotalPrice(transport),
+        'Odległość (km)': transport.distanceKm || transport.distance_km || '',
+        'Typ transportu': transport.transportType || transport.transport_type || '',
+        'Typ pojazdu': transport.vehicleType || transport.vehicle_type || '',
+        'Łączony': isTransportMerged(transport) ? 'Tak' : 'Nie',
+        'Transport bębnów': isDrumsTransport(transport) ? 'Tak' : 'Nie',
+        'Część łączonego': isFromMergedTransport(transport) ? 'Tak' : 'Nie',
+        'Dokumenty': transport.documents || '',
         'Uwagi': transport.notes || '',
-        'Uwagi przewoźnika': transport.response?.adminNotes || '',
-        'Transport łączony': transport.isMerged ? 'Tak' : 'Nie',
-        'Transport bębnów': transport.isDrumsTransport ? 'Tak' : 'Nie',
-        'Typ pojazdu': transport.vehicleType || '',
-        'Liczba połączonych transportów': transport.isMerged && transport.merged_transports ? 
-          (transport.merged_transports.originalTransports?.length || 0) : 0,
-        'Pochodzi z połączonego': transport.response?.isFromMergedTransport ? 'Tak' : 'Nie',
-        'ID głównego transportu': transport.response?.originalMainTransportId || ''
+        'Data dostawy (oryginalna)': formatDate(transport.deliveryDate || transport.delivery_date),
+        'Data dostawy (aktualna)': formatDate(getActualDeliveryDate(transport)),
+        'Data dostawy zmieniona': isDeliveryDateChanged(transport) ? 'Tak' : 'Nie'
       }
     })
-    
-    // Przygotuj nazwę pliku
-    const monthLabel = selectedMonth === 'all' ? 'wszystkie_miesiace' : 
-                      months.find(m => m.value === selectedMonth)?.label.toLowerCase() || selectedMonth
-    
-    const fileName = `spedycja_${selectedYear}_${monthLabel}`
-    
-    if (exportFormat === 'csv') {
-      exportToCSV(dataToExport, fileName)
+
+    if (exportFormat === 'xlsx') {
+      const ws = XLSX.utils.json_to_sheet(dataToExport)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Archiwum Spedycji')
+      XLSX.writeFile(wb, `archiwum_spedycji_${format(new Date(), 'yyyy-MM-dd')}.xlsx`)
     } else {
-      exportToXLSX(dataToExport, fileName)
+      const ws = XLSX.utils.json_to_sheet(dataToExport)
+      const csv = XLSX.utils.sheet_to_csv(ws)
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = `archiwum_spedycji_${format(new Date(), 'yyyy-MM-dd')}.csv`
+      link.click()
     }
   }
 
-  // Funkcja do generowania linku do Google Maps
-  const generateGoogleMapsLink = (transport) => {
-    // Pobierz dane źródłowe i docelowe
-    let origin = '';
-    let destination = '';
-    
-    // Ustal miejsce załadunku
-    if (transport.location === 'Odbiory własne' && transport.producerAddress) {
-      const addr = transport.producerAddress;
-      origin = `${addr.city},${addr.postalCode},${addr.street || ''}`;
-    } else if (transport.location === 'Magazyn Białystok') {
-      origin = 'Białystok';
-    } else if (transport.location === 'Magazyn Zielonka') {
-      origin = 'Zielonka';
-    }
-    
-    // Ustal miejsce dostawy
-    if (transport.delivery) {
-      const addr = transport.delivery;
-      destination = `${addr.city},${addr.postalCode},${addr.street || ''}`;
-    }
-    
-    // Jeśli brakuje któregoś z punktów, zwróć pusty string
-    if (!origin || !destination) return '';
-    
-    // Kodowanie URI komponentów
-    origin = encodeURIComponent(origin);
-    destination = encodeURIComponent(destination);
-    
-    // Zwróć link do Google Maps
-    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
-  };
-
-  // Eksport do CSV
-  const exportToCSV = (data, fileName) => {
-    // Nagłówki
-    const headers = Object.keys(data[0])
-    
-    // Convert data to CSV string
-    let csvContent = headers.join(';') + '\n'
-    data.forEach(item => {
-      const row = headers.map(header => {
-        let cell = item[header] !== undefined && item[header] !== null ? item[header] : ''
-        // Jeśli komórka zawiera przecinek, średnik lub nowy wiersz, umieść ją w cudzysłowach
-        if (cell.toString().includes(',') || cell.toString().includes(';') || cell.toString().includes('\n')) {
-          cell = `"${cell}"`
-        }
-        return cell
-      }).join(';')
-      csvContent += row + '\n'
-    })
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' })
-    
-    // Tworzenie i kliknięcie tymczasowego linku do pobrania
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = `${fileName}.csv`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  }
-
-  // Eksport do XLSX
-  const exportToXLSX = (data, fileName) => {
-    const ws = XLSX.utils.json_to_sheet(data)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Spedycja')
-    XLSX.writeFile(wb, `${fileName}.xlsx`)
-  }
-
-  // Formatowanie daty
-  const formatDate = (dateString) => {
-    if (!dateString) return 'Brak daty';
+  // Funkcja drukowania CMR
+  const handlePrintCMR = (transport) => {
     try {
-      return format(new Date(dateString), 'dd.MM.yyyy', { locale: pl });
+      generateCMR(transport)
     } catch (error) {
-      console.error("Błąd formatowania daty:", error, dateString);
-      return 'Nieprawidłowa data';
+      console.error('Błąd generowania CMR:', error)
+      alert('Wystąpił błąd podczas generowania dokumentu CMR')
     }
   }
-
-  // Formatowanie daty i czasu w jednej linii
-  const formatDateTime = (dateString) => {
-    if (!dateString) return 'Brak daty';
-    try {
-      return format(new Date(dateString), 'dd.MM.yyyy HH:mm', { locale: pl });
-    } catch (error) {
-      console.error("Błąd formatowania daty:", error, dateString);
-      return 'Nieprawidłowa data';
-    }
-  }
-
-  // Funkcja sprawdzająca czy data dostawy została zmieniona
-  const isDeliveryDateChanged = (transport) => {
-    return transport.response && 
-           transport.response.dateChanged === true && 
-           transport.response.newDeliveryDate;
-  }
-
-  // Funkcja pobierająca aktualną datę dostawy (oryginalną lub zmienioną)
-  const getActualDeliveryDate = (transport) => {
-    if (isDeliveryDateChanged(transport)) {
-      return transport.response.newDeliveryDate;
-    }
-    return transport.deliveryDate;
-  }
-
-  // Renderuje info o odpowiedzialnych budowach
-  const renderResponsibleConstructions = (transport) => {
-    if (!transport.responsibleConstructions || !transport.responsibleConstructions.length) return null;
-    
-    return (
-      <div className="mt-3">
-        <div className="font-medium text-sm text-green-700 mb-2 flex items-center">
-          <Building size={14} className="mr-1" />
-          Odpowiedzialne budowy:
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {transport.responsibleConstructions.map(construction => (
-            <div key={construction.id} className="bg-green-50 text-green-700 px-2 py-1 rounded-md text-xs flex items-center border border-green-200">
-              <Building size={12} className="mr-1" />
-              {construction.name}
-              <span className="ml-1 text-green-600 font-medium">({construction.mpk})</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
 
   // Paginacja
   const indexOfLastItem = currentPage * itemsPerPage
@@ -823,11 +916,7 @@ export default function ArchiwumSpedycjiPage() {
   const currentItems = filteredArchiwum.slice(indexOfFirstItem, indexOfLastItem)
   const totalPages = Math.ceil(filteredArchiwum.length / itemsPerPage)
 
-  // Zmiana strony
   const paginate = (pageNumber) => setCurrentPage(pageNumber)
-  
-  const selectStyles = "block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-  const inputStyles = "block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
 
   if (loading) {
     return (
@@ -837,12 +926,27 @@ export default function ArchiwumSpedycjiPage() {
     )
   }
 
-  if (error) {
-    return <div className="text-red-500 text-center p-4 bg-red-50 rounded-lg">{error}</div>
+  if (error && archiwum.length === 0) {
+    return (
+      <div className="max-w-7xl mx-auto py-8 px-4">
+        <div className="text-red-500 text-center p-4 bg-red-50 rounded-lg border border-red-200">
+          <AlertCircle size={24} className="mx-auto mb-2" />
+          <h3 className="font-bold mb-2">Błąd ładowania danych</h3>
+          <p className="mb-4">{error}</p>
+          <button 
+            onClick={fetchArchiveData}
+            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+          >
+            Spróbuj ponownie
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+      {/* Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
           Archiwum Spedycji
@@ -852,1161 +956,584 @@ export default function ArchiwumSpedycjiPage() {
         </p>
       </div>
 
-      {/* Filters Section */}
-      <div className="mb-8 bg-white rounded-lg shadow p-6">
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-gray-800 mb-2 flex items-center">
-            <Search size={20} className="mr-2" />
-            Filtry wyszukiwania
-          </h2>
-          <p className="text-sm text-gray-600">Użyj filtrów aby znaleźć konkretne transporty w archiwum</p>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
-          {/* Rok */}
-          <div>
-            <label htmlFor="yearSelect" className="block text-sm font-medium text-gray-700 mb-1">
-              Rok
-            </label>
-            <select
-              id="yearSelect"
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-              className={selectStyles}
-            >
-              {years.map(year => (
-                <option key={year} value={year}>{year}</option>
-              ))}
-            </select>
-          </div>
-          
-          {/* Miesiąc */}
-          <div>
-            <label htmlFor="monthSelect" className="block text-sm font-medium text-gray-700 mb-1">
-              Miesiąc
-            </label>
-            <select
-              id="monthSelect"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className={selectStyles}
-            >
-              {months.map(month => (
-                <option key={month.value} value={month.value}>{month.label}</option>
-              ))}
-            </select>
-          </div>
-          
-          {/* MPK Filter */}
-          <div>
-            <label htmlFor="mpkFilter" className="block text-sm font-medium text-gray-700 mb-1">
-              MPK
-            </label>
-            <div className="relative">
-              <input
-                id="mpkFilter"
-                type="text"
-                value={mpkFilter}
-                onChange={(e) => setMpkFilter(e.target.value)}
-                placeholder="Filtruj po MPK"
-                className={inputStyles}
-                list="mpk-options"
-              />
-              <datalist id="mpk-options">
-                {mpkOptions.map((mpk, index) => (
-                  <option key={index} value={mpk} />
-                ))}
-              </datalist>
-              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                <Search size={18} className="text-gray-400" />
-              </div>
-            </div>
-          </div>
-          
-          {/* Numer zamówienia */}
-          <div>
-            <label htmlFor="orderNumberFilter" className="block text-sm font-medium text-gray-700 mb-1">
-              Numer zamówienia
-            </label>
-            <div className="relative">
-              <input
-                id="orderNumberFilter"
-                type="text"
-                value={orderNumberFilter}
-                onChange={(e) => setOrderNumberFilter(e.target.value)}
-                placeholder="Filtruj po numerze"
-                className={inputStyles}
-              />
-              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                <Search size={18} className="text-gray-400" />
-              </div>
-            </div>
-          </div>
-          
-          {/* Transport łączony */}
-          <div>
-            <label htmlFor="mergedFilter" className="block text-sm font-medium text-gray-700 mb-1">
-              Typ łączenia
-            </label>
-            <select
-              id="mergedFilter"
-              value={mergedFilter}
-              onChange={(e) => setMergedFilter(e.target.value)}
-              className={selectStyles}
-            >
-              <option value="all">Wszystkie</option>
-              <option value="merged">Łączone</option>
-              <option value="single">Pojedyncze</option>
-            </select>
-          </div>
-          
-          {/* Transport bębnów */}
-          <div>
-            <label htmlFor="drumsFilter" className="block text-sm font-medium text-gray-700 mb-1">
-              Transport bębnów
-            </label>
-            <select
-              id="drumsFilter"
-              value={drumsFilter}
-              onChange={(e) => setDrumsFilter(e.target.value)}
-              className={selectStyles}
-            >
-              <option value="all">Wszystkie</option>
-              <option value="drums">Bębny</option>
-              <option value="normal">Zwykły</option>
-            </select>
-          </div>
-          
-          {/* Typ pojazdu */}
-          <div>
-            <label htmlFor="vehicleTypeFilter" className="block text-sm font-medium text-gray-700 mb-1">
-              Typ pojazdu
-            </label>
-            <select
-              id="vehicleTypeFilter"
-              value={vehicleTypeFilter}
-              onChange={(e) => setVehicleTypeFilter(e.target.value)}
-              className={selectStyles}
-            >
-              <option value="all">Wszystkie</option>
-              <option value="tir">TIR</option>
-              <option value="bus">Bus</option>
-              <option value="truck">Ciężarówka</option>
-              <option value="van">Dostawczy</option>
-            </select>
-          </div>
-          
-          {/* Pochodzenie transportu */}
-          <div>
-            <label htmlFor="mergedOriginFilter" className="block text-sm font-medium text-gray-700 mb-1">
-              Pochodzenie
-            </label>
-            <select
-              id="mergedOriginFilter"
-              value={mergedOriginFilter}
-              onChange={(e) => setMergedOriginFilter(e.target.value)}
-              className={selectStyles}
-            >
-              <option value="all">Wszystkie</option>
-              <option value="original">Oryginalne</option>
-              <option value="from_merged">Z połączonych</option>
-            </select>
-          </div>
-          
-          {/* Nazwa kierowcy */}
-          <div>
-            <label htmlFor="driverNameFilter" className="block text-sm font-medium text-gray-700 mb-1">
-              Kierowca
-            </label>
-            <div className="relative">
-              <input
-                id="driverNameFilter"
-                type="text"
-                value={driverNameFilter}
-                onChange={(e) => setDriverNameFilter(e.target.value)}
-                placeholder="Imię i nazwisko"
-                className={inputStyles}
-              />
-              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                <User size={18} className="text-gray-400" />
-              </div>
-            </div>
-          </div>
-          
-          {/* Nazwa klienta */}
-          <div>
-            <label htmlFor="clientNameFilter" className="block text-sm font-medium text-gray-700 mb-1">
-              Klient
-            </label>
-            <div className="relative">
-              <input
-                id="clientNameFilter"
-                type="text"
-                value={clientNameFilter}
-                onChange={(e) => setClientNameFilter(e.target.value)}
-                placeholder="Nazwa klienta"
-                className={inputStyles}
-              />
-              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                <Building size={18} className="text-gray-400" />
-              </div>
-            </div>
-          </div>
-          
-          {/* Osoba tworząca */}
-          <div>
-            <label htmlFor="createdByFilter" className="block text-sm font-medium text-gray-700 mb-1">
-              Utworzone przez
-            </label>
-            <div className="relative">
-              <input
-                id="createdByFilter"
-                type="text"
-                value={createdByFilter}
-                onChange={(e) => setCreatedByFilter(e.target.value)}
-                placeholder="Osoba tworząca"
-                className={inputStyles}
-              />
-              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                <User size={18} className="text-gray-400" />
-              </div>
-            </div>
-          </div>
-          
-          {/* Miasto źródłowe */}
-          <div>
-            <label htmlFor="cityFromFilter" className="block text-sm font-medium text-gray-700 mb-1">
-              Miasto załadunku
-            </label>
-            <div className="relative">
-              <input
-                id="cityFromFilter"
-                type="text"
-                value={cityFromFilter}
-                onChange={(e) => setCityFromFilter(e.target.value)}
-                placeholder="Skąd"
-                className={inputStyles}
-              />
-              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                <MapPin size={18} className="text-gray-400" />
-              </div>
-            </div>
-          </div>
-          
-          {/* Miasto docelowe */}
-          <div>
-            <label htmlFor="cityToFilter" className="block text-sm font-medium text-gray-700 mb-1">
-              Miasto dostawy
-            </label>
-            <div className="relative">
-              <input
-                id="cityToFilter"
-                type="text"
-                value={cityToFilter}
-                onChange={(e) => setCityToFilter(e.target.value)}
-                placeholder="Dokąd"
-                className={inputStyles}
-              />
-              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                <MapPin size={18} className="text-gray-400" />
-              </div>
-            </div>
-          </div>
-          
-          {/* Cena min */}
-          <div>
-            <label htmlFor="priceMinFilter" className="block text-sm font-medium text-gray-700 mb-1">
-              Cena od (PLN)
-            </label>
-            <div className="relative">
-              <input
-                id="priceMinFilter"
-                type="number"
-                value={priceMinFilter}
-                onChange={(e) => setPriceMinFilter(e.target.value)}
-                placeholder="0"
-                className={inputStyles}
-                min="0"
-                step="0.01"
-              />
-              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                <DollarSign size={18} className="text-gray-400" />
-              </div>
-            </div>
-          </div>
-          
-          {/* Cena max */}
-          <div>
-            <label htmlFor="priceMaxFilter" className="block text-sm font-medium text-gray-700 mb-1">
-              Cena do (PLN)
-            </label>
-            <div className="relative">
-              <input
-                id="priceMaxFilter"
-                type="number"
-                value={priceMaxFilter}
-                onChange={(e) => setPriceMaxFilter(e.target.value)}
-                placeholder="9999"
-                className={inputStyles}
-                min="0"
-                step="0.01"
-              />
-              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                <DollarSign size={18} className="text-gray-400" />
-              </div>
-            </div>
-          </div>
-          
-          {/* Odległość min */}
-          <div>
-            <label htmlFor="distanceMinFilter" className="block text-sm font-medium text-gray-700 mb-1">
-              Odległość od (km)
-            </label>
-            <div className="relative">
-              <input
-                id="distanceMinFilter"
-                type="number"
-                value={distanceMinFilter}
-                onChange={(e) => setDistanceMinFilter(e.target.value)}
-                placeholder="0"
-                className={inputStyles}
-                min="0"
-                step="1"
-              />
-              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                <MapPin size={18} className="text-gray-400" />
-              </div>
-            </div>
-          </div>
-          
-          {/* Odległość max */}
-          <div>
-            <label htmlFor="distanceMaxFilter" className="block text-sm font-medium text-gray-700 mb-1">
-              Odległość do (km)
-            </label>
-            <div className="relative">
-              <input
-                id="distanceMaxFilter"
-                type="number"
-                value={distanceMaxFilter}
-                onChange={(e) => setDistanceMaxFilter(e.target.value)}
-                placeholder="2000"
-                className={inputStyles}
-                min="0"
-                step="1"
-              />
-              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                <MapPin size={18} className="text-gray-400" />
-              </div>
-            </div>
-          </div>
-          
-          {/* Format eksportu */}
-          <div className="flex flex-col justify-end">
-            <label htmlFor="exportFormat" className="block text-sm font-medium text-gray-700 mb-1">
-              Format
-            </label>
-            <div className="flex space-x-2">
-              <select
-                id="exportFormat"
-                value={exportFormat}
-                onChange={(e) => setExportFormat(e.target.value)}
-                className={`${selectStyles} flex-grow`}
-              >
-                <option value="xlsx">Excel (XLSX)</option>
-                <option value="csv">CSV</option>
-              </select>
-              <button
-                onClick={exportData}
-                disabled={filteredArchiwum.length === 0}
-                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
-                title="Eksportuj dane"
-              >
-                <Download size={18} className="mr-1" />
-                Eksportuj
-              </button>
-            </div>
-          </div>
-        </div>
-        
-        {/* Przycisk czyszczenia filtrów */}
-        <div className="mt-6 flex justify-center">
-          <button
-            onClick={() => {
-              setSelectedYear(new Date().getFullYear())
-              setSelectedMonth('all')
-              setMpkFilter('')
-              setOrderNumberFilter('')
-              setTransportTypeFilter('all')
-              setVehicleTypeFilter('all')
-              setMergedFilter('all')
-              setDrumsFilter('all')
-              setMergedOriginFilter('all')
-              setDriverNameFilter('')
-              setClientNameFilter('')
-              setCreatedByFilter('')
-              setCityFromFilter('')
-              setCityToFilter('')
-              setPriceMinFilter('')
-              setPriceMaxFilter('')
-              setDistanceMinFilter('')
-              setDistanceMaxFilter('')
-            }}
-            className="px-6 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors flex items-center gap-2"
-          >
-            <AlertCircle size={16} />
-            Wyczyść wszystkie filtry
-          </button>
-        </div>
-      </div>
-
+      {/* Delete Status */}
       {deleteStatus && (
-        <div className={`mb-4 p-4 rounded-lg ${
-          deleteStatus.type === 'success' ? 'bg-green-100 text-green-800' : 
-          deleteStatus.type === 'error' ? 'bg-red-100 text-red-800' :
-          'bg-blue-100 text-blue-800'
+        <div className={`mb-4 p-4 rounded-lg border ${
+          deleteStatus.type === 'loading' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+          deleteStatus.type === 'success' ? 'bg-green-50 text-green-700 border-green-200' :
+          'bg-red-50 text-red-700 border-red-200'
         }`}>
           {deleteStatus.message}
         </div>
       )}
 
-      {/* Lista archiwalnych spedycji */}
-      <div className="bg-white rounded-lg shadow">
+      {/* Toolbar */}
+      <div className="mb-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+              showFilters 
+                ? 'bg-blue-100 text-blue-700 border-blue-300' 
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            {showFilters ? <EyeOff size={18} /> : <Eye size={18} />}
+            {showFilters ? 'Ukryj filtry' : 'Pokaż filtry'}
+          </button>
+          
+          <div className="text-sm text-gray-600">
+            Znaleziono: <span className="font-semibold">{filteredArchiwum.length}</span> z {archiwum.length} rekordów
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <select
+            value={exportFormat}
+            onChange={(e) => setExportFormat(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+          >
+            <option value="xlsx">Excel (.xlsx)</option>
+            <option value="csv">CSV</option>
+          </select>
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+          >
+            <Download size={18} />
+            Eksportuj
+          </button>
+        </div>
+      </div>
+
+      {/* Filters Panel */}
+      {showFilters && (
+        <div className="mb-8 bg-white rounded-lg shadow border border-gray-200 p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-gray-800 flex items-center">
+              <Filter size={20} className="mr-2" />
+              Filtry wyszukiwania
+            </h3>
+            <button
+              onClick={resetFilters}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+            >
+              <X size={16} />
+              Wyczyść wszystkie
+            </button>
+          </div>
+          
+          {/* Filtry podstawowe */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Rok</label>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              >
+                {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Miesiąc</label>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">Wszystkie miesiące</option>
+                {Array.from({ length: 12 }, (_, i) => (
+                  <option key={i} value={i}>
+                    {format(new Date(2023, i, 1), 'LLLL', { locale: pl })}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">MPK</label>
+              <input
+                type="text"
+                value={mpkFilter}
+                onChange={(e) => setMpkFilter(e.target.value)}
+                placeholder="Wpisz MPK..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Nr zamówienia</label>
+              <input
+                type="text"
+                value={orderNumberFilter}
+                onChange={(e) => setOrderNumberFilter(e.target.value)}
+                placeholder="Wpisz numer..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          {/* Filtry rozszerzone */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Źródło</label>
+              <select
+                value={locationFilter}
+                onChange={(e) => setLocationFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">Wszystkie lokalizacje</option>
+                {locationOptions.map(location => (
+                  <option key={location} value={location}>{location}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Status łączenia</label>
+              <select
+                value={mergedFilter}
+                onChange={(e) => setMergedFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">Wszystkie</option>
+                <option value="merged">Łączone</option>
+                <option value="single">Pojedyncze</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Transport bębnów</label>
+              <select
+                value={drumsFilter}
+                onChange={(e) => setDrumsFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">Wszystkie</option>
+                <option value="drums">Tylko bębny</option>
+                <option value="standard">Bez bębnów</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Typ transportu</label>
+              <select
+                value={transportTypeFilter}
+                onChange={(e) => setTransportTypeFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">Wszystkie typy</option>
+                {transportTypeOptions.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Typ pojazdu</label>
+              <select
+                value={vehicleTypeFilter}
+                onChange={(e) => setVehicleTypeFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">Wszystkie pojazdy</option>
+                {vehicleTypeOptions.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Klient</label>
+              <input
+                type="text"
+                value={clientNameFilter}
+                onChange={(e) => setClientNameFilter(e.target.value)}
+                placeholder="Nazwa klienta..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          {/* Filtry tekstowe */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Odpowiedzialny</label>
+              <input
+                type="text"
+                value={responsiblePersonFilter}
+                onChange={(e) => setResponsiblePersonFilter(e.target.value)}
+                placeholder="Nazwa osoby..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Miasto dostawy</label>
+              <input
+                type="text"
+                value={deliveryCityFilter}
+                onChange={(e) => setDeliveryCityFilter(e.target.value)}
+                placeholder="Miasto..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Dokumenty</label>
+              <input
+                type="text"
+                value={documentsFilter}
+                onChange={(e) => setDocumentsFilter(e.target.value)}
+                placeholder="Dokumenty..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Uwagi</label>
+              <input
+                type="text"
+                value={notesFilter}
+                onChange={(e) => setNotesFilter(e.target.value)}
+                placeholder="Tekst w uwagach..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Results */}
+      <div className="bg-white rounded-lg shadow border border-gray-200">
         {currentItems.length > 0 ? (
           <div className="divide-y divide-gray-200">
             {currentItems.map((transport) => {
-              const dateChanged = isDeliveryDateChanged(transport);
-              const displayDate = getActualDeliveryDate(transport);
-              const responsibleInfo = getResponsibleInfo(transport);
-              const currentMPK = getCurrentMPK(transport);
+              const dateChanged = isDeliveryDateChanged(transport)
+              const displayDate = getActualDeliveryDate(transport)
+              const responsibleInfo = getResponsibleInfo(transport)
+              const currentMPK = getCurrentMPK(transport)
               
               return (
                 <div key={transport.id} className="p-6 hover:bg-gray-50 transition-colors">
                   <div 
                     onClick={() => setExpandedRowId(expandedRowId === transport.id ? null : transport.id)}
-                    className="flex justify-between items-start cursor-pointer"
+                    className="cursor-pointer"
                   >
-                    <div className="flex-1">
-                      {/* Główny nagłówek z miejscami załadunku i rozładunku */}
-                      <div className="mb-3">
-                        <h3 className="text-xl font-bold text-gray-900 flex items-center mb-2">
-                          <span className="flex items-center">
-                            {getLoadingCity(transport).toUpperCase()}
-                            <span className="ml-2 text-sm font-medium text-gray-600">
-                              ({getLoadingCompanyName(transport)})
-                            </span>
-                          </span>
-                          <ArrowRight size={20} className="mx-3 text-gray-500" /> 
-                          <span className="flex items-center">
-                            {getDeliveryCity(transport).toUpperCase()}
-                            <span className="ml-2 text-sm font-medium text-gray-600">
-                              ({getUnloadingCompanyName(transport)})
-                            </span>
-                          </span>
-                        </h3>
-                      </div>
-
-                      {/* Informacje w czterech ramkach */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center">
-                          <Hash size={16} className="mr-2 text-blue-600" />
-                          <div>
-                            <span className="text-xs font-medium text-blue-700 block">Nr zamówienia</span>
-                            <span className="font-semibold text-gray-900">{transport.orderNumber || '-'}</span>
-                          </div>
+                    {/* Header Row */}
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center space-x-4">
+                        <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
+                          {transport.orderNumber || transport.order_number}
                         </div>
                         
-                        <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 flex items-center">
-                          <FileText size={16} className="mr-2 text-purple-600" />
-                          <div>
-                            <span className="text-xs font-medium text-purple-700 block">MPK</span>
-                            <span className="font-semibold text-gray-900">{currentMPK}</span>
-                          </div>
-                        </div>
-                        
-                        <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 flex items-center">
-                          {responsibleInfo.type === 'construction' ? (
-                            <Building size={16} className="mr-2 text-orange-600" />
-                          ) : (
-                            <User size={16} className="mr-2 text-orange-600" />
-                          )}
-                          <div>
-                            <span className="text-xs font-medium text-orange-700 block">
-                              {responsibleInfo.type === 'construction' ? 'Budowa' : 'Odpowiedzialny'}
+                        {/* Type Badges */}
+                        <div className="flex gap-2">
+                          {getTransportTypeDisplay(transport).map((badge, index) => (
+                            <span key={index} className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 border ${badge.color}`}>
+                              {badge.icon}
+                              {badge.text}
                             </span>
-                            <span className="font-semibold text-gray-900 text-sm">{responsibleInfo.name}</span>
-                          </div>
-                        </div>
-                        
-                        {/* Nowy panel dla informacji o transporcie */}
-                        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex items-center">
-                          <Truck size={16} className="mr-2 text-emerald-600" />
-                          <div>
-                            <span className="text-xs font-medium text-emerald-700 block">Typ transportu</span>
-                            <div className="flex flex-col">
-                              {transport.isMerged && (
-                                <span className="text-xs bg-emerald-200 text-emerald-800 px-1 py-0.5 rounded font-medium mb-1">
-                                  ŁĄCZONY
-                                </span>
-                              )}
-                              {transport.response?.isFromMergedTransport && (
-                                <span className="text-xs bg-orange-200 text-orange-800 px-1 py-0.5 rounded font-medium mb-1">
-                                  CZĘŚĆ ŁĄCZONEGO
-                                </span>
-                              )}
-                              {transport.isDrumsTransport && (
-                                <span className="text-xs bg-yellow-200 text-yellow-800 px-1 py-0.5 rounded font-medium mb-1">
-                                  BĘBNY
-                                </span>
-                              )}
-                              <span className="font-semibold text-gray-900 text-sm">
-                                {transport.vehicleType || 'Standard'}
-                              </span>
-                            </div>
-                          </div>
+                          ))}
                         </div>
                       </div>
                       
-                      {/* Wyświetl informacje o budowach jeśli istnieją */}
-                      {transport.responsibleConstructions && transport.responsibleConstructions.length > 1 && (
-                        <div className="mt-3">
-                          {renderResponsibleConstructions(transport)}
+                      <div className="flex items-center space-x-3">
+                        <div className="text-right">
+                          <div className="text-sm text-gray-500">Zrealizowano</div>
+                          <div className="font-medium">{formatDate(transport.completedAt || transport.completed_at)}</div>
                         </div>
-                      )}
-                    </div>
-                    
-                    <div className="flex items-center space-x-3 ml-6">
-                      {/* Przycisk rozwinięcia */}
-                      <button 
-                        className="p-2 rounded-full hover:bg-gray-200 transition-colors"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {expandedRowId === transport.id ? (
-                          <ChevronUp size={24} className="text-gray-600" />
-                        ) : (
-                          <ChevronDown size={24} className="text-gray-600" />
+                        
+                        {/* Admin Actions */}
+                        {isAdmin && (
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handlePrintCMR(transport)
+                              }}
+                              className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded-lg transition-colors"
+                              title="Drukuj CMR"
+                            >
+                              <Printer size={16} />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDeleteTransport(transport.id)
+                              }}
+                              className="p-2 text-red-600 hover:text-red-800 hover:bg-red-100 rounded-lg transition-colors"
+                              title="Usuń transport"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
                         )}
-                      </button>
-                      
-                      {/* Przycisk usuwania dla admina */}
-                      {isAdmin && (
-                        <button 
-                          type="button"
-                          className="px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteTransport(transport.id);
-                          }}
-                        >
-                          Usuń
+                        
+                        <button className="p-2 rounded-full hover:bg-gray-200 transition-colors">
+                          {expandedRowId === transport.id ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                         </button>
-                      )}
+                      </div>
                     </div>
+
+                    {/* Main Info Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-3">
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                        <div className="text-xs font-medium text-gray-500 mb-1 flex items-center">
+                          <MapPin size={14} className="mr-1" />
+                          Trasa
+                        </div>
+                        <div className="font-semibold text-gray-900 text-sm flex items-center">
+                          {getLoadingLocation(transport)}
+                          <ArrowRight size={14} className="mx-1 text-gray-400" />
+                          {getDeliveryCity(transport)}
+                        </div>
+                      </div>
+                      
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                        <div className="text-xs font-medium text-emerald-700 mb-1 flex items-center">
+                          <User size={14} className="mr-1" />
+                          {responsibleInfo.type === 'construction' ? 'Budowa' : 'Odpowiedzialny'}
+                        </div>
+                        <div className="font-semibold text-gray-900 text-sm">{responsibleInfo.name}</div>
+                      </div>
+                      
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        <div className="text-xs font-medium text-blue-700 mb-1 flex items-center">
+                          <Hash size={14} className="mr-1" />
+                          MPK
+                        </div>
+                        <div className="font-semibold text-gray-900 text-sm">{currentMPK}</div>
+                      </div>
+                      
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                        <div className="text-xs font-medium text-green-700 mb-1 flex items-center">
+                          <DollarSign size={14} className="mr-1" />
+                          Cena
+                        </div>
+                        <div className="font-semibold text-gray-900 text-sm">{getTotalPrice(transport)} zł</div>
+                      </div>
+                    </div>
+
+                    {/* Responsible Constructions */}
+                    {responsibleInfo.type === 'multiple_constructions' && (
+                      <div className="mt-3">
+                        {renderResponsibleConstructions(transport)}
+                      </div>
+                    )}
                   </div>
 
-                  {/* Rozwinięty widok szczegółów */}
+                  {/* Expanded Details */}
                   {expandedRowId === transport.id && (
-                    <div className="mt-8 border-t border-gray-200 pt-6">
-                      {/* NOWY LAYOUT: Dwa rzędy po trzy panele */}
-                      
-                      {/* PIERWSZY RZĄD: Dane zamówienia, Dane przewoźnika, Dane o towarze */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                        {/* Panel 1: Dane zamówienia */}
-                        <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-5 rounded-xl shadow-sm border border-blue-200">
-                          <h4 className="font-bold text-blue-700 mb-4 pb-2 border-b border-blue-300 flex items-center text-lg">
-                            <FileText size={20} className="mr-2" />
-                            Dane zamówienia
-                          </h4>
-                          <div className="space-y-3 text-sm">
-                            <div>
-                              <span className="font-medium text-gray-700">Numer zamówienia:</span>
-                              <div className="font-semibold text-gray-900">{transport.orderNumber || '-'}</div>
-                            </div>
-                            <div>
-                              <span className="font-medium text-gray-700">MPK:</span>
-                              <div className="font-semibold text-gray-900">{currentMPK}</div>
-                            </div>
-                            <div>
-                              <span className="font-medium text-gray-700">Dokumenty:</span>
-                              <div className="font-semibold text-gray-900">{transport.documents}</div>
-                            </div>
-                            {transport.clientName && (
-                              <div>
-                                <span className="font-medium text-gray-700">Nazwa klienta:</span>
-                                <div className="font-semibold text-gray-900">{transport.clientName}</div>
-                              </div>
-                            )}
+                    <div className="mt-6 pt-6 border-t border-gray-200 space-y-4">
+                      {/* Driver and Vehicle Info */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                          <div className="text-sm font-medium text-blue-700 mb-2 flex items-center">
+                            <User size={16} className="mr-2" />
+                            Kierowca
                           </div>
+                          <div className="font-semibold text-gray-900">{getDriverInfo(transport)}</div>
                         </div>
-
-                        {/* Panel 2: Dane przewoźnika */}
-                        <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-5 rounded-xl shadow-sm border border-purple-200">
-                          <h4 className="font-bold text-purple-700 mb-4 pb-2 border-b border-purple-300 flex items-center text-lg">
-                            <Truck size={20} className="mr-2" />
-                            Dane przewoźnika
-                          </h4>
-                          {(() => {
-                            // Pobierz dane z response lub response_data
-                            let driverData = null;
-                            
-                            if (transport.response) {
-                              driverData = transport.response;
-                            } else if (transport.response_data) {
-                              try {
-                                const responseData = typeof transport.response_data === 'string' 
-                                  ? JSON.parse(transport.response_data) 
-                                  : transport.response_data;
-                                driverData = responseData;
-                              } catch (e) {
-                                console.error('Error parsing response_data:', e);
-                              }
-                            }
-                            
-                            if (driverData && driverData.driverName) {
-                              return (
-                                <div className="space-y-3 text-sm">
-                                  <div>
-                                    <span className="font-medium text-gray-700">Kierowca:</span>
-                                    <div className="font-semibold text-gray-900">
-                                      {driverData.driverName} {driverData.driverSurname || ''}
-                                    </div>
-                                  </div>
-                                  {driverData.vehicleNumber && (
-                                    <div>
-                                      <span className="font-medium text-gray-700">Numer pojazdu:</span>
-                                      <div className="font-semibold text-gray-900">{driverData.vehicleNumber}</div>
-                                    </div>
-                                  )}
-                                  {driverData.driverPhone && (
-                                    <div>
-                                      <span className="font-medium text-gray-700">Telefon:</span>
-                                      <div className="font-semibold text-blue-600">
-                                        <a href={`tel:${driverData.driverPhone}`} className="hover:underline">
-                                          {driverData.driverPhone}
-                                        </a>
-                                      </div>
-                                    </div>
-                                  )}
-                                  {driverData.vehicleType && (
-                                    <div>
-                                      <span className="font-medium text-gray-700">Typ pojazdu:</span>
-                                      <div className="font-semibold text-gray-900">{driverData.vehicleType}</div>
-                                    </div>
-                                  )}
-                                  {driverData.transportType && (
-                                    <div>
-                                      <span className="font-medium text-gray-700">Typ transportu:</span>
-                                      <div className="font-semibold text-gray-900">
-                                        {driverData.transportType === 'opakowaniowy' ? 'Opakowaniowy (bębny)' : 'Towarowy'}
-                                      </div>
-                                    </div>
-                                  )}
-                                  {driverData.notes && (
-                                    <div>
-                                      <span className="font-medium text-gray-700">Uwagi przewoźnika:</span>
-                                      <div className="font-semibold text-gray-900 bg-yellow-50 p-2 rounded border">
-                                        {driverData.notes}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            } else {
-                              return (
-                                <div className="text-sm text-gray-500 italic">
-                                  Brak danych o przewoźniku lub transport nie został jeszcze zrealizowany
-                                </div>
-                              );
-                            }
-                          })()}
-                        </div>
-
-                        {/* Panel 3: Dane o towarze */}
-                        <div className="bg-gradient-to-br from-amber-50 to-amber-100 p-5 rounded-xl shadow-sm border border-amber-200">
-                          <h4 className="font-bold text-amber-700 mb-4 pb-2 border-b border-amber-300 flex items-center text-lg">
-                            <ShoppingBag size={20} className="mr-2" />
-                            Dane o towarze
-                          </h4>
-                          {(() => {
-                            const goodsData = getGoodsDataFromTransportOrder(transport);
-                            
-                            if (!goodsData.description && !goodsData.weight) {
-                              return (
-                                <div className="text-sm text-gray-500 italic">
-                                  Brak danych o towarze
-                                </div>
-                              );
-                            }
-                            
-                            return (
-                              <div className="space-y-3 text-sm">
-                                {goodsData.description && (
-                                  <div>
-                                    <span className="font-medium text-gray-700">Rodzaj towaru:</span>
-                                    <div className="font-semibold text-gray-900">{goodsData.description}</div>
-                                  </div>
-                                )}
-                                {goodsData.weight && (
-                                  <div>
-                                    <span className="font-medium text-gray-700">Waga:</span>
-                                    <div className="font-semibold text-gray-900 flex items-center">
-                                      <Weight size={14} className="mr-1" />
-                                      {goodsData.weight}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </div>
-
-                      {/* DRUGI RZĄD: Osoby odpowiedzialne, Daty i terminy, Informacje finansowe */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                        {/* Panel 4: Osoby odpowiedzialne */}
-                        <div className="bg-gradient-to-br from-green-50 to-green-100 p-5 rounded-xl shadow-sm border border-green-200">
-                          <h4 className="font-bold text-green-700 mb-4 pb-2 border-b border-green-300 flex items-center text-lg">
-                            <User size={20} className="mr-2" />
-                            Osoby odpowiedzialne
-                          </h4>
-                          <div className="space-y-3 text-sm">
-                            <div>
-                              <span className="font-medium text-gray-700">Dodane przez:</span>
-                              <div className="font-semibold text-gray-900">{transport.createdBy || 'Nie podano'}</div>
-                            </div>
-                            <div>
-                              <span className="font-medium text-gray-700">Odpowiedzialny:</span>
-                              <div className="font-semibold text-gray-900 flex items-center">
-                                {responsibleInfo.type === 'construction' ? (
-                                  <Building size={14} className="mr-1 text-green-600" />
-                                ) : (
-                                  <User size={14} className="mr-1 text-green-600" />
-                                )}
-                                {responsibleInfo.name}
-                              </div>
-                              <div className="text-xs text-gray-600 mt-1">
-                                {responsibleInfo.type === 'construction' ? 'Budowa' : 'Osoba'}
-                              </div>
-                            </div>
-                            {transport.responsibleConstructions && transport.responsibleConstructions.length > 0 && (
-                              <div>
-                                <span className="font-medium text-gray-700">Wszystkie budowy:</span>
-                                <div className="mt-1">
-                                  {transport.responsibleConstructions.map(construction => (
-                                    <div key={construction.id} className="bg-green-200 text-green-800 px-2 py-1 rounded text-xs font-medium inline-block mr-1 mb-1">
-                                      {construction.name} ({construction.mpk})
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Panel 5: Daty i terminy */}
-                        <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-5 rounded-xl shadow-sm border border-orange-200">
-                          <h4 className="font-bold text-orange-700 mb-4 pb-2 border-b border-orange-300 flex items-center text-lg">
-                            <Calendar size={20} className="mr-2" />
-                            Daty i terminy
-                          </h4>
-                          <div className="space-y-3 text-sm">
-                            <div>
-                              <span className="font-medium text-gray-700">Data dostawy:</span>
-                              <div className="font-semibold text-gray-900">
-                                {dateChanged ? (
-                                  <div className="space-y-1">
-                                    <div className="text-xs text-gray-500 line-through">
-                                      {formatDate(transport.deliveryDate)}
-                                    </div>
-                                    <div className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs flex items-center">
-                                      <AlertCircle size={12} className="mr-1" />
-                                      {formatDate(transport.response.newDeliveryDate)}
-                                    </div>
-                                  </div>
-                                ) : (
-                                  formatDate(transport.deliveryDate)
-                                )}
-                              </div>
-                            </div>
-                            <div>
-                              <span className="font-medium text-gray-700">Data utworzenia:</span>
-                              <div className="font-semibold text-gray-900">{formatDate(transport.createdAt)}</div>
-                            </div>
-                            <div>
-                              <span className="font-medium text-gray-700">Data zakończenia:</span>
-                              <div className="font-semibold text-gray-900">{formatDateTime(transport.completedAt)}</div>
-                            </div>
-                            {(() => {
-                              // Sprawdź czy są dodatkowe informacje o dacie odpowiedzi
-                              let respondedAt = null;
-                              try {
-                                if (transport.response_data) {
-                                  const responseData = typeof transport.response_data === 'string' 
-                                    ? JSON.parse(transport.response_data) 
-                                    : transport.response_data;
-                                  respondedAt = responseData.respondedAt;
-                                }
-                                respondedAt = respondedAt || transport.responded_at;
-                              } catch (e) {
-                                respondedAt = transport.responded_at;
-                              }
-                              
-                              if (respondedAt && respondedAt !== transport.completedAt) {
-                                return (
-                                  <div>
-                                    <span className="font-medium text-gray-700">Data odpowiedzi:</span>
-                                    <div className="font-semibold text-gray-900">{formatDateTime(respondedAt)}</div>
-                                  </div>
-                                );
-                              }
-                              return null;
-                            })()}
-                          </div>
-                        </div>
-
-                        {/* Panel 6: Informacje finansowe */}
-                        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 p-5 rounded-xl shadow-sm border border-emerald-200">
-                          <h4 className="font-bold text-emerald-700 mb-4 pb-2 border-b border-emerald-300 flex items-center text-lg">
-                            <DollarSign size={20} className="mr-2" />
-                            Informacje finansowe
-                          </h4>
-                          {(() => {
-                            // Pobierz dane finansowe z response lub response_data
-                            let responseData = transport.response;
-                            let distance = transport.distanceKm || transport.response?.distanceKm || 0;
-                            let price = transport.response?.deliveryPrice || 0;
-                            let isMerged = false;
-                            let isFromMerged = false;
-                            let totalDeliveryPrice = null;
-                            
-                            if (transport.response_data) {
-                              try {
-                                const parsedData = typeof transport.response_data === 'string' 
-                                  ? JSON.parse(transport.response_data) 
-                                  : transport.response_data;
-                                
-                                distance = parsedData.distance || distance;
-                                price = parsedData.deliveryPrice || price;
-                                isMerged = parsedData.isMerged || false;
-                                isFromMerged = parsedData.isFromMergedTransport || false;
-                                totalDeliveryPrice = parsedData.totalDeliveryPrice;
-                              } catch (e) {
-                                console.error('Error parsing financial data:', e);
-                              }
-                            }
-                            
-                            return (
-                              <div className="space-y-3 text-sm">
-                                {(() => {
-                                  const distanceData = getTransportDistance(transport);
-                                  return renderDistanceInfo(distanceData);
-                                })()}
-                                {(() => {
-                                  const distanceData = getTransportDistance(transport);
-                                  if (distanceData.isMerged) {
-                                    return (
-                                      <div className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded inline-block">
-                                        Trasa łączona
-                                      </div>
-                                    );
-                                  }
-                                  return null;
-                                })()}
-                                <div>
-                                  <span className="font-medium text-gray-700">Cena transportu:</span>
-                                  <div className="font-semibold text-gray-900">
-                                    {price ? `${price} PLN` : 'Brak danych'}
-                                    {isFromMerged && (
-                                      <span className="ml-2 text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
-                                        Część z łączonego
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                                {totalDeliveryPrice && totalDeliveryPrice !== price && (
-                                  <div>
-                                    <span className="font-medium text-gray-700">Cena całkowita (łączona):</span>
-                                    <div className="font-semibold text-blue-900">
-                                      {totalDeliveryPrice} PLN
-                                      <span className="ml-2 text-xs bg-blue-200 text-blue-800 px-2 py-1 rounded">
-                                        Suma wszystkich części
-                                      </span>
-                                    </div>
-                                  </div>
-                                )}
-                                <div>
-                                  <span className="font-medium text-gray-700">Cena za kilometr:</span>
-                                  <div className="font-semibold text-gray-900">
-                                    {price && distance ? 
-                                      `${calculatePricePerKm(price, distance)} PLN/km` : 
-                                      'Brak danych'
-                                    }
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </div>
-
-                      {/* Panel z sekwencją trasy jeśli dostępna */}
-                      {(() => {
-                        let routeSequence = null;
-                        try {
-                          if (transport.response_data) {
-                            const responseData = typeof transport.response_data === 'string' 
-                              ? JSON.parse(transport.response_data) 
-                              : transport.response_data;
-                            routeSequence = responseData.routeSequence;
-                          }
-                        } catch (e) {
-                          console.error('Error parsing route sequence:', e);
-                        }
                         
-                        if (routeSequence && routeSequence.length > 0) {
-                          return (
-                            <div className="mb-6 bg-gradient-to-br from-indigo-50 to-indigo-100 p-5 rounded-xl shadow-sm border border-indigo-200">
-                              <h4 className="font-bold text-indigo-700 mb-4 pb-2 border-b border-indigo-300 flex items-center text-lg">
-                                <MapPin size={20} className="mr-2" />
-                                Sekwencja trasy ({routeSequence.length} punktów)
-                              </h4>
-                              <div className="space-y-2">
-                                {routeSequence.map((point, index) => (
-                                  <div key={point.id || index} className="flex items-center p-3 bg-white rounded-lg border border-indigo-200">
-                                    <div className="bg-indigo-200 text-indigo-800 rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold mr-3">
-                                      {index + 1}
-                                    </div>
-                                    <div className="flex-1">
-                                      <div className="font-semibold text-gray-900">
-                                        {point.city}
-                                        <span className="ml-2 text-xs bg-gray-100 px-2 py-1 rounded">
-                                          {point.type === 'loading' ? 'Załadunek' : 'Rozładunek'}
-                                        </span>
-                                      </div>
-                                      <div className="text-sm text-gray-600">{point.company}</div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        }
-                        return null;
-                      })()}
-
-                      {/* Panel z informacjami o łączonych transportach */}
-                      {transport.isMerged && transport.merged_transports && (
-                        <div className="mb-6 bg-gradient-to-br from-cyan-50 to-cyan-100 p-5 rounded-xl shadow-sm border border-cyan-200">
-                          <h4 className="font-bold text-cyan-700 mb-4 pb-2 border-b border-cyan-300 flex items-center text-lg">
-                            <Truck size={20} className="mr-2" />
-                            Transporty łączone ({transport.merged_transports.originalTransports?.length || 0})
-                          </h4>
-                          {transport.merged_transports.originalTransports && transport.merged_transports.originalTransports.length > 0 && (
-                            <div className="space-y-3">
-                              {transport.merged_transports.originalTransports.map((originalTransport, index) => (
-                                <div key={originalTransport.id} className="bg-white p-3 rounded-lg border border-cyan-200">
-                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
-                                    <div>
-                                      <span className="font-medium text-gray-700">Nr zamówienia:</span>
-                                      <div className="font-semibold text-gray-900">{originalTransport.orderNumber}</div>
-                                    </div>
-                                    <div>
-                                      <span className="font-medium text-gray-700">MPK:</span>
-                                      <div className="font-semibold text-gray-900">{originalTransport.mpk}</div>
-                                    </div>
-                                    <div>
-                                      <span className="font-medium text-gray-700">Koszt przypisany:</span>
-                                      <div className="font-semibold text-green-600">{originalTransport.costAssigned} PLN</div>
-                                    </div>
-                                  </div>
-                                  <div className="mt-2 text-sm">
-                                    <span className="font-medium text-gray-700">Trasa:</span>
-                                    <div className="font-semibold text-gray-900">{originalTransport.route}</div>
-                                  </div>
-                                </div>
-                              ))}
-                              <div className="mt-4 p-3 bg-cyan-200 rounded-lg">
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
-                                  <div>
-                                    <span className="font-medium text-cyan-800">Łączny koszt transportów:</span>
-                                    <div className="font-bold text-cyan-900">{transport.merged_transports.totalMergedCost} PLN</div>
-                                  </div>
-                                  <div>
-                                    <span className="font-medium text-cyan-800">Koszt głównego transportu:</span>
-                                    <div className="font-bold text-cyan-900">{transport.merged_transports.mainTransportCost} PLN</div>
-                                  </div>
-                                  <div>
-                                    <span className="font-medium text-cyan-800">Punkty trasy:</span>
-                                    <div className="font-bold text-cyan-900">{transport.merged_transports.routePointsCount}</div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                          <div className="text-sm font-medium text-blue-700 mb-2 flex items-center">
+                            <Truck size={16} className="mr-2" />
+                            Pojazd
+                          </div>
+                          <div className="font-semibold text-gray-900">{getVehicleInfo(transport)}</div>
                         </div>
-                      )}
+                      </div>
 
-                      {/* Panel z miejscami załadunku i rozładunku */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                        {/* Miejsce załadunku */}
-                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                          <h4 className="font-bold text-blue-700 mb-4 pb-3 border-b border-gray-200 flex items-center text-lg">
-                            <MapPin size={20} className="mr-2" />
-                            Miejsce załadunku
-                          </h4>
-                          <div className="space-y-4 text-sm">
-                            <div>
-                              <span className="font-medium text-gray-700">Nazwa firmy:</span>
-                              <div className="font-semibold text-gray-900 text-base">{getLoadingCompanyName(transport)}</div>
-                            </div>
-                            <div>
-                              <span className="font-medium text-gray-700">Adres:</span>
-                              <div className="font-semibold text-gray-900">{getFullLoadingAddress(transport)}</div>
-                            </div>
-                            <div>
-                              <span className="font-medium text-gray-700">Kontakt:</span>
-                              <div className="font-semibold text-blue-600">
-                                <a href={`tel:${transport.loadingContact}`} className="hover:underline flex items-center">
-                                  <Phone size={14} className="mr-1" />
-                                  {transport.loadingContact}
-                                </a>
-                              </div>
-                            </div>
+                      {/* Additional Details */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                          <div className="text-sm font-medium text-green-700 mb-2 flex items-center">
+                            <Route size={16} className="mr-2" />
+                            Odległość
+                          </div>
+                          <div className="font-semibold text-gray-900">
+                            {transport.distanceKm || transport.distance_km || 'Nie podano'} km
                           </div>
                         </div>
-
-                        {/* Miejsce rozładunku */}
-                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                          <h4 className="font-bold text-green-700 mb-4 pb-3 border-b border-gray-200 flex items-center text-lg">
-                            <MapPin size={20} className="mr-2" />
-                            Miejsce rozładunku
-                          </h4>
-                          <div className="space-y-4 text-sm">
-                            <div>
-                              <span className="font-medium text-gray-700">Nazwa firmy:</span>
-                              <div className="font-semibold text-gray-900 text-base">{getUnloadingCompanyName(transport)}</div>
-                            </div>
-                            <div>
-                              <span className="font-medium text-gray-700">Adres:</span>
-                              <div className="font-semibold text-gray-900">{formatAddress(transport.delivery)}</div>
-                            </div>
-                            <div>
-                              <span className="font-medium text-gray-700">Kontakt:</span>
-                              <div className="font-semibold text-blue-600">
-                                <a href={`tel:${transport.unloadingContact}`} className="hover:underline flex items-center">
-                                  <Phone size={14} className="mr-1" />
-                                  {transport.unloadingContact}
-                                </a>
+                        
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                          <div className="text-sm font-medium text-green-700 mb-2 flex items-center">
+                            <FileText size={16} className="mr-2" />
+                            Dokumenty
+                          </div>
+                          <div className="font-semibold text-gray-900">
+                            {transport.documents || 'Nie podano'}
+                          </div>
+                        </div>
+                        
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                          <div className="text-sm font-medium text-green-700 mb-2 flex items-center">
+                            <Calendar size={16} className="mr-2" />
+                            Data dostawy
+                          </div>
+                          <div className="font-semibold text-gray-900">
+                            {formatDate(displayDate)}
+                            {dateChanged && (
+                              <div className="text-xs text-orange-600 mt-1">
+                                (zmieniona z {formatDate(transport.deliveryDate || transport.delivery_date)})
                               </div>
-                            </div>
+                            )}
                           </div>
                         </div>
                       </div>
 
-                      {/* Uwagi */}
-                      {(transport.notes || transport.response?.adminNotes) && (
-                        <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                          <h4 className="font-bold text-gray-700 mb-3 flex items-center">
-                            <FileText size={18} className="mr-2" />
+                      {/* Contact Information */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                          <div className="text-sm font-medium text-yellow-700 mb-2 flex items-center">
+                            <Phone size={16} className="mr-2" />
+                            Kontakt załadunek
+                          </div>
+                          <div className="text-gray-900">
+                            {transport.loadingContact || transport.loading_contact || 'Nie podano'}
+                          </div>
+                        </div>
+                        
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                          <div className="text-sm font-medium text-yellow-700 mb-2 flex items-center">
+                            <Phone size={16} className="mr-2" />
+                            Kontakt rozładunek
+                          </div>
+                          <div className="text-gray-900">
+                            {transport.unloadingContact || transport.unloading_contact || 'Nie podano'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Merged Transport Details */}
+                      {isTransportMerged(transport) && renderMergedTransportDetails(transport)}
+
+                      {/* Notes */}
+                      {transport.notes && (
+                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                          <div className="text-sm font-medium text-gray-700 mb-2 flex items-center">
+                            <FileText size={16} className="mr-2" />
                             Uwagi
-                          </h4>
-                          {transport.notes && (
-                            <div className="mb-2">
-                              <span className="font-medium text-gray-700">Uwagi zlecenia:</span>
-                              <p className="text-gray-900 mt-1">{transport.notes}</p>
-                            </div>
-                          )}
-                          {transport.response?.adminNotes && (
-                            <div>
-                              <span className="font-medium text-gray-700">Uwagi przewoźnika:</span>
-                              <p className="text-gray-900 mt-1">{transport.response.adminNotes}</p>
-                            </div>
-                          )}
+                          </div>
+                          <div className="text-sm text-gray-700 whitespace-pre-wrap">{transport.notes}</div>
                         </div>
                       )}
 
-                      {/* Przyciski akcji */}
-                      <div className="flex justify-center space-x-4">
-                        {/* Link do Google Maps */}
-                        {generateGoogleMapsLink(transport) && (
-                          <a 
-                            href={generateGoogleMapsLink(transport)} 
-                            target="_blank" 
-                            rel="noopener noreferrer" 
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center transition-colors font-medium text-base"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <MapPin size={18} className="mr-2" />
-                            Zobacz trasę na Google Maps
-                          </a>
-                        )}
-                        
-                        {/* Przycisk CMR */}
-                        <button 
-                          type="button"
-                          className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg flex items-center transition-colors font-medium text-base"
-                          onClick={() => generateCMR(transport)}
-                        >
-                          <FileText size={18} className="mr-2" />
-                          Generuj list przewozowy CMR
-                        </button>
-                      </div>
+                      {/* Goods Description */}
+                      {transport.goodsDescription && (
+                        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                          <div className="text-sm font-medium text-orange-700 mb-2 flex items-center">
+                            <Package size={16} className="mr-2" />
+                            Opis towaru
+                          </div>
+                          <div className="text-sm text-gray-700">
+                            {typeof transport.goodsDescription === 'string' ? transport.goodsDescription : 
+                             JSON.stringify(transport.goodsDescription)}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              );
+              )
             })}
           </div>
         ) : (
-          <div className="p-12 text-center">
-            <div className="flex flex-col items-center justify-center py-6">
-              <FileText size={48} className="text-gray-400 mb-2" />
-              <p className="text-gray-500">Brak transportów spedycyjnych w wybranym okresie</p>
+          <div className="text-center py-16">
+            <div className="bg-gray-100 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6">
+              <Package size={48} className="text-gray-400" />
             </div>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">
+              Brak wyników
+            </h3>
+            <p className="text-gray-600 mb-6">
+              Nie znaleziono transportów spełniających kryteria wyszukiwania.
+            </p>
+            <button
+              onClick={resetFilters}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Wyczyść filtry
+            </button>
           </div>
         )}
+      </div>
 
-        {/* Pagination & Summary */}
-        <div className="border-t border-gray-200 px-6 py-4 bg-gray-50 flex flex-col sm:flex-row justify-between items-center">
-          <div className="text-sm text-gray-700 mb-4 sm:mb-0">
-            <span className="font-medium">Łącznie:</span> {filteredArchiwum.length} transportów
-            {filteredArchiwum.length > 0 && (
-              <>
-                <span className="ml-4 font-medium">Całkowita kwota:</span> {filteredArchiwum.reduce((sum, t) => sum + (t.response?.deliveryPrice || 0), 0).toLocaleString('pl-PL')} PLN
-                <span className="ml-4 font-medium">Średnia cena/km:</span> {(filteredArchiwum.reduce((sum, t) => {
-                  const price = t.response?.deliveryPrice || 0;
-                  const distance = t.response?.distanceKm || t.distanceKm || 0;
-                  return distance > 0 ? sum + (price / distance) : sum;
-                }, 0) / (filteredArchiwum.filter(t => (t.response?.distanceKm || t.distanceKm) > 0).length || 1)).toFixed(2)} PLN/km
-              </>
-            )}
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="mt-6 flex items-center justify-between">
+          <div className="text-sm text-gray-700">
+            Pokazuje {indexOfFirstItem + 1} - {Math.min(indexOfLastItem, filteredArchiwum.length)} z {filteredArchiwum.length} wyników
           </div>
           
-          {totalPages > 1 && (
-            <div className="flex justify-center items-center space-x-2">
-              <button
-                onClick={() => paginate(Math.max(1, currentPage - 1))}
-                disabled={currentPage === 1}
-                className="p-2 rounded-full text-gray-600 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <ChevronLeft size={20} />
-              </button>
-              
-              <div className="text-sm text-gray-700">
-                Strona {currentPage} z {totalPages}
-              </div>
-              
-              <button
-                onClick={() => paginate(Math.min(totalPages, currentPage + 1))}
-                disabled={currentPage === totalPages}
-                className="p-2 rounded-full text-gray-600 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <ChevronRight size={20} />
-              </button>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => paginate(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="p-2 rounded-md border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            
+            <div className="flex items-center space-x-1">
+              {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => {
+                const page = i + 1
+                if (totalPages <= 10) {
+                  return (
+                    <button
+                      key={page}
+                      onClick={() => paginate(page)}
+                      className={`px-3 py-2 rounded-md text-sm ${
+                        currentPage === page
+                          ? 'bg-blue-600 text-white'
+                          : 'border border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  )
+                }
+                // Logic for showing pages around current page
+                const showPage = page <= 3 || page >= totalPages - 2 || 
+                               (page >= currentPage - 1 && page <= currentPage + 1)
+                if (showPage) {
+                  return (
+                    <button
+                      key={page}
+                      onClick={() => paginate(page)}
+                      className={`px-3 py-2 rounded-md text-sm ${
+                        currentPage === page
+                          ? 'bg-blue-600 text-white'
+                          : 'border border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  )
+                } else if (page === 4 && currentPage > 5) {
+                  return <span key="ellipsis1" className="px-2">...</span>
+                } else if (page === totalPages - 3 && currentPage < totalPages - 4) {
+                  return <span key="ellipsis2" className="px-2">...</span>
+                }
+                return null
+              })}
             </div>
-          )}
+            
+            <button
+              onClick={() => paginate(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="p-2 rounded-md border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
