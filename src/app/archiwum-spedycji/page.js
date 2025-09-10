@@ -1,4 +1,4 @@
-// src/app/archiwum-spedycji/page.js - KOMPLETNA WERSJA
+// src/app/archiwum-spedycji/page.js - KOMPLETNA WERSJA Z WSZYSTKIMI FILTRAMI + NOWY LAYOUT
 'use client'
 import React, { useState, useEffect, Fragment } from 'react'
 import { format } from 'date-fns'
@@ -43,7 +43,10 @@ import {
   Edit,
   Trash2,
   Plus,
-  Minus
+  Minus,
+  CreditCard,
+  UserCheck,
+  Archive
 } from 'lucide-react'
 
 export default function ArchiwumSpedycjiPage() {
@@ -59,7 +62,7 @@ export default function ArchiwumSpedycjiPage() {
   const [expandedRowId, setExpandedRowId] = useState(null)
   const [showFilters, setShowFilters] = useState(false)
   
-  // Wszystkie filtry - jak w oryginale
+  // WSZYSTKIE FILTRY - jak w oryginale
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [selectedMonth, setSelectedMonth] = useState('all')
   const [mpkFilter, setMpkFilter] = useState('')
@@ -631,7 +634,152 @@ export default function ArchiwumSpedycjiPage() {
     )
   }
 
-  // Funkcja stosująca filtry
+  // NOWE FUNKCJE DO POBIERANIA DANYCH W KATEGORIACH
+  const getOrderData = (transport) => {
+    return {
+      orderNumber: transport.orderNumber || transport.order_number,
+      mpk: getCurrentMPK(transport),
+      documents: transport.documents || 'Brak'
+    }
+  }
+
+  const getCarrierData = (transport) => {
+    const response = transport.response || transport.response_data
+    let responseData = null
+    
+    if (typeof response === 'string') {
+      try {
+        responseData = JSON.parse(response)
+      } catch (e) {
+        responseData = null
+      }
+    } else {
+      responseData = response
+    }
+    
+    const driverInfo = responseData?.driverInfo || responseData?.driver
+    const vehicleInfo = responseData?.vehicleInfo || responseData?.vehicle
+    
+    return {
+      driverName: driverInfo?.name || 'Nie przypisano',
+      driverPhone: driverInfo?.phone || 'Brak telefonu',
+      vehiclePlates: vehicleInfo?.plates || 'Nie podano',
+      vehicleModel: vehicleInfo?.model || 'Brak',
+      vehicleType: transport.vehicleType || transport.vehicle_type || 'Standard'
+    }
+  }
+
+  const getGoodsData = (transport) => {
+    const goodsDescription = transport.goodsDescription || transport.goods_description
+    let parsedGoods = null
+    
+    if (goodsDescription) {
+      if (typeof goodsDescription === 'string') {
+        try {
+          parsedGoods = JSON.parse(goodsDescription)
+        } catch (e) {
+          parsedGoods = { description: goodsDescription }
+        }
+      } else {
+        parsedGoods = goodsDescription
+      }
+    }
+    
+    const transportType = transport.transportType || transport.transport_type
+    const isDrums = isDrumsTransport(transport)
+    
+    let goodsType = 'Towar standardowy'
+    if (isDrums) {
+      goodsType = 'Bębny'
+    } else if (transportType === 'opakowaniowy') {
+      goodsType = 'Opakowania'
+    }
+    
+    return {
+      type: goodsType,
+      description: parsedGoods?.description || 'Brak opisu',
+      weight: parsedGoods?.weight || 'Nie podano',
+      price: getTotalPrice(transport)
+    }
+  }
+
+  const getResponsibleData = (transport) => {
+    const constructions = transport.responsibleConstructions || transport.responsible_constructions
+    
+    return {
+      createdBy: transport.createdBy || transport.created_by || 'Nie podano',
+      responsiblePerson: transport.responsiblePerson || transport.responsible_person || 'Nie przypisano',
+      mpk: transport.mpk || 'Brak MPK',
+      constructions: constructions || [],
+      notes: transport.notes || ''
+    }
+  }
+
+  const getDatesData = (transport) => {
+    const actualDeliveryDate = getActualDeliveryDate(transport)
+    const originalDeliveryDate = transport.deliveryDate || transport.delivery_date
+    const isDateChanged = isDeliveryDateChanged(transport)
+    
+    return {
+      created: transport.createdAt || transport.created_at,
+      delivery: actualDeliveryDate,
+      originalDelivery: originalDeliveryDate,
+      completed: transport.completedAt || transport.completed_at,
+      isDeliveryDateChanged: isDateChanged
+    }
+  }
+
+  const getLoadingLocationData = (transport) => {
+    if (transport.location === 'Odbiory własne') {
+      let producerAddress = transport.producerAddress || transport.location_data
+      if (typeof producerAddress === 'string') {
+        try {
+          producerAddress = JSON.parse(producerAddress)
+        } catch (e) {
+          return { company: 'Nie podano', address: 'Brak adresu', contact: 'Brak kontaktu' }
+        }
+      }
+      return {
+        company: producerAddress?.company || transport.clientName || transport.client_name || 'Nie podano',
+        address: `${producerAddress?.city || ''}, ${producerAddress?.postalCode || ''}, ${producerAddress?.street || ''}`.replace(/^,\s*|,\s*$/g, '') || 'Brak adresu',
+        contact: transport.loadingContact || transport.loading_contact || 'Brak kontaktu'
+      }
+    } else if (transport.location === 'Magazyn Białystok') {
+      return {
+        company: 'Grupa Eltron Sp. z o.o.',
+        address: 'Białystok, Magazyn centralny',
+        contact: transport.loadingContact || transport.loading_contact || 'Standardowy kontakt'
+      }
+    } else if (transport.location === 'Magazyn Zielonka') {
+      return {
+        company: 'Grupa Eltron Sp. z o.o.',
+        address: 'Zielonka, Magazyn regionalny',
+        contact: transport.loadingContact || transport.loading_contact || 'Standardowy kontakt'
+      }
+    }
+    return { company: 'Nie podano', address: 'Brak adresu', contact: 'Brak kontaktu' }
+  }
+
+  const getUnloadingLocationData = (transport) => {
+    let delivery = transport.delivery || transport.delivery_data
+    if (typeof delivery === 'string') {
+      try {
+        delivery = JSON.parse(delivery)
+      } catch (e) {
+        return { company: 'Nie podano', address: 'Brak adresu', contact: 'Brak kontaktu' }
+      }
+    }
+    
+    if (!delivery) return { company: 'Nie podano', address: 'Brak adresu', contact: 'Brak kontaktu' }
+    
+    return {
+      company: transport.clientName || transport.client_name || delivery.company || 'Nie podano',
+      address: `${delivery.city || ''}, ${delivery.postalCode || ''}, ${delivery.street || ''}`.replace(/^,\s*|,\s*$/g, '') || 'Brak adresu',
+      contact: transport.unloadingContact || transport.unloading_contact || 'Brak kontaktu'
+    }
+  }
+
+  // Funkcja stosująca WSZYSTKIE filtry
   const applyFilters = (data = archiwum) => {
     let filtered = [...data]
 
@@ -856,31 +1004,41 @@ export default function ArchiwumSpedycjiPage() {
 
     const dataToExport = filteredArchiwum.map(transport => {
       const responsibleInfo = getResponsibleInfo(transport)
+      const orderData = getOrderData(transport)
+      const carrierData = getCarrierData(transport)
+      const goodsData = getGoodsData(transport)
+      const responsibleData = getResponsibleData(transport)
+      const datesData = getDatesData(transport)
+      const loadingLocation = getLoadingLocationData(transport)
+      const unloadingLocation = getUnloadingLocationData(transport)
       
       return {
-        'Nr zamówienia': transport.orderNumber || transport.order_number,
-        'Data utworzenia': formatDate(transport.createdAt || transport.created_at),
-        'Data realizacji': formatDate(transport.completedAt || transport.completed_at),
-        'MPK': getCurrentMPK(transport),
-        'Źródło': getLoadingLocation(transport),
-        'Cel': getDeliveryCity(transport),
-        'Klient': transport.clientName || transport.client_name || '',
-        'Odpowiedzialny': responsibleInfo.name,
-        'Typ odpowiedzialnego': responsibleInfo.type === 'construction' ? 'Budowa' : 'Osoba',
-        'Kierowca': getDriverInfo(transport),
-        'Pojazd': getVehicleInfo(transport),
-        'Cena': getTotalPrice(transport),
-        'Odległość (km)': transport.distanceKm || transport.distance_km || '',
-        'Typ transportu': transport.transportType || transport.transport_type || '',
-        'Typ pojazdu': transport.vehicleType || transport.vehicle_type || '',
-        'Łączony': isTransportMerged(transport) ? 'Tak' : 'Nie',
-        'Transport bębnów': isDrumsTransport(transport) ? 'Tak' : 'Nie',
-        'Część łączonego': isFromMergedTransport(transport) ? 'Tak' : 'Nie',
-        'Dokumenty': transport.documents || '',
-        'Uwagi': transport.notes || '',
-        'Data dostawy (oryginalna)': formatDate(transport.deliveryDate || transport.delivery_date),
-        'Data dostawy (aktualna)': formatDate(getActualDeliveryDate(transport)),
-        'Data dostawy zmieniona': isDeliveryDateChanged(transport) ? 'Tak' : 'Nie'
+        'Nr zamówienia': orderData.orderNumber,
+        'MPK': orderData.mpk,
+        'Dokumenty': orderData.documents,
+        'Kierowca': carrierData.driverName,
+        'Telefon kierowcy': carrierData.driverPhone,
+        'Numer auta': carrierData.vehiclePlates,
+        'Model pojazdu': carrierData.vehicleModel,
+        'Rodzaj pojazdu': carrierData.vehicleType,
+        'Rodzaj towaru': goodsData.type,
+        'Opis towaru': goodsData.description,
+        'Waga': goodsData.weight,
+        'Cena towaru': goodsData.price,
+        'Dodane przez': responsibleData.createdBy,
+        'Osoba odpowiedzialna': responsibleData.responsiblePerson,
+        'Uwagi zamówienia': responsibleData.notes,
+        'Data utworzenia': formatDate(datesData.created),
+        'Data dostawy': formatDate(datesData.delivery),
+        'Data zakończenia': formatDate(datesData.completed),
+        'Data dostawy zmieniona': datesData.isDeliveryDateChanged ? 'Tak' : 'Nie',
+        'Firma załadunek': loadingLocation.company,
+        'Adres załadunek': loadingLocation.address,
+        'Kontakt załadunek': loadingLocation.contact,
+        'Firma rozładunek': unloadingLocation.company,
+        'Adres rozładunek': unloadingLocation.address,
+        'Kontakt rozładunek': unloadingLocation.contact,
+        'Łączony': isTransportMerged(transport) ? 'Tak' : 'Nie'
       }
     })
 
@@ -948,11 +1106,14 @@ export default function ArchiwumSpedycjiPage() {
     <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Archiwum Spedycji
-        </h1>
+        <div className="flex items-center gap-3 mb-2">
+          <Archive className="text-blue-600" size={32} />
+          <h1 className="text-3xl font-bold text-gray-900">
+            Archiwum Spedycji
+          </h1>
+        </div>
         <p className="text-gray-600">
-          Przeglądaj i filtruj zrealizowane zlecenia spedycyjne z pełnymi informacjami
+          Zrealizowane zlecenia spedycyjne z pełnymi szczegółami organizacji transportu
         </p>
       </div>
 
@@ -968,7 +1129,7 @@ export default function ArchiwumSpedycjiPage() {
       )}
 
       {/* Toolbar */}
-      <div className="mb-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+      <div className="mb-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-white p-4 rounded-lg shadow border">
         <div className="flex items-center gap-4">
           <button
             onClick={() => setShowFilters(!showFilters)}
@@ -978,16 +1139,16 @@ export default function ArchiwumSpedycjiPage() {
                 : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
             }`}
           >
-            {showFilters ? <EyeOff size={18} /> : <Eye size={18} />}
+            <Filter size={18} />
             {showFilters ? 'Ukryj filtry' : 'Pokaż filtry'}
           </button>
           
           <div className="text-sm text-gray-600">
-            Znaleziono: <span className="font-semibold">{filteredArchiwum.length}</span> z {archiwum.length} rekordów
+            <span className="font-semibold">{filteredArchiwum.length}</span> z {archiwum.length} rekordów
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <select
             value={exportFormat}
             onChange={(e) => setExportFormat(e.target.value)}
@@ -1006,14 +1167,11 @@ export default function ArchiwumSpedycjiPage() {
         </div>
       </div>
 
-      {/* Filters Panel */}
+      {/* WSZYSTKIE FILTRY - jak w oryginale */}
       {showFilters && (
-        <div className="mb-8 bg-white rounded-lg shadow border border-gray-200 p-6">
+        <div className="mb-8 bg-white rounded-lg shadow border p-6">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-gray-800 flex items-center">
-              <Filter size={20} className="mr-2" />
-              Filtry wyszukiwania
-            </h3>
+            <h3 className="text-lg font-semibold text-gray-800">Filtry wyszukiwania</h3>
             <button
               onClick={resetFilters}
               className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
@@ -1160,7 +1318,7 @@ export default function ArchiwumSpedycjiPage() {
           </div>
 
           {/* Filtry tekstowe */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Odpowiedzialny</label>
               <input
@@ -1205,246 +1363,344 @@ export default function ArchiwumSpedycjiPage() {
               />
             </div>
           </div>
+
+          {/* Filtry zakresów */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Cena min</label>
+              <input
+                type="number"
+                value={minPriceFilter}
+                onChange={(e) => setMinPriceFilter(e.target.value)}
+                placeholder="0"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Cena max</label>
+              <input
+                type="number"
+                value={maxPriceFilter}
+                onChange={(e) => setMaxPriceFilter(e.target.value)}
+                placeholder="9999"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Odległość min (km)</label>
+              <input
+                type="number"
+                value={minDistanceFilter}
+                onChange={(e) => setMinDistanceFilter(e.target.value)}
+                placeholder="0"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Odległość max (km)</label>
+              <input
+                type="number"
+                value={maxDistanceFilter}
+                onChange={(e) => setMaxDistanceFilter(e.target.value)}
+                placeholder="9999"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Results */}
-      <div className="bg-white rounded-lg shadow border border-gray-200">
+      {/* Results - NOWY LAYOUT KATEGORII */}
+      <div className="space-y-6">
         {currentItems.length > 0 ? (
-          <div className="divide-y divide-gray-200">
-            {currentItems.map((transport) => {
-              const dateChanged = isDeliveryDateChanged(transport)
-              const displayDate = getActualDeliveryDate(transport)
-              const responsibleInfo = getResponsibleInfo(transport)
-              const currentMPK = getCurrentMPK(transport)
-              
-              return (
-                <div key={transport.id} className="p-6 hover:bg-gray-50 transition-colors">
-                  <div 
-                    onClick={() => setExpandedRowId(expandedRowId === transport.id ? null : transport.id)}
-                    className="cursor-pointer"
-                  >
-                    {/* Header Row */}
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center space-x-4">
-                        <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
-                          {transport.orderNumber || transport.order_number}
-                        </div>
-                        
-                        {/* Type Badges */}
-                        <div className="flex gap-2">
-                          {getTransportTypeDisplay(transport).map((badge, index) => (
-                            <span key={index} className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 border ${badge.color}`}>
-                              {badge.icon}
-                              {badge.text}
-                            </span>
-                          ))}
-                        </div>
+          currentItems.map((transport) => {
+            const orderData = getOrderData(transport)
+            const carrierData = getCarrierData(transport)
+            const goodsData = getGoodsData(transport)
+            const responsibleData = getResponsibleData(transport)
+            const datesData = getDatesData(transport)
+            const loadingLocation = getLoadingLocationData(transport)
+            const unloadingLocation = getUnloadingLocationData(transport)
+            const isExpanded = expandedRowId === transport.id
+            
+            return (
+              <div key={transport.id} className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
+                {/* Header */}
+                <div 
+                  onClick={() => setExpandedRowId(isExpanded ? null : transport.id)}
+                  className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200 p-6 cursor-pointer hover:from-blue-100 hover:to-indigo-100 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-lg">
+                        {orderData.orderNumber}
                       </div>
                       
-                      <div className="flex items-center space-x-3">
-                        <div className="text-right">
-                          <div className="text-sm text-gray-500">Zrealizowano</div>
-                          <div className="font-medium">{formatDate(transport.completedAt || transport.completed_at)}</div>
-                        </div>
-                        
-                        {/* Admin Actions */}
-                        {isAdmin && (
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handlePrintCMR(transport)
-                              }}
-                              className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded-lg transition-colors"
-                              title="Drukuj CMR"
-                            >
-                              <Printer size={16} />
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleDeleteTransport(transport.id)
-                              }}
-                              className="p-2 text-red-600 hover:text-red-800 hover:bg-red-100 rounded-lg transition-colors"
-                              title="Usuń transport"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        )}
-                        
-                        <button className="p-2 rounded-full hover:bg-gray-200 transition-colors">
-                          {expandedRowId === transport.id ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                        </button>
+                      {/* Type Badges */}
+                      <div className="flex gap-2">
+                        {getTransportTypeDisplay(transport).map((badge, index) => (
+                          <span key={index} className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 border ${badge.color}`}>
+                            {badge.icon}
+                            {badge.text}
+                          </span>
+                        ))}
+                      </div>
+                      
+                      <div className="text-gray-600">
+                        <span className="font-medium">Zrealizowano:</span> {formatDate(datesData.completed)}
                       </div>
                     </div>
-
-                    {/* Main Info Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-3">
-                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                        <div className="text-xs font-medium text-gray-500 mb-1 flex items-center">
-                          <MapPin size={14} className="mr-1" />
-                          Trasa
+                    
+                    <div className="flex items-center gap-3">
+                      {/* Admin Actions */}
+                      {isAdmin && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handlePrintCMR(transport)
+                            }}
+                            className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded-lg transition-colors"
+                            title="Drukuj CMR"
+                          >
+                            <Printer size={20} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDeleteTransport(transport.id)
+                            }}
+                            className="p-2 text-red-600 hover:text-red-800 hover:bg-red-100 rounded-lg transition-colors"
+                            title="Usuń transport"
+                          >
+                            <Trash2 size={20} />
+                          </button>
                         </div>
-                        <div className="font-semibold text-gray-900 text-sm flex items-center">
-                          {getLoadingLocation(transport)}
-                          <ArrowRight size={14} className="mx-1 text-gray-400" />
-                          {getDeliveryCity(transport)}
-                        </div>
-                      </div>
+                      )}
                       
-                      <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                        <div className="text-xs font-medium text-emerald-700 mb-1 flex items-center">
-                          <User size={14} className="mr-1" />
-                          {responsibleInfo.type === 'construction' ? 'Budowa' : 'Odpowiedzialny'}
-                        </div>
-                        <div className="font-semibold text-gray-900 text-sm">{responsibleInfo.name}</div>
-                      </div>
-                      
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                        <div className="text-xs font-medium text-blue-700 mb-1 flex items-center">
-                          <Hash size={14} className="mr-1" />
-                          MPK
-                        </div>
-                        <div className="font-semibold text-gray-900 text-sm">{currentMPK}</div>
-                      </div>
-                      
-                      <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                        <div className="text-xs font-medium text-green-700 mb-1 flex items-center">
-                          <DollarSign size={14} className="mr-1" />
-                          Cena
-                        </div>
-                        <div className="font-semibold text-gray-900 text-sm">{getTotalPrice(transport)} zł</div>
-                      </div>
+                      <button className="p-2 rounded-full hover:bg-white hover:bg-opacity-50 transition-colors">
+                        {isExpanded ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
+                      </button>
                     </div>
-
-                    {/* Responsible Constructions */}
-                    {responsibleInfo.type === 'multiple_constructions' && (
-                      <div className="mt-3">
-                        {renderResponsibleConstructions(transport)}
-                      </div>
-                    )}
                   </div>
+                </div>
 
-                  {/* Expanded Details */}
-                  {expandedRowId === transport.id && (
-                    <div className="mt-6 pt-6 border-t border-gray-200 space-y-4">
-                      {/* Driver and Vehicle Info */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                          <div className="text-sm font-medium text-blue-700 mb-2 flex items-center">
-                            <User size={16} className="mr-2" />
-                            Kierowca
-                          </div>
-                          <div className="font-semibold text-gray-900">{getDriverInfo(transport)}</div>
-                        </div>
+                {/* Content - KATEGORIE */}
+                {isExpanded && (
+                  <div className="p-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                      
+                      {/* Lewa kolumna */}
+                      <div className="space-y-6">
                         
+                        {/* 1. Dane zamówienia */}
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                          <div className="text-sm font-medium text-blue-700 mb-2 flex items-center">
-                            <Truck size={16} className="mr-2" />
-                            Pojazd
+                          <h3 className="flex items-center text-lg font-semibold text-blue-800 mb-4">
+                            <Clipboard className="mr-2" size={20} />
+                            Dane zamówienia
+                          </h3>
+                          <div className="space-y-3">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Numer zamówienia:</span>
+                              <span className="font-semibold">{orderData.orderNumber}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">MPK:</span>
+                              <span className="font-semibold">{orderData.mpk}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Dokumenty:</span>
+                              <span className="font-semibold">{orderData.documents}</span>
+                            </div>
                           </div>
-                          <div className="font-semibold text-gray-900">{getVehicleInfo(transport)}</div>
                         </div>
-                      </div>
 
-                      {/* Additional Details */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* 2. Dane przewoźnika */}
                         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                          <div className="text-sm font-medium text-green-700 mb-2 flex items-center">
-                            <Route size={16} className="mr-2" />
-                            Odległość
-                          </div>
-                          <div className="font-semibold text-gray-900">
-                            {transport.distanceKm || transport.distance_km || 'Nie podano'} km
+                          <h3 className="flex items-center text-lg font-semibold text-green-800 mb-4">
+                            <Truck className="mr-2" size={20} />
+                            Dane przewoźnika
+                          </h3>
+                          <div className="space-y-3">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Imię i nazwisko kierowcy:</span>
+                              <span className="font-semibold">{carrierData.driverName}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Telefon kontaktowy:</span>
+                              <span className="font-semibold">{carrierData.driverPhone}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Numer auta:</span>
+                              <span className="font-semibold">{carrierData.vehiclePlates}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Model pojazdu:</span>
+                              <span className="font-semibold">{carrierData.vehicleModel}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Rodzaj pojazdu:</span>
+                              <span className="font-semibold">{carrierData.vehicleType}</span>
+                            </div>
                           </div>
                         </div>
-                        
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                          <div className="text-sm font-medium text-green-700 mb-2 flex items-center">
-                            <FileText size={16} className="mr-2" />
-                            Dokumenty
-                          </div>
-                          <div className="font-semibold text-gray-900">
-                            {transport.documents || 'Nie podano'}
+
+                        {/* 3. Dane o towarze */}
+                        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                          <h3 className="flex items-center text-lg font-semibold text-orange-800 mb-4">
+                            <Package className="mr-2" size={20} />
+                            Dane o towarze
+                          </h3>
+                          <div className="space-y-3">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Rodzaj towaru:</span>
+                              <span className="font-semibold">{goodsData.type}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Opis z zamówienia:</span>
+                              <span className="font-semibold">{goodsData.description}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Waga:</span>
+                              <span className="font-semibold">{goodsData.weight}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Cena towaru:</span>
+                              <span className="font-semibold">{goodsData.price} zł</span>
+                            </div>
                           </div>
                         </div>
-                        
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                          <div className="text-sm font-medium text-green-700 mb-2 flex items-center">
-                            <Calendar size={16} className="mr-2" />
-                            Data dostawy
-                          </div>
-                          <div className="font-semibold text-gray-900">
-                            {formatDate(displayDate)}
-                            {dateChanged && (
-                              <div className="text-xs text-orange-600 mt-1">
-                                (zmieniona z {formatDate(transport.deliveryDate || transport.delivery_date)})
+
+                        {/* 4. Osoby odpowiedzialne */}
+                        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                          <h3 className="flex items-center text-lg font-semibold text-purple-800 mb-4">
+                            <UserCheck className="mr-2" size={20} />
+                            Osoby odpowiedzialne
+                          </h3>
+                          <div className="space-y-3">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Dodane przez:</span>
+                              <span className="font-semibold">{responsibleData.createdBy}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Osoba odpowiedzialna:</span>
+                              <span className="font-semibold">{responsibleData.responsiblePerson}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Numer MPK:</span>
+                              <span className="font-semibold">{responsibleData.mpk}</span>
+                            </div>
+                            {responsibleData.notes && (
+                              <div>
+                                <div className="text-gray-600 mb-1">Uwagi zamówienia:</div>
+                                <div className="bg-white border border-purple-200 rounded p-3 text-sm">
+                                  {responsibleData.notes}
+                                </div>
                               </div>
                             )}
                           </div>
+                          
+                          {/* Odpowiedzialne budowy */}
+                          {responsibleData.constructions.length > 0 && (
+                            <div className="mt-3">
+                              {renderResponsibleConstructions(transport)}
+                            </div>
+                          )}
                         </div>
+
                       </div>
 
-                      {/* Contact Information */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                          <div className="text-sm font-medium text-yellow-700 mb-2 flex items-center">
-                            <Phone size={16} className="mr-2" />
-                            Kontakt załadunek
-                          </div>
-                          <div className="text-gray-900">
-                            {transport.loadingContact || transport.loading_contact || 'Nie podano'}
-                          </div>
-                        </div>
+                      {/* Prawa kolumna */}
+                      <div className="space-y-6">
                         
-                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                          <div className="text-sm font-medium text-yellow-700 mb-2 flex items-center">
-                            <Phone size={16} className="mr-2" />
-                            Kontakt rozładunek
-                          </div>
-                          <div className="text-gray-900">
-                            {transport.unloadingContact || transport.unloading_contact || 'Nie podano'}
+                        {/* 5. Daty */}
+                        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+                          <h3 className="flex items-center text-lg font-semibold text-indigo-800 mb-4">
+                            <Calendar className="mr-2" size={20} />
+                            Daty
+                          </h3>
+                          <div className="space-y-3">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Data utworzenia:</span>
+                              <span className="font-semibold">{formatDate(datesData.created)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Data dostawy:</span>
+                              <span className="font-semibold">
+                                {formatDate(datesData.delivery)}
+                                {datesData.isDeliveryDateChanged && (
+                                  <div className="text-xs text-orange-600 mt-1">
+                                    (zmieniona z {formatDate(datesData.originalDelivery)})
+                                  </div>
+                                )}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Data zakończenia:</span>
+                              <span className="font-semibold">{formatDate(datesData.completed)}</span>
+                            </div>
                           </div>
                         </div>
+
+                        {/* 6. Miejsce załadunku */}
+                        <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4">
+                          <h3 className="flex items-center text-lg font-semibold text-cyan-800 mb-4">
+                            <MapPin className="mr-2" size={20} />
+                            Miejsce załadunku
+                          </h3>
+                          <div className="space-y-3">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Nazwa firmy:</span>
+                              <span className="font-semibold">{loadingLocation.company}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Adres:</span>
+                              <span className="font-semibold">{loadingLocation.address}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Kontakt:</span>
+                              <span className="font-semibold">{loadingLocation.contact}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 7. Miejsce rozładunku */}
+                        <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
+                          <h3 className="flex items-center text-lg font-semibold text-teal-800 mb-4">
+                            <Target className="mr-2" size={20} />
+                            Miejsce rozładunku
+                          </h3>
+                          <div className="space-y-3">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Nazwa firmy:</span>
+                              <span className="font-semibold">{unloadingLocation.company}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Adres:</span>
+                              <span className="font-semibold">{unloadingLocation.address}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Kontakt:</span>
+                              <span className="font-semibold">{unloadingLocation.contact}</span>
+                            </div>
+                          </div>
+                        </div>
+
                       </div>
-
-                      {/* Merged Transport Details */}
-                      {isTransportMerged(transport) && renderMergedTransportDetails(transport)}
-
-                      {/* Notes */}
-                      {transport.notes && (
-                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                          <div className="text-sm font-medium text-gray-700 mb-2 flex items-center">
-                            <FileText size={16} className="mr-2" />
-                            Uwagi
-                          </div>
-                          <div className="text-sm text-gray-700 whitespace-pre-wrap">{transport.notes}</div>
-                        </div>
-                      )}
-
-                      {/* Goods Description */}
-                      {transport.goodsDescription && (
-                        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                          <div className="text-sm font-medium text-orange-700 mb-2 flex items-center">
-                            <Package size={16} className="mr-2" />
-                            Opis towaru
-                          </div>
-                          <div className="text-sm text-gray-700">
-                            {typeof transport.goodsDescription === 'string' ? transport.goodsDescription : 
-                             JSON.stringify(transport.goodsDescription)}
-                          </div>
-                        </div>
-                      )}
                     </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
+
+                    {/* Merged Transport Details - jeśli istnieją */}
+                    {isTransportMerged(transport) && renderMergedTransportDetails(transport)}
+                  </div>
+                )}
+              </div>
+            )
+          })
         ) : (
-          <div className="text-center py-16">
+          <div className="text-center py-16 bg-white rounded-lg shadow border">
             <div className="bg-gray-100 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6">
               <Package size={48} className="text-gray-400" />
             </div>
@@ -1466,7 +1722,7 @@ export default function ArchiwumSpedycjiPage() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="mt-6 flex items-center justify-between">
+        <div className="mt-8 flex items-center justify-between bg-white p-4 rounded-lg shadow border">
           <div className="text-sm text-gray-700">
             Pokazuje {indexOfFirstItem + 1} - {Math.min(indexOfLastItem, filteredArchiwum.length)} z {filteredArchiwum.length} wyników
           </div>
@@ -1497,28 +1753,6 @@ export default function ArchiwumSpedycjiPage() {
                       {page}
                     </button>
                   )
-                }
-                // Logic for showing pages around current page
-                const showPage = page <= 3 || page >= totalPages - 2 || 
-                               (page >= currentPage - 1 && page <= currentPage + 1)
-                if (showPage) {
-                  return (
-                    <button
-                      key={page}
-                      onClick={() => paginate(page)}
-                      className={`px-3 py-2 rounded-md text-sm ${
-                        currentPage === page
-                          ? 'bg-blue-600 text-white'
-                          : 'border border-gray-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  )
-                } else if (page === 4 && currentPage > 5) {
-                  return <span key="ellipsis1" className="px-2">...</span>
-                } else if (page === totalPages - 3 && currentPage < totalPages - 4) {
-                  return <span key="ellipsis2" className="px-2">...</span>
                 }
                 return null
               })}
