@@ -1,5 +1,3 @@
-// src/app/kalendarz/components/TransportsList.js - NAPRAWIONA WERSJA BEZ OCEN
-import React from 'react'  // DODAJ TĘ LINIĘ
 import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
 import { KIEROWCY, POJAZDY } from '../constants';
@@ -14,9 +12,34 @@ export default function TransportsList({
   onZakonczTransport,
   onEditTransport,
   onPrzeniesDoPrzenoszenia,
-  onConnectTransport,
+  onConnectTransport, // Nowy prop do obsługi łączenia transportów
   filtryAktywne = {}
 }) {
+  if (!selectedDate) return null;
+
+  const dateKey = format(selectedDate, 'yyyy-MM-dd');
+  const transportyNaDzien = transporty[dateKey] || [];
+  
+  // Filtrujemy według aktywnych filtrów, ale nie filtrujemy po statusie
+  const filtrowaneTransporty = transportyNaDzien.filter(transport => {
+    // Sprawdź czy transport jest zrealizowany
+    const isCompleted = transport.status === 'completed' || transport.status === 'zakończony';
+    
+    // Jeśli transport jest zrealizowany i nie chcemy pokazywać zrealizowanych, odfiltrowujemy
+    if (isCompleted && !filtryAktywne.pokazZrealizowane) {
+      return false;
+    }
+    
+    const pasujeMagazyn = !filtryAktywne.magazyn || transport.zrodlo === filtryAktywne.magazyn;
+    const pasujeKierowca = !filtryAktywne.kierowca || parseInt(transport.kierowcaId) === filtryAktywne.kierowca;
+    const pasujePojazd = !filtryAktywne.pojazd || 
+                         parseInt(transport.pojazdId) === filtryAktywne.pojazd || 
+                         (!transport.pojazdId && parseInt(transport.kierowcaId) === filtryAktywne.pojazd);
+    const pasujeRynek = !filtryAktywne.rynek || transport.rynek === filtryAktywne.rynek;
+    
+    return pasujeMagazyn && pasujeKierowca && pasujePojazd && pasujeRynek;
+  });
+  
   const [userPermissions, setUserPermissions] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   
@@ -41,23 +64,11 @@ export default function TransportsList({
 
     fetchUserPermissions();
   }, []);
-  
-  // WALIDACJA selectedDate PO HOOKACH - naprawia błąd React #310
-  if (!selectedDate || !(selectedDate instanceof Date)) {
-    return (
-      <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-        <p className="text-gray-500 text-center">Wybierz datę aby zobaczyć transporty</p>
-      </div>
-    );
-  }
 
-  const dateKey = format(selectedDate, 'yyyy-MM-dd');
-  const transportyNaDzien = transporty[dateKey] || [];
-  
   const canEdit = userPermissions?.calendar?.edit === true || userRole === 'admin';
   const canMarkAsCompleted = userPermissions?.transport?.markAsCompleted === true || userRole === 'admin';
-  
-  // Funkcja sprawdzająca czy użytkownik może edytować transport
+
+  // Funkcja pomocnicza do sprawdzania, czy użytkownik może edytować ten transport
   const canEditTransport = (transport) => {
     // Admin może zawsze edytować
     if (userRole === 'admin') return true;
@@ -82,6 +93,12 @@ export default function TransportsList({
     
     return hasPermission && (isCreator || isCorrectMagazyn);
   };
+  
+  console.log('Uprawnienia w TransportsList:', {
+    canEdit,
+    canMarkAsCompleted,
+    userPermissions
+  });
 
   // Funkcja pomocnicza sprawdzająca czy transport jest połączony z innym
   const isConnectedTransport = (transport) => {
@@ -122,7 +139,8 @@ export default function TransportsList({
       
       if (data.success) {
         alert('Transport został pomyślnie rozłączony');
-        window.location.reload();
+        // Tutaj możemy dodać callback do odświeżenia listy transportów
+        window.location.reload(); // Prosta metoda odświeżenia, ale można zastąpić lepszym rozwiązaniem
       } else {
         alert('Błąd podczas rozłączania transportu: ' + (data.error || 'Nieznany błąd'));
       }
@@ -155,26 +173,6 @@ export default function TransportsList({
     
     return 'Brak danych';
   };
-
-  // Filtrowanie transportów
-  const filtrowaneTransporty = transportyNaDzien.filter(transport => {
-    // Sprawdź czy transport jest zrealizowany
-    const isCompleted = transport.status === 'completed' || transport.status === 'zakończony';
-    
-    // Jeśli transport jest zrealizowany i nie chcemy pokazywać zrealizowanych, odfiltrowujemy
-    if (isCompleted && !filtryAktywne.pokazZrealizowane) {
-      return false;
-    }
-    
-    const pasujeMagazyn = !filtryAktywne.magazyn || transport.zrodlo === filtryAktywne.magazyn;
-    const pasujeKierowca = !filtryAktywne.kierowca || parseInt(transport.kierowcaId) === filtryAktywne.kierowca;
-    const pasujePojazd = !filtryAktywne.pojazd || 
-                         parseInt(transport.pojazdId) === filtryAktywne.pojazd || 
-                         (!transport.pojazdId && parseInt(transport.kierowcaId) === filtryAktywne.pojazd);
-    const pasujeRynek = !filtryAktywne.rynek || transport.rynek === filtryAktywne.rynek;
-    
-    return pasujeMagazyn && pasujeKierowca && pasujePojazd && pasujeRynek;
-  });
   
   // Sprawdź, czy transport może być połączony (nie jest już połączony i jest aktywny)
   const canBeConnected = (transport) => {
@@ -319,7 +317,19 @@ export default function TransportsList({
                       <p><strong>Magazyn:</strong> {transport.zrodlo}</p>
                       <p><strong>Odległość:</strong> {transport.odleglosc} km</p>
                       <p><strong>Poziom załadunku:</strong> {transport.poziomZaladunku}</p>
-                      <p><strong>WZ:</strong> {transport.numerWZ}</p>
+                      <div className="mt-2">
+                        <strong>WZ:</strong>
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {transport.numerWZ && transport.numerWZ.split(',').map((wz, index) => (
+                            <span 
+                              key={index}
+                              className="inline-block px-2 py-1 bg-blue-100 text-blue-800 rounded border border-blue-200 text-xs font-medium"
+                            >
+                              {wz.trim()}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
                       {transport.rynek && (
                         <p><strong>Rynek:</strong> {transport.rynek}</p>
                       )}
@@ -355,8 +365,7 @@ export default function TransportsList({
                           >
                             Przenieś
                           </button>
-                          
-                          {/* Przycisk do łączenia transportów */}
+                          {/* Nowy przycisk do łączenia transportów */}
                           {canBeConnected(transport) && onConnectTransport && (
                             <button
                               onClick={() => onConnectTransport(transport)}
@@ -378,3 +387,4 @@ export default function TransportsList({
     </div>
   );
 }
+

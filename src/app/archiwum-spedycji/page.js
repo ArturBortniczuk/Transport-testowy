@@ -1,1184 +1,1361 @@
-// src/app/archiwum-spedycji/page.js
 'use client'
-import React, { useState, useEffect } from 'react'
-import { format } from 'date-fns'
+import React, { useState, useEffect, Fragment } from 'react'
+import { format, startOfWeek, endOfWeek, eachWeekOfInterval, startOfMonth, endOfMonth } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import * as XLSX from 'xlsx'
-import { 
-  ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
-  Download, Search, Filter, Calendar, Truck, Package,
-  MapPin, Phone, User, Building, FileText, Clock,
-  DollarSign, AlertCircle, CheckCircle, XCircle,
-  Users, Hash, Mail, Star, Info, Loader2,
-  Package2, Weight, CreditCard, UserCheck,
-  Navigation, Building2, PhoneCall, StickyNote,
-  CalendarClock, CalendarCheck, CalendarPlus
-} from 'lucide-react'
+import { generateCMR } from '@/lib/utils/generateCMR'
+import { ChevronLeft, ChevronRight, FileText, Download, Search, Truck, Package, MapPin, Phone, Calendar, DollarSign, User, Clipboard, ArrowRight, ChevronDown, ChevronUp, AlertCircle, Building, ShoppingBag, Weight, Mail, Hash, Clock, CheckCircle, Printer } from 'lucide-react'
 
 export default function ArchiwumSpedycjiPage() {
-  // Stan główny
   const [archiwum, setArchiwum] = useState([])
   const [filteredArchiwum, setFilteredArchiwum] = useState([])
+  const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [expandedRows, setExpandedRows] = useState({})
-  
-  // Paginacja
+  const [deleteStatus, setDeleteStatus] = useState(null)
+  const [exportFormat, setExportFormat] = useState('xlsx')
   const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage, setItemsPerPage] = useState(20)
+  const [itemsPerPage] = useState(10)
+  const [expandedRowId, setExpandedRowId] = useState(null)
   
   // Filtry
-  const [searchQuery, setSearchQuery] = useState('')
-  const [filters, setFilters] = useState({
-    dateFrom: '',
-    dateTo: '',
-    status: 'all',
-    city: '',
-    driver: '',
-    responsible: '',
-    mpk: '',
-    orderNumber: '',
-    hasResponse: 'all',
-    transportType: 'all'
-  })
-  const [showFilters, setShowFilters] = useState(false)
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
+  const [selectedMonth, setSelectedMonth] = useState('all')
+  const [selectedWeek, setSelectedWeek] = useState('all')
+  const [weeksInMonth, setWeeksInMonth] = useState([])
+  const [mpkFilter, setMpkFilter] = useState('')
+  const [orderNumberFilter, setOrderNumberFilter] = useState('')
+  const [marketFilter, setMarketFilter] = useState('')
+  const [mpkOptions, setMpkOptions] = useState([])
+  const [marketOptions, setMarketOptions] = useState([])
   
-  // Statystyki
-  const [stats, setStats] = useState({
-    total: 0,
-    completed: 0,
-    pending: 0,
-    totalDistance: 0,
-    totalCost: 0,
-    avgCost: 0
-  })
+  // Lista dostępnych lat i miesięcy
+  const currentYear = new Date().getFullYear()
+  const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
+  const months = [
+    { value: 'all', label: 'Wszystkie miesiące' },
+    { value: '0', label: 'Styczeń' },
+    { value: '1', label: 'Luty' },
+    { value: '2', label: 'Marzec' },
+    { value: '3', label: 'Kwiecień' },
+    { value: '4', label: 'Maj' },
+    { value: '5', label: 'Czerwiec' },
+    { value: '6', label: 'Lipiec' },
+    { value: '7', label: 'Sierpień' },
+    { value: '8', label: 'Wrzesień' },
+    { value: '9', label: 'Październik' },
+    { value: '10', label: 'Listopad' },
+    { value: '11', label: 'Grudzień' }
+  ]
 
-  // Pobieranie danych z istniejącego API
+  const buttonClasses = {
+    primary: "px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors flex items-center gap-2",
+    outline: "px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors flex items-center gap-2",
+    success: "px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors flex items-center gap-2"
+  }
+
+  // useEffect do obliczania tygodni w wybranym miesiącu
   useEffect(() => {
-    fetchArchiwum()
+    if (selectedMonth !== 'all') {
+      const monthDate = new Date(selectedYear, selectedMonth);
+      const firstDayOfMonth = startOfMonth(monthDate);
+      const lastDayOfMonth = endOfMonth(monthDate);
+      const weeks = eachWeekOfInterval({
+        start: firstDayOfMonth,
+        end: lastDayOfMonth,
+      }, { weekStartsOn: 1 }).map(weekStart => {
+        const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
+        return {
+          start: weekStart,
+          end: weekEnd,
+          label: `${format(weekStart, 'dd.MM')} - ${format(weekEnd, 'dd.MM')}`
+        };
+      });
+      setWeeksInMonth(weeks);
+    } else {
+      setWeeksInMonth([]);
+    }
+    setSelectedWeek('all');
+  }, [selectedYear, selectedMonth]);
+
+  // FUNKCJA: Automatyczne określanie rynku na podstawie MPK
+  const getMarketFromMPK = (mpk) => {
+    if (!mpk) return 'Nie określono';
+    
+    // Budowy (format: 501-XX-XX/XXXX)
+    if (mpk.match(/^501-/)) {
+      return 'Budowy';
+    }
+    
+    // Centra elektryczne (522-03-XXX)
+    if (mpk.match(/^522-03-/)) {
+      return 'Centra elektryczne';
+    }
+    
+    // Rynki (format: 522-XX-XXX)
+    if (mpk.match(/^522-02-/)) return 'Rynek Podlaski';
+    if (mpk.match(/^522-04-/)) return 'Rynek Lubelski';
+    if (mpk.match(/^522-05-/)) return 'Rynek Mazowiecki';
+    if (mpk.match(/^522-06-/)) return 'Rynek Pomorski';
+    if (mpk.match(/^522-07-/)) return 'Rynek Małopolski';
+    if (mpk.match(/^522-08-/)) return 'Rynek Dolnośląski';
+    if (mpk.match(/^522-09-/)) return 'Rynek Wielkopolski';
+    if (mpk.match(/^522-11-/)) return 'Rynek Śląski';
+    
+    // Jeśli nie pasuje do żadnego wzorca
+    return 'Inne';
+  }
+
+  useEffect(() => {
+    // Sprawdź czy użytkownik jest administratorem
+    const checkAdmin = async () => {
+      try {
+        const response = await fetch('/api/check-admin')
+        const data = await response.json()
+        setIsAdmin(data.isAdmin)
+      } catch (error) {
+        console.error('Błąd sprawdzania uprawnień administratora:', error)
+        setIsAdmin(false)
+      }
+    }
+
+    checkAdmin()
+    fetchArchiveData()
   }, [])
 
-  const fetchArchiwum = async () => {
+  // Pobierz dane archiwum z API
+  const fetchArchiveData = async () => {
     try {
       setLoading(true)
       setError(null)
       
-      // Używamy istniejącego endpointu /api/spedycje
-      const response = await fetch('/api/spedycje')
-      const data = await response.json()
+      const response = await fetch('/api/spedycje?status=completed')
       
-      if (data.success) {
-        console.log('Pobrane dane:', data.spedycje)
-        // Filtrujemy tylko zakończone zlecenia (z response_data)
-        const allSpedycje = data.spedycje || []
-        setArchiwum(allSpedycje)
-        setFilteredArchiwum(allSpedycje)
-        calculateStats(allSpedycje)
+      if (response.ok) {
+        const data = await response.json()
+        
+        if (data.success) {
+          console.log('Pobrane dane z API:', data.spedycje)
+          setArchiwum(data.spedycje)
+          
+          // Zbierz unikalne wartości MPK dla filtra
+          const uniqueMpks = [...new Set(data.spedycje.map(item => item.mpk).filter(Boolean))]
+          setMpkOptions(uniqueMpks)
+          
+          // Zbierz unikalne wartości rynków (na podstawie MPK)
+          const uniqueMarkets = [...new Set(data.spedycje
+            .map(item => getMarketFromMPK(getCurrentMPK(item)))
+            .filter(market => market !== 'Nie określono')
+          )].sort()
+          setMarketOptions(uniqueMarkets)
+          
+          applyFilters(data.spedycje, selectedYear, selectedMonth, selectedWeek, '', '', '')
+        } else {
+          throw new Error(data.error || 'Błąd pobierania danych')
+        }
       } else {
-        setError(data.error || 'Błąd pobierania danych')
+        throw new Error(`Problem z API: ${response.status}`)
       }
     } catch (error) {
       console.error('Błąd pobierania archiwum:', error)
       setError('Wystąpił błąd podczas pobierania danych')
+      
+      // Fallback do localStorage jako ostateczność
+      try {
+        const savedData = localStorage.getItem('zamowieniaSpedycja')
+        if (savedData) {
+          const transporty = JSON.parse(savedData)
+            .filter(transport => transport.status === 'completed')
+            .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt))
+          
+          setArchiwum(transporty)
+          
+          const uniqueMpks = [...new Set(transporty.map(item => item.mpk).filter(Boolean))]
+          setMpkOptions(uniqueMpks)
+          
+          // Zbierz unikalne wartości rynków (na podstawie MPK)
+          const uniqueMarkets = [...new Set(transporty
+            .map(item => getMarketFromMPK(getCurrentMPK(item)))
+            .filter(market => market !== 'Nie określono')
+          )].sort()
+          setMarketOptions(uniqueMarkets)
+          
+          applyFilters(transporty, selectedYear, selectedMonth, selectedWeek, '', '', '')
+        }
+      } catch (localStorageError) {
+        console.error('Błąd fallbacku localStorage:', localStorageError)
+      }
     } finally {
       setLoading(false)
     }
   }
 
-  // Obliczanie statystyk
-  const calculateStats = (data) => {
-    const completed = data.filter(item => {
-      const response = parseJSON(item.response_data)
-      return response && Object.keys(response).length > 0
-    }).length
-    const pending = data.length - completed
-    
-    let totalDistance = 0
-    let totalCost = 0
-    let costCount = 0
-    
-    data.forEach(item => {
-      const response = parseJSON(item.response_data)
-      if (response && Object.keys(response).length > 0) {
-        if (response.distanceKm) totalDistance += parseFloat(response.distanceKm) || 0
-        if (response.totalPrice || response.deliveryPrice) {
-          const price = parseFloat(response.totalPrice || response.deliveryPrice) || 0
-          totalCost += price
-          if (price > 0) costCount++
-        }
-      }
-      // Dodaj również distance_km jeśli istnieje
-      if (item.distance_km) {
-        totalDistance += parseFloat(item.distance_km) || 0
-      }
-    })
-    
-    setStats({
-      total: data.length,
-      completed,
-      pending,
-      totalDistance: Math.round(totalDistance),
-      totalCost: Math.round(totalCost * 100) / 100,
-      avgCost: costCount > 0 ? Math.round((totalCost / costCount) * 100) / 100 : 0
-    })
+  const getLoadingCompanyName = (transport) => {
+    if (transport.location === 'Odbiory własne' && transport.sourceClientName) {
+      return transport.sourceClientName;
+    } else if (transport.location === 'Magazyn Białystok') {
+      return 'Magazyn Białystok';
+    } else if (transport.location === 'Magazyn Zielonka') {
+      return 'Magazyn Zielonka';
+    }
+    return transport.location || 'Nie podano';
   }
 
-  // Pomocnicze funkcje parsowania
-  const parseJSON = (data) => {
-    if (!data) return null
-    if (typeof data === 'object') return data
-    if (data === '{}' || data === 'null') return null
-    try {
-      return JSON.parse(data)
-    } catch (e) {
-      return null
-    }
+  const getUnloadingCompanyName = (transport) => {
+    return transport.clientName || 'Nie podano';
   }
 
-  // Filtrowanie danych
-  useEffect(() => {
-    let filtered = [...archiwum]
-    
-    // Wyszukiwanie tekstowe
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(item => {
-        const orderNumber = item.order_number || ''
-        const mpk = item.mpk || ''
-        const responsible = item.responsible_person || ''
-        const createdBy = item.created_by_email || ''
-        const location = parseJSON(item.location_data)
-        const delivery = parseJSON(item.delivery_data)
-        const response = parseJSON(item.response_data)
-        
-        return (
-          orderNumber.toLowerCase().includes(query) ||
-          mpk.toLowerCase().includes(query) ||
-          responsible.toLowerCase().includes(query) ||
-          createdBy.toLowerCase().includes(query) ||
-          location?.city?.toLowerCase().includes(query) ||
-          location?.company?.toLowerCase().includes(query) ||
-          delivery?.city?.toLowerCase().includes(query) ||
-          delivery?.constructionName?.toLowerCase().includes(query) ||
-          response?.driverInfo?.name?.toLowerCase().includes(query) ||
-          response?.vehicleInfo?.plates?.toLowerCase().includes(query)
-        )
-      })
+  const getLoadingCity = (transport) => {
+    if (transport.location === 'Odbiory własne' && transport.producerAddress) {
+      return transport.producerAddress.city || 'Odbiory własne';
+    } else if (transport.location === 'Magazyn Białystok') {
+      return 'Białystok';
+    } else if (transport.location === 'Magazyn Zielonka') {
+      return 'Zielonka';
     }
-    
-    // Filtry zaawansowane
-    // Data od
-    if (filters.dateFrom) {
-      filtered = filtered.filter(item => {
-        const itemDate = new Date(item.created_at)
-        return itemDate >= new Date(filters.dateFrom)
-      })
-    }
-    
-    // Data do
-    if (filters.dateTo) {
-      filtered = filtered.filter(item => {
-        const itemDate = new Date(item.created_at)
-        const endDate = new Date(filters.dateTo)
-        endDate.setHours(23, 59, 59)
-        return itemDate <= endDate
-      })
-    }
-    
-    // Status
-    if (filters.status !== 'all') {
-      if (filters.status === 'completed') {
-        filtered = filtered.filter(item => {
-          const response = parseJSON(item.response_data)
-          return response && Object.keys(response).length > 0
-        })
-      } else if (filters.status === 'pending') {
-        filtered = filtered.filter(item => {
-          const response = parseJSON(item.response_data)
-          return !response || Object.keys(response).length === 0
-        })
+    return transport.location || 'Nie podano';
+  }
+  
+  const getDeliveryCity = (transport) => {
+    return transport.delivery?.city || 'Nie podano';
+  }
+
+  const getGoodsDataFromTransportOrder = (transport) => {
+    if (transport.goodsDescription) {
+      const desc = transport.goodsDescription.description || '';
+      const weight = transport.goodsDescription.weight || '';
+      if (desc || weight) {
+          return {
+              description: desc,
+              weight: weight
+          };
       }
     }
     
-    // Miasto
-    if (filters.city) {
-      const cityQuery = filters.city.toLowerCase()
-      filtered = filtered.filter(item => {
-        const location = parseJSON(item.location_data)
-        const delivery = parseJSON(item.delivery_data)
-        return (
-          location?.city?.toLowerCase().includes(cityQuery) ||
-          delivery?.city?.toLowerCase().includes(cityQuery)
-        )
-      })
-    }
-    
-    // Kierowca
-    if (filters.driver) {
-      const driverQuery = filters.driver.toLowerCase()
-      filtered = filtered.filter(item => {
-        const response = parseJSON(item.response_data)
-        return response?.driverInfo?.name?.toLowerCase().includes(driverQuery) ||
-               response?.driver?.name?.toLowerCase().includes(driverQuery)
-      })
-    }
-    
-    // Osoba odpowiedzialna
-    if (filters.responsible) {
-      const responsibleQuery = filters.responsible.toLowerCase()
-      filtered = filtered.filter(item => 
-        item.responsible_person?.toLowerCase().includes(responsibleQuery)
-      )
-    }
-    
-    // MPK
-    if (filters.mpk) {
-      filtered = filtered.filter(item => 
-        item.mpk?.toLowerCase().includes(filters.mpk.toLowerCase())
-      )
-    }
-    
-    // Numer zamówienia
-    if (filters.orderNumber) {
-      filtered = filtered.filter(item => 
-        item.order_number?.toLowerCase().includes(filters.orderNumber.toLowerCase())
-      )
-    }
-    
-    // Czy ma odpowiedź
-    if (filters.hasResponse !== 'all') {
-      if (filters.hasResponse === 'yes') {
-        filtered = filtered.filter(item => {
-          const response = parseJSON(item.response_data)
-          return response && Object.keys(response).length > 0
-        })
-      } else {
-        filtered = filtered.filter(item => {
-          const response = parseJSON(item.response_data)
-          return !response || Object.keys(response).length === 0
-        })
-      }
-    }
-    
-    // Typ transportu
-    if (filters.transportType !== 'all') {
-      filtered = filtered.filter(item => {
-        const response = parseJSON(item.response_data)
-        const merged = parseJSON(item.merged_transports)
+    if (transport.order_data) {
+      try {
+        const orderData = typeof transport.order_data === 'string' 
+          ? JSON.parse(transport.order_data) 
+          : transport.order_data;
         
-        if (filters.transportType === 'merged') {
-          return item.is_merged || merged?.isMerged || response?.isMerged
-        } else if (filters.transportType === 'drums') {
-          return item.is_drums_transport || response?.isDrumsTransport
-        } else {
-          return !item.is_merged && !item.is_drums_transport && !merged?.isMerged && !response?.isMerged && !response?.isDrumsTransport
+        if (orderData.towar || orderData.waga) {
+          return {
+            description: orderData.towar || '',
+            weight: orderData.waga || ''
+          };
         }
-      })
+      } catch (error) {
+        console.error('Błąd parsowania order_data:', error);
+      }
     }
     
-    // Sortowanie - najnowsze najpierw
-    filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    return { description: '', weight: '' };
+  }
+
+  const getResponsibleInfo = (transport) => {
+    if (transport.responsibleConstructions && transport.responsibleConstructions.length > 0) {
+      const construction = transport.responsibleConstructions[0];
+      return {
+        name: construction.name,
+        type: 'construction',
+        mpk: construction.mpk || ''
+      };
+    }
+    
+    return {
+      name: transport.responsiblePerson || transport.createdBy || 'Brak',
+      type: 'person',
+      mpk: transport.mpk || ''
+    };
+  }
+
+  const getCurrentMPK = (transport) => {
+    if (transport.responsibleConstructions && transport.responsibleConstructions.length > 0) {
+      return transport.responsibleConstructions[0].mpk || transport.mpk || '';
+    }
+    
+    return transport.mpk || '';
+  }
+
+  const formatAddress = (address) => {
+    if (!address) return 'Brak danych';
+    const parts = [];
+    if (address.city) parts.push(address.city);
+    if (address.postalCode) parts.push(address.postalCode);
+    if (address.street) parts.push(address.street);
+    return parts.join(', ') || 'Brak danych';
+  }
+
+  const getFullLoadingAddress = (transport) => {
+    if (transport.location === 'Odbiory własne' && transport.producerAddress) {
+      return formatAddress(transport.producerAddress);
+    } else if (transport.location === 'Magazyn Białystok') {
+      return 'Grupa Eltron Sp. z o.o., ul. Wysockiego 69B, 15-169 Białystok';
+    } else if (transport.location === 'Magazyn Zielonka') {
+      return 'Grupa Eltron Sp. z o.o., ul. Krótka 2, 05-220 Zielonka';
+    }
+    return transport.location || 'Nie podano';
+  }
+
+  const applyFilters = (transports, year, month, week, mpkValue, orderNumberValue, marketValue) => {
+    if (!transports || transports.length === 0) {
+      setFilteredArchiwum([])
+      return
+    }
+    
+    const filtered = transports.filter(transport => {
+      const date = new Date(transport.completedAt || transport.createdAt)
+      const transportYear = date.getFullYear()
+      
+      if (transportYear !== parseInt(year)) {
+        return false
+      }
+      
+      if (month !== 'all') {
+        const transportMonth = date.getMonth()
+        if (transportMonth !== parseInt(month)) {
+          return false
+        }
+      }
+
+      if (month !== 'all' && week !== 'all') {
+        const selectedWeekObj = JSON.parse(week);
+        const startDate = new Date(selectedWeekObj.start);
+        const endDate = new Date(selectedWeekObj.end);
+        if (date < startDate || date > endDate) {
+          return false;
+        }
+      }
+      
+      if (mpkValue) {
+        const currentMPK = getCurrentMPK(transport);
+        if (!currentMPK.toLowerCase().includes(mpkValue.toLowerCase())) {
+          return false;
+        }
+      }
+      
+      if (orderNumberValue) {
+        const orderNumber = transport.orderNumber || transport.order_number || ''
+        if (!orderNumber.toLowerCase().includes(orderNumberValue.toLowerCase())) {
+          return false
+        }
+      }
+      
+      if (marketValue) {
+        const transportMarket = transport.market || '';
+        if (transportMarket !== marketValue) {
+          return false;
+        }
+      }
+      
+      return true
+    })
     
     setFilteredArchiwum(filtered)
     setCurrentPage(1)
-  }, [archiwum, searchQuery, filters])
-
-  // Resetowanie filtrów
-  const resetFilters = () => {
-    setFilters({
-      dateFrom: '',
-      dateTo: '',
-      status: 'all',
-      city: '',
-      driver: '',
-      responsible: '',
-      mpk: '',
-      orderNumber: '',
-      hasResponse: 'all',
-      transportType: 'all'
-    })
-    setSearchQuery('')
   }
 
-  // Eksport do Excel
-  const handleExport = () => {
+  useEffect(() => {
+    applyFilters(archiwum, selectedYear, selectedMonth, selectedWeek, mpkFilter, orderNumberFilter, marketFilter)
+  }, [selectedYear, selectedMonth, selectedWeek, mpkFilter, orderNumberFilter, marketFilter, archiwum])
+
+  const handleDeleteTransport = async (id) => {
+    if (!confirm('Czy na pewno chcesz usunąć ten transport?')) {
+      return
+    }
+    
+    try {
+      setDeleteStatus({ type: 'loading', message: 'Usuwanie transportu...' })
+      
+      const response = await fetch(`/api/spedycje?id=${id}`, {
+        method: 'DELETE'
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        const updatedArchiwum = archiwum.filter(transport => transport.id !== id)
+        setArchiwum(updatedArchiwum)
+        applyFilters(updatedArchiwum, selectedYear, selectedMonth, selectedWeek, mpkFilter, orderNumberFilter, marketFilter)
+        
+        setDeleteStatus({ type: 'success', message: 'Transport został usunięty' })
+        
+        setTimeout(() => {
+          setDeleteStatus(null)
+        }, 3000)
+      } else {
+        setDeleteStatus({ type: 'error', message: data.error || 'Nie udało się usunąć transportu' })
+      }
+    } catch (error) {
+      console.error('Błąd usuwania transportu:', error)
+      setDeleteStatus({ type: 'error', message: 'Wystąpił błąd podczas usuwania transportu' })
+    }
+  }
+
+  const calculatePricePerKm = (price, distance) => {
+    if (!price || !distance || distance === 0) return 0;
+    return (price / distance).toFixed(2);
+  }
+  
+  const exportData = () => {
     if (filteredArchiwum.length === 0) {
       alert('Brak danych do eksportu')
       return
     }
     
-    const dataToExport = filteredArchiwum.map(item => {
-      const location = parseJSON(item.location_data)
-      const delivery = parseJSON(item.delivery_data)
-      const response = parseJSON(item.response_data)
-      const goods = parseJSON(item.goods_description)
+    const calculateSpedycjaCost = (price, distance) => {
+      if (price && price > 0) return price;
+      
+      if (distance <= 100) {
+        return distance * 15;
+      } else if (distance > 100 && distance <= 200) {
+        return distance * 12;
+      } else {
+        return distance * 10;
+      }
+    };
+
+    const dataToExport = filteredArchiwum.map(transport => {
+      const distanceKm = transport.response?.distanceKm || transport.distanceKm || 0
+      const price = transport.response?.deliveryPrice || 0
+      const calculatedCost = calculateSpedycjaCost(price, distanceKm)
+      const pricePerKm = calculatePricePerKm(price || calculatedCost, distanceKm)
+      const responsibleInfo = getResponsibleInfo(transport)
+      const goodsData = getGoodsDataFromTransportOrder(transport)
       
       return {
-        'Numer zamówienia': item.order_number || '',
-        'MPK': item.mpk || '',
-        'Data utworzenia': format(new Date(item.created_at), 'dd.MM.yyyy HH:mm'),
-        'Data dostawy': item.delivery_date ? format(new Date(item.delivery_date), 'dd.MM.yyyy') : '',
-        'Miejsce załadunku': location?.company || item.location || '',
-        'Miasto załadunku': location?.city || '',
-        'Adres załadunku': location ? `${location.street || ''}, ${location.postalCode || ''}` : '',
-        'Miejsce rozładunku': delivery?.constructionName || '',
-        'Miasto rozładunku': delivery?.city || '',
-        'Adres rozładunku': delivery ? `${delivery.street || ''}, ${delivery.postalCode || ''}` : '',
-        'Kierowca': response?.driverInfo?.name || response?.driver?.name || '',
-        'Telefon kierowcy': response?.driverInfo?.phone || response?.driver?.phone || '',
-        'Numer rejestracyjny': response?.vehicleInfo?.plates || response?.vehicle?.plates || '',
-        'Rodzaj pojazdu': response?.vehicleInfo?.model || response?.vehicle?.model || item.vehicle_type || '',
-        'Typ transportu': item.transport_type || '',
-        'Rodzaj towaru': goods?.type || '',
-        'Opis towaru': typeof goods === 'string' ? goods : (goods?.description || ''),
-        'Waga (kg)': goods?.weight || '',
-        'Cena towaru': goods?.value || '',
-        'Cena transportu': response?.totalPrice || response?.deliveryPrice || '',
-        'Odległość (km)': response?.distanceKm || item.distance_km || '',
-        'Dokumenty': item.documents || '',
-        'Uwagi': item.notes || '',
-        'Osoba odpowiedzialna': item.responsible_person || '',
-        'Utworzone przez': item.created_by_email || '',
-        'Status': response && Object.keys(response).length > 0 ? 'Zrealizowane' : 'Oczekuje'
+        'Data zlecenia': formatDate(transport.createdAt),
+        'Data realizacji': transport.completedAt ? formatDate(transport.completedAt) : 'Brak',
+        'Numer zamówienia': transport.orderNumber || '',
+        'Tydzień': `${format(new Date(transport.completedAt || transport.createdAt), 'yyyy')}-T${format(new Date(transport.completedAt || transport.createdAt), 'I', { locale: pl })}`,
+        'Rynek': getMarketFromMPK(getCurrentMPK(transport)),
+        'Trasa': `${getLoadingCity(transport)} → ${getDeliveryCity(transport)}`,
+        'Załadunek - miasto': getLoadingCity(transport),
+        'Załadunek - firma': getLoadingCompanyName(transport),
+        'Rozładunek - miasto': getDeliveryCity(transport),
+        'Rozładunek - firma': getUnloadingCompanyName(transport),
+        'MPK': getCurrentMPK(transport),
+        'Dokumenty': transport.documents || '',
+        'Nazwa klienta': transport.clientName || '',
+        'Osoba dodająca': transport.createdBy || '',
+        'Osoba odpowiedzialna': responsibleInfo.name,
+        'Typ odpowiedzialnego': responsibleInfo.type === 'construction' ? 'Budowa' : 'Osoba',
+        'Przewoźnik': (transport.response?.driverName || '') + ' ' + (transport.response?.driverSurname || ''),
+        'Numer auta': transport.response?.vehicleNumber || '',
+        'Telefon przewoźnika': transport.response?.driverPhone || '',
+        'Cena rzeczywista (PLN)': price || '',
+        'Cena obliczona (PLN)': calculatedCost.toFixed(2).replace('.', ','),
+        'Odległość (km)': distanceKm,
+        'Cena za km (PLN/km)': pricePerKm,
+        'Kontakt załadunek': transport.loadingContact || '',
+        'Kontakt rozładunek': transport.unloadingContact || '',
+        'Opis towaru': goodsData.description,
+        'Waga towaru': goodsData.weight,
+        'Uwagi zlecenia': transport.notes || '',
+        'Uwagi przewoźnika': transport.response?.adminNotes || '',
+        'Status': transport.status === 'completed' ? 'Zakończony' : transport.status
       }
     })
     
-    const ws = XLSX.utils.json_to_sheet(dataToExport)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Archiwum Spedycji')
+    const monthLabel = selectedMonth === 'all' ? 
+                      'wszystkie_miesiace' : 
+                      months.find(m => m.value === selectedMonth)?.label.toLowerCase() || selectedMonth
     
-    // Ustawienie szerokości kolumn
-    const colWidths = [
-      { wch: 15 }, { wch: 10 }, { wch: 18 }, { wch: 15 },
-      { wch: 25 }, { wch: 15 }, { wch: 30 }, { wch: 25 }, 
-      { wch: 15 }, { wch: 30 }, { wch: 20 }, { wch: 15 }, 
-      { wch: 12 }, { wch: 20 }, { wch: 15 }, { wch: 15 }, 
-      { wch: 30 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, 
-      { wch: 12 }, { wch: 15 }, { wch: 30 }, { wch: 20 }, 
-      { wch: 20 }, { wch: 12 }
-    ]
-    ws['!cols'] = colWidths
+    const fileName = `spedycja_${selectedYear}_${monthLabel}_${format(new Date(), 'yyyy-MM-dd')}`
     
-    XLSX.writeFile(wb, `archiwum_spedycji_${format(new Date(), 'yyyy-MM-dd_HHmm')}.xlsx`)
+    if (exportFormat === 'csv') {
+      exportToCSV(dataToExport, fileName)
+    } else {
+      // PODSUMOWANIE PO MPK
+      const summaryByMpk = filteredArchiwum.reduce((acc, transport) => {
+        const mpk = getCurrentMPK(transport) || 'Brak MPK';
+        const distance = transport.response?.distanceKm || transport.distanceKm || 0;
+        const price = transport.response?.deliveryPrice || 0;
+        const cost = calculateSpedycjaCost(price, distance);
+        
+        if (!acc[mpk]) {
+          acc[mpk] = { 
+            totalCost: 0, 
+            totalDistance: 0, 
+            count: 0,
+            totalRealPrice: 0
+          };
+        }
+        
+        acc[mpk].totalCost += cost;
+        acc[mpk].totalDistance += distance;
+        acc[mpk].count += 1;
+        acc[mpk].totalRealPrice += (price || 0);
+        
+        return acc;
+      }, {});
+
+      const summaryDataMpk = Object.keys(summaryByMpk).map(mpk => ({
+        'MPK': mpk,
+        'Liczba transportów': summaryByMpk[mpk].count,
+        'Łączna odległość (km)': summaryByMpk[mpk].totalDistance,
+        'Łączny koszt obliczony (PLN)': summaryByMpk[mpk].totalCost.toFixed(2).replace('.', ','),
+        'Łączna cena rzeczywista (PLN)': summaryByMpk[mpk].totalRealPrice.toFixed(2).replace('.', ','),
+        'Średni koszt za transport (PLN)': (summaryByMpk[mpk].totalCost / summaryByMpk[mpk].count).toFixed(2).replace('.', ',')
+      }));
+
+      // PODSUMOWANIE PO TYGODNIACH
+      const summaryByWeek = filteredArchiwum.reduce((acc, transport) => {
+        const weekKey = `${format(new Date(transport.completedAt || transport.createdAt), 'yyyy')}-T${format(new Date(transport.completedAt || transport.createdAt), 'I', { locale: pl })}`;
+        const distance = transport.response?.distanceKm || transport.distanceKm || 0;
+        const price = transport.response?.deliveryPrice || 0;
+        const cost = calculateSpedycjaCost(price, distance);
+        
+        if (!acc[weekKey]) {
+          acc[weekKey] = { 
+            totalCost: 0, 
+            totalDistance: 0, 
+            count: 0,
+            totalRealPrice: 0,
+            weekStart: format(new Date(transport.completedAt || transport.createdAt), 'dd.MM.yyyy', { locale: pl })
+          };
+        }
+        
+        acc[weekKey].totalCost += cost;
+        acc[weekKey].totalDistance += distance;
+        acc[weekKey].count += 1;
+        acc[weekKey].totalRealPrice += (price || 0);
+        
+        return acc;
+      }, {});
+
+      const summaryDataWeek = Object.keys(summaryByWeek)
+        .sort()
+        .map(week => ({
+          'Tydzień': week,
+          'Data początkowa': summaryByWeek[week].weekStart,
+          'Liczba transportów': summaryByWeek[week].count,
+          'Łączna odległość (km)': summaryByWeek[week].totalDistance,
+          'Łączny koszt obliczony (PLN)': summaryByWeek[week].totalCost.toFixed(2).replace('.', ','),
+          'Łączna cena rzeczywista (PLN)': summaryByWeek[week].totalRealPrice.toFixed(2).replace('.', ','),
+          'Średni koszt za transport (PLN)': (summaryByWeek[week].totalCost / summaryByWeek[week].count).toFixed(2).replace('.', ',')
+        }));
+
+      // PODSUMOWANIE PO PRZEWOŹNIKACH
+      const summaryByCarrier = filteredArchiwum.reduce((acc, transport) => {
+        const carrierName = ((transport.response?.driverName || '') + ' ' + (transport.response?.driverSurname || '')).trim() || 'Nieznany przewoźnik';
+        const distance = transport.response?.distanceKm || transport.distanceKm || 0;
+        const price = transport.response?.deliveryPrice || 0;
+        const cost = calculateSpedycjaCost(price, distance);
+        
+        if (!acc[carrierName]) {
+          acc[carrierName] = { 
+            totalCost: 0, 
+            totalDistance: 0, 
+            count: 0,
+            totalRealPrice: 0,
+            phone: transport.response?.driverPhone || '',
+            vehicle: transport.response?.vehicleNumber || ''
+          };
+        }
+        
+        acc[carrierName].totalCost += cost;
+        acc[carrierName].totalDistance += distance;
+        acc[carrierName].count += 1;
+        acc[carrierName].totalRealPrice += (price || 0);
+        
+        return acc;
+      }, {});
+
+      const summaryDataCarrier = Object.keys(summaryByCarrier).map(carrier => ({
+        'Przewoźnik': carrier,
+        'Telefon': summaryByCarrier[carrier].phone,
+        'Pojazd': summaryByCarrier[carrier].vehicle,
+        'Liczba transportów': summaryByCarrier[carrier].count,
+        'Łączna odległość (km)': summaryByCarrier[carrier].totalDistance,
+        'Łączny koszt obliczony (PLN)': summaryByCarrier[carrier].totalCost.toFixed(2).replace('.', ','),
+        'Łączna cena rzeczywista (PLN)': summaryByCarrier[carrier].totalRealPrice.toFixed(2).replace('.', ','),
+        'Średni koszt za transport (PLN)': (summaryByCarrier[carrier].totalCost / summaryByCarrier[carrier].count).toFixed(2).replace('.', ',')
+      }));
+
+      exportToXLSXWithMultipleSheets(dataToExport, summaryDataMpk, summaryDataWeek, summaryDataCarrier, fileName, filteredArchiwum)
+    }
   }
 
-  // Rozwijanie/zwijanie wiersza
-  const toggleRowExpansion = (id) => {
-    setExpandedRows(prev => ({
-      ...prev,
-      [id]: !prev[id]
-    }))
+  const exportToXLSXWithMultipleSheets = (mainData, summaryMpk, summaryWeek, summaryCarrier, fileName, rawData) => {
+    const wb = XLSX.utils.book_new();
+    
+    const ws_main = XLSX.utils.json_to_sheet(mainData);
+    XLSX.utils.book_append_sheet(wb, ws_main, "Wszystkie transporty");
+    
+    const ws_mpk = XLSX.utils.json_to_sheet(summaryMpk);
+    XLSX.utils.book_append_sheet(wb, ws_mpk, "Podsumowanie po MPK");
+    
+    const ws_week = XLSX.utils.json_to_sheet(summaryWeek);
+    XLSX.utils.book_append_sheet(wb, ws_week, "Podsumowanie po tygodniach");
+    
+    const ws_carrier = XLSX.utils.json_to_sheet(summaryCarrier);
+    XLSX.utils.book_append_sheet(wb, ws_carrier, "Podsumowanie po przewoźnikach");
+    
+    // Arkusze z podziałem na rynki (teraz na podstawie MPK)
+    const markets = [...new Set(rawData.map(t => getMarketFromMPK(getCurrentMPK(t))).filter(m => m !== 'Nie określono'))].sort();
+    
+    markets.forEach(market => {
+      const marketData = mainData.filter(row => row['Rynek'] === market);
+      
+      if (marketData.length > 0) {
+        const ws_market = XLSX.utils.json_to_sheet(marketData);
+        const sheetName = market.length > 28 ? market.substring(0, 28) + '...' : market;
+        XLSX.utils.book_append_sheet(wb, ws_market, sheetName);
+      }
+    });
+    
+    XLSX.writeFile(wb, `${fileName}.xlsx`);
   }
 
-  // Formatowanie daty
+  const generateGoogleMapsLink = (transport) => {
+    let origin = '';
+    let destination = '';
+    
+    if (transport.location === 'Odbiory własne' && transport.producerAddress) {
+      const addr = transport.producerAddress;
+      origin = `${addr.city},${addr.postalCode},${addr.street || ''}`;
+    } else if (transport.location === 'Magazyn Białystok') {
+      origin = 'Białystok';
+    } else if (transport.location === 'Magazyn Zielonka') {
+      origin = 'Zielonka';
+    }
+    
+    if (transport.delivery) {
+      const addr = transport.delivery;
+      destination = `${addr.city},${addr.postalCode},${addr.street || ''}`;
+    }
+    
+    if (!origin || !destination) return '';
+    
+    origin = encodeURIComponent(origin);
+    destination = encodeURIComponent(destination);
+    
+    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
+  };
+
+  const exportToCSV = (data, fileName) => {
+    const headers = Object.keys(data[0])
+    
+    let csvContent = headers.join(';') + '\n'
+    data.forEach(item => {
+      const row = headers.map(header => {
+        let cell = item[header] !== undefined && item[header] !== null ? item[header] : ''
+        if (cell.toString().includes(',') || cell.toString().includes(';') || cell.toString().includes('\n')) {
+          cell = `"${cell}"`
+        }
+        return cell
+      }).join(';')
+      csvContent += row + '\n'
+    })
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `${fileName}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   const formatDate = (dateString) => {
-    if (!dateString) return 'Brak daty'
+    if (!dateString) return 'Brak daty';
     try {
-      return format(new Date(dateString), 'dd.MM.yyyy', { locale: pl })
-    } catch {
-      return 'Nieprawidłowa data'
+      return format(new Date(dateString), 'dd.MM.yyyy', { locale: pl });
+    } catch (error) {
+      console.error("Błąd formatowania daty:", error, dateString);
+      return 'Nieprawidłowa data';
     }
   }
 
   const formatDateTime = (dateString) => {
-    if (!dateString) return 'Brak daty'
+    if (!dateString) return 'Brak daty';
     try {
-      return format(new Date(dateString), 'dd.MM.yyyy HH:mm', { locale: pl })
-    } catch {
-      return 'Nieprawidłowa data'
+      return format(new Date(dateString), 'dd.MM.yyyy HH:mm', { locale: pl });
+    } catch (error) {
+      console.error("Błąd formatowania daty:", error, dateString);
+      return 'Nieprawidłowa data';
     }
   }
 
-  // Formatowanie ceny
-  const formatPrice = (price) => {
-    if (!price || price === 0) return 'Brak'
-    return `${parseFloat(price).toFixed(2)} PLN`
+  const isDeliveryDateChanged = (transport) => {
+    return transport.response && 
+           transport.response.dateChanged === true && 
+           transport.response.newDeliveryDate;
   }
 
-  // Pobieranie informacji o lokalizacji
-  const getLocationInfo = (item) => {
-    if (item.location === 'Odbiory własne') {
-      const location = parseJSON(item.location_data)
-      return {
-        company: location?.company || 'Nie podano',
-        city: location?.city || 'Nie podano'
-      }
+  const getActualDeliveryDate = (transport) => {
+    if (isDeliveryDateChanged(transport)) {
+      return transport.response.newDeliveryDate;
     }
-    return {
-      company: item.location || 'Nie podano',
-      city: item.location?.replace('Magazyn ', '') || 'Nie podano'
-    }
+    return transport.deliveryDate;
   }
 
-  const getDeliveryInfo = (item) => {
-    const delivery = parseJSON(item.delivery_data)
-    return {
-      company: delivery?.constructionName || 'Nie podano',
-      city: delivery?.city || 'Nie podano'
-    }
-  }
-
-  // Pobieranie badge'a statusu
-  const getStatusBadge = (item) => {
-    const response = parseJSON(item.response_data)
-    if (response && Object.keys(response).length > 0) {
-      return (
-        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-          <CheckCircle size={12} className="mr-1" />
-          Zrealizowane
-        </span>
-      )
-    }
+  const renderResponsibleConstructions = (transport) => {
+    if (!transport.responsibleConstructions || !transport.responsibleConstructions.length) return null;
+    
     return (
-      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-        <Clock size={12} className="mr-1" />
-        Oczekuje
-      </span>
-    )
-  }
+      <div className="mt-3">
+        <div className="font-medium text-sm text-green-700 mb-2 flex items-center">
+          <Building size={14} className="mr-1" />
+          Odpowiedzialne budowy:
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {transport.responsibleConstructions.map(construction => (
+            <div key={construction.id} className="bg-green-50 text-green-700 px-2 py-1 rounded-md text-xs flex items-center border border-green-200">
+              <Building size={12} className="mr-1" />
+              {construction.name}
+              <span className="ml-1 text-green-600 font-medium">({construction.mpk})</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
-  // Pobieranie badge'a typu transportu
-  const getTransportTypeBadge = (item) => {
-    const badges = []
-    const response = parseJSON(item.response_data)
-    const merged = parseJSON(item.merged_transports)
-    
-    if (item.is_merged || merged?.isMerged || response?.isMerged) {
-      badges.push(
-        <span key="merged" className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 mr-1">
-          <Users size={12} className="mr-1" />
-          Łączony
-        </span>
-      )
-    }
-    
-    if (item.is_drums_transport || response?.isDrumsTransport) {
-      badges.push(
-        <span key="drums" className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800 mr-1">
-          <Package2 size={12} className="mr-1" />
-          Bębny
-        </span>
-      )
-    }
-    
-    if (item.transport_type === 'express' || response?.transportType === 'express') {
-      badges.push(
-        <span key="express" className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-          <Truck size={12} className="mr-1" />
-          Express
-        </span>
-      )
-    }
-    
-    return badges.length > 0 ? badges : null
-  }
-
-  // Paginacja
+  const indexOfLastItem = currentPage * itemsPerPage
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage
+  const currentItems = filteredArchiwum.slice(indexOfFirstItem, indexOfLastItem)
   const totalPages = Math.ceil(filteredArchiwum.length / itemsPerPage)
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const endIndex = startIndex + itemsPerPage
-  const currentItems = filteredArchiwum.slice(startIndex, endIndex)
 
-  // Renderowanie szczegółów rozszerzonego wiersza
-  const renderExpandedDetails = (item) => {
-    const location = parseJSON(item.location_data)
-    const delivery = parseJSON(item.delivery_data)
-    const response = parseJSON(item.response_data)
-    const goods = parseJSON(item.goods_description)
-    const merged = parseJSON(item.merged_transports)
-    
-    return (
-      <tr>
-        <td colSpan="8" className="px-6 py-4 bg-gray-50">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            
-            {/* Dane zamówienia */}
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
-              <h4 className="font-semibold text-gray-800 mb-3 flex items-center">
-                <FileText size={16} className="mr-2 text-blue-600" />
-                Dane zamówienia
-              </h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Numer zamówienia:</span>
-                  <span className="font-medium">{item.order_number || 'Brak'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">MPK:</span>
-                  <span className="font-medium">{item.mpk || 'Brak'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Dokumenty:</span>
-                  <span className="font-medium">{item.documents || 'Brak'}</span>
-                </div>
-              </div>
-            </div>
+  const paginate = (pageNumber) => setCurrentPage(pageNumber)
+  
+  const selectStyles = "block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+  const inputStyles = "block w-full py-2 pl-3 pr-10 text-base border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
 
-            {/* Dane przewoźnika */}
-            {response && Object.keys(response).length > 0 && (
-              <div className="bg-white p-4 rounded-lg border border-gray-200">
-                <h4 className="font-semibold text-gray-800 mb-3 flex items-center">
-                  <Truck size={16} className="mr-2 text-green-600" />
-                  Dane przewoźnika
-                </h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Kierowca:</span>
-                    <span className="font-medium">
-                      {response.driverInfo?.name || response.driver?.name || 'Nie przypisano'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Telefon:</span>
-                    <span className="font-medium">
-                      {response.driverInfo?.phone || response.driver?.phone || 'Brak'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Numer auta:</span>
-                    <span className="font-medium">
-                      {response.vehicleInfo?.plates || response.vehicle?.plates || 'Brak'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Rodzaj pojazdu:</span>
-                    <span className="font-medium">
-                      {response.vehicleInfo?.model || response.vehicle?.model || response.vehicleType || item.vehicle_type || 'Standard'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Dane o towarze */}
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
-              <h4 className="font-semibold text-gray-800 mb-3 flex items-center">
-                <Package size={16} className="mr-2 text-purple-600" />
-                Dane o towarze
-              </h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Rodzaj towaru:</span>
-                  <span className="font-medium">{goods?.type || 'Standard'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Opakowania/Towar:</span>
-                  <span className="font-medium">{goods?.packaging || 'Brak'}</span>
-                </div>
-                <div>
-                  <span className="text-gray-600">Opis:</span>
-                  <p className="font-medium mt-1">
-                    {typeof goods === 'string' ? goods : (goods?.description || item.goods_description || 'Brak opisu')}
-                  </p>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Waga:</span>
-                  <span className="font-medium">{goods?.weight ? `${goods.weight} kg` : 'Brak'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Wartość towaru:</span>
-                  <span className="font-medium">{formatPrice(goods?.value)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Osoby odpowiedzialne */}
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
-              <h4 className="font-semibold text-gray-800 mb-3 flex items-center">
-                <UserCheck size={16} className="mr-2 text-orange-600" />
-                Osoby odpowiedzialne
-              </h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Dodane przez:</span>
-                  <span className="font-medium">{item.created_by_email || 'Brak'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Osoba odpowiedzialna:</span>
-                  <span className="font-medium">{item.responsible_person || 'Brak'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Numer MPK:</span>
-                  <span className="font-medium">{item.mpk || 'Brak'}</span>
-                </div>
-                <div>
-                  <span className="text-gray-600">Uwagi zamówienia:</span>
-                  <p className="font-medium mt-1">{item.notes || 'Brak uwag'}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Daty */}
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
-              <h4 className="font-semibold text-gray-800 mb-3 flex items-center">
-                <Calendar size={16} className="mr-2 text-red-600" />
-                Daty
-              </h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Data utworzenia:</span>
-                  <span className="font-medium">{formatDateTime(item.created_at)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Data dostawy:</span>
-                  <span className="font-medium">{formatDate(item.delivery_date)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Data zakończenia:</span>
-                  <span className="font-medium">
-                    {item.completed_at ? formatDateTime(item.completed_at) : 'Nie zakończono'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Miejsce załadunku */}
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
-              <h4 className="font-semibold text-gray-800 mb-3 flex items-center">
-                <MapPin size={16} className="mr-2 text-cyan-600" />
-                Miejsce załadunku
-              </h4>
-              <div className="space-y-2 text-sm">
-                <div>
-                  <span className="text-gray-600">Nazwa firmy:</span>
-                  <p className="font-medium">{location?.company || item.location || 'Brak'}</p>
-                </div>
-                <div>
-                  <span className="text-gray-600">Adres:</span>
-                  <p className="font-medium">
-                    {location ? `${location.street || ''}, ${location.postalCode || ''} ${location.city || ''}` : 'Brak adresu'}
-                  </p>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Kontakt:</span>
-                  <span className="font-medium">{item.loading_contact || location?.contact || 'Brak'}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Miejsce rozładunku */}
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
-              <h4 className="font-semibold text-gray-800 mb-3 flex items-center">
-                <Navigation size={16} className="mr-2 text-indigo-600" />
-                Miejsce rozładunku
-              </h4>
-              <div className="space-y-2 text-sm">
-                <div>
-                  <span className="text-gray-600">Nazwa firmy:</span>
-                  <p className="font-medium">{delivery?.constructionName || 'Brak'}</p>
-                </div>
-                <div>
-                  <span className="text-gray-600">Adres:</span>
-                  <p className="font-medium">
-                    {delivery ? `${delivery.street || ''}, ${delivery.postalCode || ''} ${delivery.city || ''}` : 'Brak adresu'}
-                  </p>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Kontakt:</span>
-                  <span className="font-medium">{item.unloading_contact || delivery?.contact || 'Brak'}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Informacje o kosztach i dystansie */}
-            {response && Object.keys(response).length > 0 && (
-              <div className="bg-white p-4 rounded-lg border border-gray-200">
-                <h4 className="font-semibold text-gray-800 mb-3 flex items-center">
-                  <DollarSign size={16} className="mr-2 text-green-600" />
-                  Koszty i dystans
-                </h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Cena transportu:</span>
-                    <span className="font-medium text-green-600">
-                      {formatPrice(response.totalPrice || response.deliveryPrice)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Odległość:</span>
-                    <span className="font-medium">
-                      {response.distanceKm || item.distance_km ? `${response.distanceKm || item.distance_km} km` : 'Brak'}
-                    </span>
-                  </div>
-                  {response.priceBreakdown && (
-                    <div>
-                      <span className="text-gray-600">Szczegóły ceny:</span>
-                      <p className="font-medium mt-1 text-xs">{response.priceBreakdown}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Informacje o transporcie łączonym */}
-            {(merged?.isMerged || response?.isMerged) && (
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                <h4 className="font-semibold text-blue-800 mb-3 flex items-center">
-                  <Users size={16} className="mr-2" />
-                  Transport łączony
-                </h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-blue-600">Liczba tras:</span>
-                    <span className="font-medium">
-                      {merged?.transportCount || response?.selectedTransports?.length || 2}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-blue-600">Łączna odległość:</span>
-                    <span className="font-medium">
-                      {merged?.totalDistance || response?.totalDistance ? 
-                        `${merged?.totalDistance || response?.totalDistance} km` : 'Brak'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-blue-600">Data połączenia:</span>
-                    <span className="font-medium">
-                      {formatDateTime(merged?.mergedAt || response?.mergedAt || item.updated_at)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </td>
-      </tr>
-    )
-  }
-
-  // Główny render
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="animate-spin h-12 w-12 text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Ładowanie archiwum spedycji...</p>
-        </div>
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
       </div>
     )
   }
 
   if (error) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
-          <AlertCircle className="h-12 w-12 text-red-600 mx-auto mb-4" />
-          <p className="text-red-800 text-center">{error}</p>
-          <button 
-            onClick={fetchArchiwum}
-            className="mt-4 w-full bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors"
-          >
-            Spróbuj ponownie
-          </button>
-        </div>
-      </div>
-    )
+    return <div className="text-red-500 text-center p-4 bg-red-50 rounded-lg">{error}</div>
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <div className="container mx-auto px-4 py-8">
-        {/* Nagłówek */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <div className="flex flex-col md:flex-row justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-800 flex items-center">
-                <Package size={32} className="mr-3 text-blue-600" />
-                Archiwum Spedycji
-              </h1>
-              <p className="text-gray-600 mt-2">
-                Przeglądaj i zarządzaj historią zleceń transportowych
-              </p>
-            </div>
-            <div className="mt-4 md:mt-0 flex gap-3">
-              <button
-                onClick={handleExport}
-                className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
-              >
-                <Download size={20} />
-                Eksportuj do Excel
-              </button>
-              <button
-                onClick={fetchArchiwum}
-                className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <Loader2 size={20} />
-                Odśwież
-              </button>
-            </div>
-          </div>
-        </div>
+    <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          Archiwum Spedycji
+        </h1>
+        <p className="text-gray-600">
+          Przeglądaj i filtruj zrealizowane zlecenia spedycyjne z pełnymi informacjami
+        </p>
+      </div>
 
-        {/* Statystyki */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-          <div className="bg-white rounded-lg p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-600 text-sm">Wszystkie</p>
-                <p className="text-2xl font-bold text-gray-800">{stats.total}</p>
-              </div>
-              <Package className="text-blue-600" size={24} />
-            </div>
-          </div>
-          <div className="bg-white rounded-lg p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-600 text-sm">Zrealizowane</p>
-                <p className="text-2xl font-bold text-green-600">{stats.completed}</p>
-              </div>
-              <CheckCircle className="text-green-600" size={24} />
-            </div>
-          </div>
-          <div className="bg-white rounded-lg p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-600 text-sm">Oczekujące</p>
-                <p className="text-2xl font-bold text-yellow-600">{stats.pending}</p>
-              </div>
-              <Clock className="text-yellow-600" size={24} />
-            </div>
-          </div>
-          <div className="bg-white rounded-lg p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-600 text-sm">Łączny dystans</p>
-                <p className="text-2xl font-bold text-purple-600">{stats.totalDistance} km</p>
-              </div>
-              <Navigation className="text-purple-600" size={24} />
-            </div>
-          </div>
-          <div className="bg-white rounded-lg p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-600 text-sm">Łączny koszt</p>
-                <p className="text-xl font-bold text-indigo-600">{stats.totalCost} PLN</p>
-              </div>
-              <DollarSign className="text-indigo-600" size={24} />
-            </div>
-          </div>
-          <div className="bg-white rounded-lg p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-600 text-sm">Średni koszt</p>
-                <p className="text-xl font-bold text-cyan-600">{stats.avgCost} PLN</p>
-              </div>
-              <CreditCard className="text-cyan-600" size={24} />
-            </div>
-          </div>
-        </div>
-
-        {/* Sekcja wyszukiwania i filtrów */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          {/* Pasek wyszukiwania */}
-          <div className="flex flex-col lg:flex-row gap-4 mb-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Szukaj po numerze zamówienia, MPK, mieście, kierowcy..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+      <div className="mb-8 bg-white rounded-lg shadow p-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-4">
+          <div>
+            <label htmlFor="yearSelect" className="block text-sm font-medium text-gray-700 mb-1">
+              Rok
+            </label>
+            <select
+              id="yearSelect"
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+              className={selectStyles}
             >
-              <Filter size={20} />
-              {showFilters ? 'Ukryj filtry' : 'Pokaż filtry'}
-            </button>
-            {(searchQuery || Object.values(filters).some(v => v && v !== 'all')) && (
-              <button
-                onClick={resetFilters}
-                className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
+              {years.map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+          </div>
+          
+          <div>
+            <label htmlFor="monthSelect" className="block text-sm font-medium text-gray-700 mb-1">
+              Miesiąc
+            </label>
+            <select
+              id="monthSelect"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className={selectStyles}
+            >
+              {months.map(month => (
+                <option key={month.value} value={month.value}>{month.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="weekSelect" className="block text-sm font-medium text-gray-700 mb-1">
+              Tydzień
+            </label>
+            <select
+              id="weekSelect"
+              value={selectedWeek}
+              onChange={(e) => setSelectedWeek(e.target.value)}
+              className={selectStyles}
+              disabled={selectedMonth === 'all'}
+            >
+              <option value="all">Wszystkie tygodnie</option>
+              {weeksInMonth.map((week, index) => (
+                <option key={index} value={JSON.stringify(week)}>
+                  {week.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          
+          <div>
+            <label htmlFor="marketFilter" className="block text-sm font-medium text-gray-700 mb-1">
+              Rynek
+            </label>
+            <select
+              id="marketFilter"
+              value={marketFilter}
+              onChange={(e) => setMarketFilter(e.target.value)}
+              className={selectStyles}
+            >
+              <option value="">Wszystkie rynki</option>
+              {marketOptions.map((market, index) => (
+                <option key={index} value={market}>{market}</option>
+              ))}
+            </select>
+          </div>
+          
+          <div>
+            <label htmlFor="mpkFilter" className="block text-sm font-medium text-gray-700 mb-1">
+              MPK
+            </label>
+            <div className="relative">
+              <input
+                id="mpkFilter"
+                type="text"
+                value={mpkFilter}
+                onChange={(e) => setMpkFilter(e.target.value)}
+                placeholder="Filtruj po MPK"
+                className={inputStyles}
+                list="mpk-options"
+              />
+              <datalist id="mpk-options">
+                {mpkOptions.map((mpk, index) => (
+                  <option key={index} value={mpk} />
+                ))}
+              </datalist>
+              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <Search size={18} className="text-gray-400" />
+              </div>
+            </div>
+          </div>
+          
+          <div>
+            <label htmlFor="orderNumberFilter" className="block text-sm font-medium text-gray-700 mb-1">
+              Nr zamówienia
+            </label>
+            <div className="relative">
+              <input
+                id="orderNumberFilter"
+                type="text"
+                value={orderNumberFilter}
+                onChange={(e) => setOrderNumberFilter(e.target.value)}
+                placeholder="Filtruj po numerze"
+                className={inputStyles}
+              />
+              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <Search size={18} className="text-gray-400" />
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex flex-col justify-end">
+            <label htmlFor="exportFormat" className="block text-sm font-medium text-gray-700 mb-1">
+              Format
+            </label>
+            <div className="flex space-x-2">
+              <select
+                id="exportFormat"
+                value={exportFormat}
+                onChange={(e) => setExportFormat(e.target.value)}
+                className={`${selectStyles} flex-grow`}
               >
-                <XCircle size={20} />
-                Wyczyść filtry
+                <option value="xlsx">Excel (XLSX)</option>
+                <option value="csv">CSV</option>
+              </select>
+              <button
+                onClick={exportData}
+                disabled={filteredArchiwum.length === 0}
+                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
+                title="Eksportuj dane"
+              >
+                <Download size={18} className="mr-1" />
+                Eksportuj
               </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {deleteStatus && (
+        <div className={`mb-4 p-4 rounded-lg ${
+          deleteStatus.type === 'success' ? 'bg-green-100 text-green-800' : 
+          deleteStatus.type === 'error' ? 'bg-red-100 text-red-800' :
+          'bg-blue-100 text-blue-800'
+        }`}>
+          {deleteStatus.message}
+        </div>
+      )}
+
+      <div className="bg-white rounded-lg shadow">
+        {currentItems.length > 0 ? (
+          <div className="divide-y divide-gray-200">
+            {currentItems.map((transport) => {
+              const dateChanged = isDeliveryDateChanged(transport);
+              const displayDate = getActualDeliveryDate(transport);
+              const responsibleInfo = getResponsibleInfo(transport);
+              const currentMPK = getCurrentMPK(transport);
+              
+              return (
+                <div key={transport.id} className="p-6 hover:bg-gray-50 transition-colors">
+                  <div 
+                    onClick={() => setExpandedRowId(expandedRowId === transport.id ? null : transport.id)}
+                    className="flex justify-between items-start cursor-pointer"
+                  >
+                    <div className="flex-1">
+                      <div className="mb-3">
+                        <h3 className="text-xl font-bold text-gray-900 flex items-center mb-2">
+                          <span className="flex items-center">
+                            {getLoadingCity(transport).toUpperCase()}
+                            <span className="ml-2 text-sm font-medium text-gray-600">
+                              ({getLoadingCompanyName(transport)})
+                            </span>
+                          </span>
+                          <ArrowRight size={20} className="mx-3 text-gray-500" /> 
+                          <span className="flex items-center">
+                            {getDeliveryCity(transport).toUpperCase()}
+                            <span className="ml-2 text-sm font-medium text-gray-600">
+                              ({getUnloadingCompanyName(transport)})
+                            </span>
+                          </span>
+                        </h3>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center">
+                          <Hash size={16} className="mr-2 text-blue-600" />
+                          <div>
+                            <span className="text-xs font-medium text-blue-700 block">Nr zamówienia</span>
+                            <span className="font-semibold text-gray-900">{transport.orderNumber || '-'}</span>
+                          </div>
+                        </div>
+                        
+                        <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 flex items-center">
+                          <FileText size={16} className="mr-2 text-purple-600" />
+                          <div>
+                            <span className="text-xs font-medium text-purple-700 block">MPK</span>
+                            <span className="font-semibold text-gray-900">{currentMPK}</span>
+                          </div>
+                        </div>
+                        
+                        <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 flex items-center">
+                          {responsibleInfo.type === 'construction' ? (
+                            <Building size={16} className="mr-2 text-orange-600" />
+                          ) : (
+                            <User size={16} className="mr-2 text-orange-600" />
+                          )}
+                          <div>
+                            <span className="text-xs font-medium text-orange-700 block">
+                              {responsibleInfo.type === 'construction' ? 'Budowa' : 'Odpowiedzialny'}
+                            </span>
+                            <span className="font-semibold text-gray-900 text-sm">{responsibleInfo.name}</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {transport.responsibleConstructions && transport.responsibleConstructions.length > 1 && (
+                        <div className="mt-3">
+                          {renderResponsibleConstructions(transport)}
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center space-x-3 ml-6">
+                      <button 
+                        className="p-2 rounded-full hover:bg-gray-200 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {expandedRowId === transport.id ? (
+                          <ChevronUp size={24} className="text-gray-600" />
+                        ) : (
+                          <ChevronDown size={24} className="text-gray-600" />
+                        )}
+                      </button>
+                      
+                      {isAdmin && (
+                        <button 
+                          type="button"
+                          className="px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteTransport(transport.id);
+                          }}
+                        >
+                          Usuń
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {expandedRowId === transport.id && (
+                    <div className="mt-8 border-t border-gray-200 pt-6">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                        <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-5 rounded-xl shadow-sm border border-blue-200">
+                          <h4 className="font-bold text-blue-700 mb-4 pb-2 border-b border-blue-300 flex items-center text-lg">
+                            <FileText size={20} className="mr-2" />
+                            Dane zamówienia
+                          </h4>
+                          <div className="space-y-3 text-sm">
+                            <div>
+                              <span className="font-medium text-gray-700">Numer zamówienia:</span>
+                              <div className="font-semibold text-gray-900">{transport.orderNumber || '-'}</div>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-700">MPK:</span>
+                              <div className="font-semibold text-gray-900">{currentMPK}</div>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-700">Dokumenty:</span>
+                              <div className="font-semibold text-gray-900">{transport.documents}</div>
+                            </div>
+                            {transport.clientName && (
+                              <div>
+                                <span className="font-medium text-gray-700">Nazwa klienta:</span>
+                                <div className="font-semibold text-gray-900">{transport.clientName}</div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-5 rounded-xl shadow-sm border border-purple-200">
+                          <h4 className="font-bold text-purple-700 mb-4 pb-2 border-b border-purple-300 flex items-center text-lg">
+                            <Truck size={20} className="mr-2" />
+                            Dane przewoźnika
+                          </h4>
+                          {transport.response && transport.response.driverName ? (
+                            <div className="space-y-3 text-sm">
+                              <div>
+                                <span className="font-medium text-gray-700">Kierowca:</span>
+                                <div className="font-semibold text-gray-900">
+                                  {transport.response.driverName} {transport.response.driverSurname}
+                                </div>
+                              </div>
+                              <div>
+                                <span className="font-medium text-gray-700">Numer auta:</span>
+                                <div className="font-semibold text-gray-900">{transport.response.vehicleNumber}</div>
+                              </div>
+                              <div>
+                                <span className="font-medium text-gray-700">Telefon:</span>
+                                <div className="font-semibold text-blue-600">
+                                  <a href={`tel:${transport.response.driverPhone}`} className="hover:underline">
+                                    {transport.response.driverPhone}
+                                  </a>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-gray-500 italic">
+                              Brak danych o przewoźniku
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="bg-gradient-to-br from-amber-50 to-amber-100 p-5 rounded-xl shadow-sm border border-amber-200">
+                          <h4 className="font-bold text-amber-700 mb-4 pb-2 border-b border-amber-300 flex items-center text-lg">
+                            <ShoppingBag size={20} className="mr-2" />
+                            Dane o towarze
+                          </h4>
+                          {(() => {
+                            const goodsData = getGoodsDataFromTransportOrder(transport);
+                            
+                            if (!goodsData.description && !goodsData.weight) {
+                              return (
+                                <div className="text-sm text-gray-500 italic">
+                                  Brak danych o towarze
+                                </div>
+                              );
+                            }
+                            
+                            return (
+                              <div className="space-y-3 text-sm">
+                                {goodsData.description && (
+                                  <div>
+                                    <span className="font-medium text-gray-700">Rodzaj towaru:</span>
+                                    <div className="font-semibold text-gray-900">{goodsData.description}</div>
+                                  </div>
+                                )}
+                                {goodsData.weight && (
+                                  <div>
+                                    <span className="font-medium text-gray-700">Waga:</span>
+                                    <div className="font-semibold text-gray-900 flex items-center">
+                                      <Weight size={14} className="mr-1" />
+                                      {goodsData.weight}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div className="bg-gradient-to-br from-green-50 to-green-100 p-5 rounded-xl shadow-sm border border-green-200">
+                          <h4 className="font-bold text-green-700 mb-4 pb-2 border-b border-green-300 flex items-center text-lg">
+                            <User size={20} className="mr-2" />
+                            Osoby odpowiedzialne
+                          </h4>
+                          <div className="space-y-3 text-sm">
+                            <div>
+                              <span className="font-medium text-gray-700">Dodane przez:</span>
+                              <div className="font-semibold text-gray-900">{transport.createdBy || 'Nie podano'}</div>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-700">Odpowiedzialny:</span>
+                              <div className="font-semibold text-gray-900 flex items-center">
+                                {responsibleInfo.type === 'construction' ? (
+                                  <Building size={14} className="mr-1 text-green-600" />
+                                ) : (
+                                  <User size={14} className="mr-1 text-green-600" />
+                                )}
+                                {responsibleInfo.name}
+                              </div>
+                              <div className="text-xs text-gray-600 mt-1">
+                                {responsibleInfo.type === 'construction' ? 'Budowa' : 'Osoba'}
+                              </div>
+                            </div>
+                            {transport.responsibleConstructions && transport.responsibleConstructions.length > 0 && (
+                              <div>
+                                <span className="font-medium text-gray-700">Wszystkie budowy:</span>
+                                <div className="mt-1">
+                                  {transport.responsibleConstructions.map(construction => (
+                                    <div key={construction.id} className="bg-green-200 text-green-800 px-2 py-1 rounded text-xs font-medium inline-block mr-1 mb-1">
+                                      {construction.name} ({construction.mpk})
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-5 rounded-xl shadow-sm border border-orange-200">
+                          <h4 className="font-bold text-orange-700 mb-4 pb-2 border-b border-orange-300 flex items-center text-lg">
+                            <Calendar size={20} className="mr-2" />
+                            Daty i terminy
+                          </h4>
+                          <div className="space-y-3 text-sm">
+                            <div>
+                              <span className="font-medium text-gray-700">Data dostawy:</span>
+                              <div className="font-semibold text-gray-900">
+                                {dateChanged ? (
+                                  <div className="space-y-1">
+                                    <div className="text-xs text-gray-500 line-through">
+                                      {formatDate(transport.deliveryDate)}
+                                    </div>
+                                    <div className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs flex items-center">
+                                      <AlertCircle size={12} className="mr-1" />
+                                      {formatDate(transport.response.newDeliveryDate)}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  formatDate(transport.deliveryDate)
+                                )}
+                              </div>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-700">Data utworzenia:</span>
+                              <div className="font-semibold text-gray-900">{formatDate(transport.createdAt)}</div>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-700">Data zakończenia:</span>
+                              <div className="font-semibold text-gray-900">{formatDateTime(transport.completedAt)}</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 p-5 rounded-xl shadow-sm border border-emerald-200">
+                          <h4 className="font-bold text-emerald-700 mb-4 pb-2 border-b border-emerald-300 flex items-center text-lg">
+                            <DollarSign size={20} className="mr-2" />
+                            Informacje finansowe
+                          </h4>
+                          <div className="space-y-3 text-sm">
+                            <div>
+                              <span className="font-medium text-gray-700">Odległość:</span>
+                              <div className="font-semibold text-gray-900">
+                                {transport.distanceKm || transport.response?.distanceKm || 0} km
+                              </div>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-700">Cena transportu:</span>
+                              <div className="font-semibold text-gray-900">
+                                {transport.response?.deliveryPrice ? `${transport.response.deliveryPrice} PLN` : 'Brak danych'}
+                              </div>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-700">Cena za kilometr:</span>
+                              <div className="font-semibold text-gray-900">
+                                {transport.response?.deliveryPrice ? 
+                                  `${calculatePricePerKm(transport.response.deliveryPrice, transport.distanceKm || transport.response?.distanceKm)} PLN/km` : 
+                                  'Brak danych'
+                                }
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                          <h4 className="font-bold text-blue-700 mb-4 pb-3 border-b border-gray-200 flex items-center text-lg">
+                            <MapPin size={20} className="mr-2" />
+                            Miejsce załadunku
+                          </h4>
+                          <div className="space-y-4 text-sm">
+                            <div>
+                              <span className="font-medium text-gray-700">Nazwa firmy:</span>
+                              <div className="font-semibold text-gray-900 text-base">{getLoadingCompanyName(transport)}</div>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-700">Adres:</span>
+                              <div className="font-semibold text-gray-900">{getFullLoadingAddress(transport)}</div>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-700">Kontakt:</span>
+                              <div className="font-semibold text-blue-600">
+                                <a href={`tel:${transport.loadingContact}`} className="hover:underline flex items-center">
+                                  <Phone size={14} className="mr-1" />
+                                  {transport.loadingContact}
+                                </a>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                          <h4 className="font-bold text-green-700 mb-4 pb-3 border-b border-gray-200 flex items-center text-lg">
+                            <MapPin size={20} className="mr-2" />
+                            Miejsce rozładunku
+                          </h4>
+                          <div className="space-y-4 text-sm">
+                            <div>
+                              <span className="font-medium text-gray-700">Nazwa firmy:</span>
+                              <div className="font-semibold text-gray-900 text-base">{getUnloadingCompanyName(transport)}</div>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-700">Adres:</span>
+                              <div className="font-semibold text-gray-900">{formatAddress(transport.delivery)}</div>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-700">Kontakt:</span>
+                              <div className="font-semibold text-blue-600">
+                                <a href={`tel:${transport.unloadingContact}`} className="hover:underline flex items-center">
+                                  <Phone size={14} className="mr-1" />
+                                  {transport.unloadingContact}
+                                </a>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {(transport.notes || transport.response?.adminNotes) && (
+                        <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                          <h4 className="font-bold text-gray-700 mb-3 flex items-center">
+                            <FileText size={18} className="mr-2" />
+                            Uwagi
+                          </h4>
+                          {transport.notes && (
+                            <div className="mb-2">
+                              <span className="font-medium text-gray-700">Uwagi zlecenia:</span>
+                              <p className="text-gray-900 mt-1">{transport.notes}</p>
+                            </div>
+                          )}
+                          {transport.response?.adminNotes && (
+                            <div>
+                              <span className="font-medium text-gray-700">Uwagi przewoźnika:</span>
+                              <p className="text-gray-900 mt-1">{transport.response.adminNotes}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex justify-center space-x-4">
+                        {generateGoogleMapsLink(transport) && (
+                          <a 
+                            href={generateGoogleMapsLink(transport)} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center transition-colors font-medium text-base"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MapPin size={18} className="mr-2" />
+                            Zobacz trasę na Google Maps
+                          </a>
+                        )}
+                        
+                        <button 
+                          type="button"
+                          className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg flex items-center transition-colors font-medium text-base"
+                          onClick={() => generateCMR(transport)}
+                        >
+                          <FileText size={18} className="mr-2" />
+                          Generuj list przewozowy CMR
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="p-12 text-center">
+            <div className="flex flex-col items-center justify-center py-6">
+              <FileText size={48} className="text-gray-400 mb-2" />
+              <p className="text-gray-500">Brak transportów spedycyjnych w wybranym okresie</p>
+            </div>
+          </div>
+        )}
+
+        <div className="border-t border-gray-200 px-6 py-4 bg-gray-50 flex flex-col sm:flex-row justify-between items-center">
+          <div className="text-sm text-gray-700 mb-4 sm:mb-0">
+            <span className="font-medium">Łącznie:</span> {filteredArchiwum.length} transportów
+            {filteredArchiwum.length > 0 && (
+              <>
+                <span className="ml-4 font-medium">Całkowita kwota:</span> {filteredArchiwum.reduce((sum, t) => sum + (t.response?.deliveryPrice || 0), 0).toLocaleString('pl-PL')} PLN
+                <span className="ml-4 font-medium">Średnia cena/km:</span> {(filteredArchiwum.reduce((sum, t) => {
+                  const price = t.response?.deliveryPrice || 0;
+                  const distance = t.response?.distanceKm || t.distanceKm || 0;
+                  return distance > 0 ? sum + (price / distance) : sum;
+                }, 0) / (filteredArchiwum.filter(t => (t.response?.distanceKm || t.distanceKm) > 0).length || 1)).toFixed(2)} PLN/km
+              </>
             )}
           </div>
-
-          {/* Rozwinięte filtry */}
-          {showFilters && (
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 pt-4 border-t">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Data od</label>
-                <input
-                  type="date"
-                  value={filters.dateFrom}
-                  onChange={(e) => setFilters({...filters, dateFrom: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Data do</label>
-                <input
-                  type="date"
-                  value={filters.dateTo}
-                  onChange={(e) => setFilters({...filters, dateTo: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                <select
-                  value={filters.status}
-                  onChange={(e) => setFilters({...filters, status: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="all">Wszystkie</option>
-                  <option value="completed">Zrealizowane</option>
-                  <option value="pending">Oczekujące</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Miasto</label>
-                <input
-                  type="text"
-                  value={filters.city}
-                  onChange={(e) => setFilters({...filters, city: e.target.value})}
-                  placeholder="Wpisz miasto..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Kierowca</label>
-                <input
-                  type="text"
-                  value={filters.driver}
-                  onChange={(e) => setFilters({...filters, driver: e.target.value})}
-                  placeholder="Imię kierowcy..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Osoba odpowiedzialna</label>
-                <input
-                  type="text"
-                  value={filters.responsible}
-                  onChange={(e) => setFilters({...filters, responsible: e.target.value})}
-                  placeholder="Osoba odpowiedzialna..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">MPK</label>
-                <input
-                  type="text"
-                  value={filters.mpk}
-                  onChange={(e) => setFilters({...filters, mpk: e.target.value})}
-                  placeholder="Numer MPK..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nr zamówienia</label>
-                <input
-                  type="text"
-                  value={filters.orderNumber}
-                  onChange={(e) => setFilters({...filters, orderNumber: e.target.value})}
-                  placeholder="Numer zamówienia..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Ma odpowiedź</label>
-                <select
-                  value={filters.hasResponse}
-                  onChange={(e) => setFilters({...filters, hasResponse: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="all">Wszystkie</option>
-                  <option value="yes">Tak</option>
-                  <option value="no">Nie</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Typ transportu</label>
-                <select
-                  value={filters.transportType}
-                  onChange={(e) => setFilters({...filters, transportType: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="all">Wszystkie</option>
-                  <option value="standard">Standard</option>
-                  <option value="merged">Łączone</option>
-                  <option value="drums">Bębny</option>
-                </select>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Tabela z danymi */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          {currentItems.length === 0 ? (
-            <div className="p-12 text-center">
-              <Package className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-              <p className="text-gray-600">Brak zleceń spełniających kryteria wyszukiwania</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Szczegóły
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Trasa
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Nr zamówienia
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Osoba odpowiedzialna
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Dokumenty
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Data dostawy
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Typ
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {currentItems.map((item) => {
-                    const locationInfo = getLocationInfo(item)
-                    const deliveryInfo = getDeliveryInfo(item)
-                    const isExpanded = expandedRows[item.id]
-                    
-                    return (
-                      <React.Fragment key={item.id}>
-                        <tr className="hover:bg-gray-50 transition-colors">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <button
-                              onClick={() => toggleRowExpansion(item.id)}
-                              className="p-1 hover:bg-gray-200 rounded transition-colors"
-                            >
-                              {isExpanded ? 
-                                <ChevronUp size={20} className="text-gray-600" /> : 
-                                <ChevronDown size={20} className="text-gray-600" />
-                              }
-                            </button>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="text-sm">
-                              <div className="font-medium text-gray-900">
-                                {locationInfo.city} ({locationInfo.company})
-                              </div>
-                              <div className="text-gray-500 flex items-center">
-                                <span>→</span>
-                                <span className="ml-2">
-                                  {deliveryInfo.city} ({deliveryInfo.company})
-                                </span>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm">
-                              <div className="font-medium text-gray-900">{item.order_number || 'Brak'}</div>
-                              {item.mpk && (
-                                <div className="text-gray-500 text-xs">MPK: {item.mpk}</div>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">{item.responsible_person || 'Brak'}</div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">{item.documents || 'Brak'}</div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              {formatDate(item.delivery_date)}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {getStatusBadge(item)}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {getTransportTypeBadge(item)}
-                          </td>
-                        </tr>
-                        {isExpanded && renderExpandedDetails(item)}
-                      </React.Fragment>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Paginacja */}
+          
           {totalPages > 1 && (
-            <div className="bg-gray-50 px-6 py-3 flex items-center justify-between border-t border-gray-200">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-700">
-                  Wyświetlanie {startIndex + 1} - {Math.min(endIndex, filteredArchiwum.length)} z {filteredArchiwum.length} wyników
-                </span>
-                <select
-                  value={itemsPerPage}
-                  onChange={(e) => setItemsPerPage(Number(e.target.value))}
-                  className="ml-4 px-3 py-1 border border-gray-300 rounded-md text-sm"
-                >
-                  <option value={10}>10 na stronę</option>
-                  <option value={20}>20 na stronę</option>
-                  <option value={50}>50 na stronę</option>
-                  <option value={100}>100 na stronę</option>
-                </select>
+            <div className="flex justify-center items-center space-x-2">
+              <button
+                onClick={() => paginate(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="p-2 rounded-full text-gray-600 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft size={20} />
+              </button>
+              
+              <div className="text-sm text-gray-700">
+                Strona {currentPage} z {totalPages}
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                  disabled={currentPage === 1}
-                  className="px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 hover:bg-gray-100 transition-colors"
-                >
-                  <ChevronLeft size={20} />
-                </button>
-                {[...Array(Math.min(5, totalPages))].map((_, i) => {
-                  let pageNum
-                  if (totalPages <= 5) {
-                    pageNum = i + 1
-                  } else if (currentPage <= 3) {
-                    pageNum = i + 1
-                  } else if (currentPage >= totalPages - 2) {
-                    pageNum = totalPages - 4 + i
-                  } else {
-                    pageNum = currentPage - 2 + i
-                  }
-                  
-                  if (pageNum < 1 || pageNum > totalPages) return null
-                  
-                  return (
-                    <button
-                      key={pageNum}
-                      onClick={() => setCurrentPage(pageNum)}
-                      className={`px-3 py-1 border rounded-md transition-colors ${
-                        currentPage === pageNum
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'border-gray-300 hover:bg-gray-100'
-                      }`}
-                    >
-                      {pageNum}
-                    </button>
-                  )
-                })}
-                <button
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                  disabled={currentPage === totalPages}
-                  className="px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 hover:bg-gray-100 transition-colors"
-                >
-                  <ChevronRight size={20} />
-                </button>
-              </div>
+              
+              <button
+                onClick={() => paginate(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                className="p-2 rounded-full text-gray-600 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronRight size={20} />
+              </button>
             </div>
           )}
         </div>

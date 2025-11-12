@@ -35,6 +35,10 @@ export default function TransportForm({
   const [selectedSourceTransport, setSelectedSourceTransport] = useState(null)
   const [defaultMagazyn, setDefaultMagazyn] = useState(null)
 
+  // NOWE STANY dla skanowania WZ
+  const [wzBuffer, setWzBuffer] = useState('')
+  const [isAddingWZ, setIsAddingWZ] = useState(false)
+
   // ✅ Funkcja sprawdzająca, czy użytkownik może edytować transport
   const canEditTransport = (transport) => {
     // Albo użytkownik ma uprawnienie calendar.edit,
@@ -43,6 +47,68 @@ export default function TransportForm({
            userRole === 'admin' || 
            transport?.emailZlecajacego === currentUserEmail;
   };
+
+  // FUNKCJE dla skanowania WZ
+  
+  // Funkcja obsługująca Enter w polu WZ (zapobiega automatycznemu submit)
+  const handleWZKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault() // Zablokuj automatyczny submit formularza
+      
+      // Jeśli jest tryb skanowania, dodaj przecinek i przejdź do nowej linii
+      if (isAddingWZ) {
+        const currentValue = wzBuffer.trim()
+        if (currentValue && !currentValue.endsWith(',')) {
+          setWzBuffer(currentValue + ', ')
+        }
+      }
+    }
+  }
+
+  // Funkcja obsługująca zmianę pola WZ
+  const handleWZChange = (e) => {
+    const value = e.target.value
+    
+    if (isAddingWZ) {
+      // W trybie buforowania - tylko aktualizuj lokalny bufor
+      setWzBuffer(value)
+    } else {
+      // W trybie normalnym - aktualizuj przez handleInputChange
+      handleInputChange(e)
+    }
+  }
+
+  // Rozpoczęcie trybu skanowania
+  const startAddingWZ = () => {
+    setIsAddingWZ(true)
+    setWzBuffer(nowyTransport.numerWZ || '')
+  }
+
+  // Zakończenie trybu skanowania i zapis kodów
+  const finishAddingWZ = () => {
+    // Wyczyść kody i sformatuj
+    const cleanedCodes = wzBuffer
+      .split(',')
+      .map(code => code.trim().toUpperCase())
+      .filter(code => code.length > 0)
+      .filter((code, index, arr) => arr.indexOf(code) === index) // usuń duplikaty
+      .join(', ')
+    
+    // Aktualizuj transport
+    setNowyTransport(prev => ({
+      ...prev,
+      numerWZ: cleanedCodes
+    }))
+    
+    setIsAddingWZ(false)
+    setWzBuffer('')
+  }
+
+  // Anulowanie trybu skanowania
+  const cancelAddingWZ = () => {
+    setIsAddingWZ(false)
+    setWzBuffer('')
+  }
 
   useEffect(() => {
     const fetchUserRole = async () => {
@@ -329,7 +395,16 @@ export default function TransportForm({
         </div>
 
         {/* Formularz */}
-        <form onSubmit={edytowanyTransport ? handleUpdateTransport : handleSubmit} className="p-6">
+        <form 
+          onSubmit={edytowanyTransport ? handleUpdateTransport : handleSubmit} 
+          onKeyDown={(e) => {
+            // Zablokuj Enter w całym formularzu - tylko przycisk "Zapisz zmiany" może zapisać
+            if (e.key === 'Enter' && e.target.type !== 'submit') {
+              e.preventDefault()
+            }
+          }}
+          className="p-6"
+        >
           <div className="space-y-6">
             {/* Sekcja łączenia transportów - nowa sekcja */}
             {!edytowanyTransport && (
@@ -560,19 +635,76 @@ export default function TransportForm({
                   </select>
                 </div>
 
+                {/* POLE NUMER WZ ZE SKANOWANIEM */}
                 <div>
                   <label className={labelBaseClass}>
                     Numer WZ
+                    {isAddingWZ && <span className="text-blue-600 text-sm ml-2">(Tryb skanowania - bez auto-zapisu)</span>}
                   </label>
-                  <input
-                    type="text"
-                    name="numerWZ"
-                    value={nowyTransport.numerWZ}
-                    onChange={handleInputChange}
-                    className={inputBaseClass}
-                    placeholder="WZ/XXXXX/YY/XXX/25"
-                    required
-                  />
+                  
+                  {!isAddingWZ ? (
+                    // Tryb normalny
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        name="numerWZ"
+                        value={nowyTransport.numerWZ}
+                        onChange={handleInputChange}
+                        onKeyDown={handleWZKeyDown} // Blokuje Enter
+                        className={inputBaseClass}
+                        placeholder="WZ/XXXXX/YY/XXX/25"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={startAddingWZ}
+                        className="px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors text-sm whitespace-nowrap"
+                      >
+                        📱 Skanuj więcej
+                      </button>
+                    </div>
+                  ) : (
+                    // Tryb skanowania
+                    <div className="space-y-2">
+                      <textarea
+                        value={wzBuffer}
+                        onChange={handleWZChange}
+                        onKeyDown={handleWZKeyDown} // Blokuje Enter (dodaje przecinek zamiast submit)
+                        className={`${inputBaseClass} h-24 font-mono text-sm`}
+                        placeholder="Skanuj kody jeden po drugim...&#10;Enter dodaje przecinek, nie zapisuje!"
+                        autoFocus
+                      />
+                      
+                      <div className="flex gap-2 text-sm">
+                        <button
+                          type="button"
+                          onClick={() => setWzBuffer(prev => prev.trim() + (prev.trim() ? ', ' : ''))}
+                          className="px-2 py-1 bg-gray-500 text-white rounded hover:bg-gray-600"
+                        >
+                          ➕ Przecinek
+                        </button>
+                        <button
+                          type="button"
+                          onClick={finishAddingWZ}
+                          className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 font-medium"
+                        >
+                          ✅ Zapisz kody
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelAddingWZ}
+                          className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600"
+                        >
+                          ❌ Anuluj
+                        </button>
+                      </div>
+                      
+                      <div className="text-xs text-blue-700 bg-blue-100 p-2 rounded">
+                        💡 Skanuj kody jeden po drugim. Enter dodaje przecinek. 
+                        <strong>Kliknij "Zapisz kody" gdy skończysz</strong> - nie będzie auto-zapisu!
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -778,7 +910,7 @@ export default function TransportForm({
                     connectedTransportId: null // Resetujemy również to pole
                   })
                 }}
-                className="flex-1py-3 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
+                className="flex-1 py-3 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
               >
                 Anuluj edycję
               </button>

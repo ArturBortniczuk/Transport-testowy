@@ -55,35 +55,32 @@ export async function POST(request) {
     }
     
     // Sprawdź czy użytkownik ma uprawnienie do wysyłania zlecenia transportowego
-    if (!permissions.spedycja?.canSendOrder && user.role !== 'admin') {
+    const isAdmin = user.is_admin === 1 || user.is_admin === true || user.role === 'admin';
+    const canSendTransportOrder = isAdmin || permissions?.spedycja?.sendOrder === true;
+    
+    if (!canSendTransportOrder) {
       return NextResponse.json({
         success: false,
-        error: 'Brak uprawnień do wysyłania zleceń transportowych'
+        error: 'Brak uprawnień do wysyłania zlecenia transportowego'
       }, { status: 403 });
     }
     
-    // Pobierz dane z body
+    // Pobierz dane z żądania, dodaj obsługę additionalPlaces
     const { 
       spedycjaId, 
-      emailOdbiorcy, 
       towar, 
       terminPlatnosci, 
       waga, 
       dataZaladunku, 
-      dataRozladunku 
+      dataRozladunku, 
+      emailOdbiorcy,
+      additionalPlaces = [] // Nowe pole
     } = await request.json();
     
-    if (!spedycjaId || !emailOdbiorcy) {
-      return NextResponse.json({
-        success: false,
-        error: 'Brak wymaganych danych (spedycjaId, emailOdbiorcy)'
-      }, { status: 400 });
-    }
-    
     // Pobierz dane spedycji
-    let spedycja = await db('spedycje')
+    const spedycja = await db('spedycje')
       .where('id', spedycjaId)
-      .select('*')
+      .select('*')  // Pobieramy wszystkie pola
       .first();
     
     if (!spedycja) {
@@ -93,9 +90,10 @@ export async function POST(request) {
       }, { status: 404 });
     }
     
-    // Parsuj dane dotyczące adresów
-    let producerAddress = null;
-    let delivery = null;
+    // Parsowanie danych JSON
+    let producerAddress = {};
+    let delivery = {};
+    let responseData = {};
     
     try {
       if (spedycja.location_data) {
@@ -104,128 +102,63 @@ export async function POST(request) {
       if (spedycja.delivery_data) {
         delivery = JSON.parse(spedycja.delivery_data);
       }
-    } catch (error) {
-      console.error('Błąd parsowania adresów:', error);
-    }
-    
-    // Parsuj dane JSON
-    let responseData = {};
-    let mergedTransports = null;
-    try {
       if (spedycja.response_data) {
         responseData = JSON.parse(spedycja.response_data);
-      }
-      if (spedycja.merged_transports) {
-        mergedTransports = JSON.parse(spedycja.merged_transports);
       }
     } catch (error) {
       console.error('Błąd parsowania danych JSON:', error);
     }
-
-    // NOWE: Sprawdź czy to transport dodatkowy - jeśli tak, pobierz dane głównego
-    if (mergedTransports && mergedTransports.isSecondary && mergedTransports.mainTransportId) {
-      console.log('Transport dodatkowy - pobieranie danych głównego transportu:', mergedTransports.mainTransportId);
-      
-      try {
-        // Pobierz dane głównego transportu
-        const mainTransport = await db('spedycje')
-          .where('id', mergedTransports.mainTransportId)
-          .select('*')
-          .first();
-        
-        if (!mainTransport) {
-          return NextResponse.json({
-            success: false,
-            error: 'Nie znaleziono głównego transportu dla tego zlecenia'
-          }, { status: 404 });
+    
+    // Jeśli są dodatkowe miejsca, pobierz dane dla nich
+    const additionalPlacesData = [];
+    
+    if (additionalPlaces && additionalPlaces.length > 0) {
+      for (const place of additionalPlaces) {
+        // Pobierz dane spedycji dla dodatkowego miejsca
+        if (place.transportId) {
+          try {
+            const additionalSpedycja = await db('spedycje')
+              .where('id', place.transportId)
+              .first();
+              
+            if (additionalSpedycja) {
+              // Parsuj dane JSON
+              let additionalProducerAddress = {};
+              let additionalDelivery = {};
+              
+              try {
+                if (additionalSpedycja.location_data) {
+                  additionalProducerAddress = JSON.parse(additionalSpedycja.location_data);
+                }
+                if (additionalSpedycja.delivery_data) {
+                  additionalDelivery = JSON.parse(additionalSpedycja.delivery_data);
+                }
+              } catch (error) {
+                console.error('Błąd parsowania danych JSON dla dodatkowego miejsca:', error);
+              }
+              
+              // Uzupełnij dane miejsca
+              additionalPlacesData.push({
+                type: place.type,
+                transportId: place.transportId,
+                orderNumber: additionalSpedycja.order_number || `${additionalSpedycja.id}`,
+                location: additionalSpedycja.location,
+                producerAddress: additionalProducerAddress,
+                delivery: additionalDelivery,
+                loadingContact: additionalSpedycja.loading_contact,
+                unloadingContact: additionalSpedycja.unloading_contact,
+                route: place.route
+              });
+            }
+          } catch (error) {
+            console.error(`Błąd pobierania danych dla dodatkowego miejsca ID=${place.transportId}:`, error);
+          }
+        } else {
+          // Jeśli nie ma transportId, dodaj miejsce bez dodatkowych danych
+          additionalPlacesData.push(place);
         }
-        
-        // Zastąp dane obecnego transportu danymi głównego
-        spedycja = mainTransport;
-        
-        // Parsuj dane głównego transportu
-        responseData = {};
-        mergedTransports = null;
-        
-        if (mainTransport.response_data) {
-          responseData = JSON.parse(mainTransport.response_data);
-        }
-        if (mainTransport.merged_transports) {
-          mergedTransports = JSON.parse(mainTransport.merged_transports);
-        }
-        
-        // Parsuj też adresy głównego transportu
-        if (mainTransport.location_data) {
-          producerAddress = JSON.parse(mainTransport.location_data);
-        }
-        if (mainTransport.delivery_data) {
-          delivery = JSON.parse(mainTransport.delivery_data);
-        }
-        
-        console.log('Użyto danych głównego transportu:', mainTransport.id);
-      } catch (error) {
-        console.error('Błąd pobierania głównego transportu:', error);
-        return NextResponse.json({
-          success: false,
-          error: 'Błąd pobierania danych głównego transportu: ' + error.message
-        }, { status: 500 });
       }
     }
-    
-    // NOWE: Pobierz dane o połączonych transportach z routeSequence
-    let allConnectedTransports = [];
-    if (responseData.isMerged && responseData.routeSequence && Array.isArray(responseData.routeSequence)) {
-      console.log('Transport połączony - przetwarzanie routeSequence');
-      
-      // Wyciągnij unikalne transporty z routeSequence
-      const uniqueTransports = new Map();
-      
-      responseData.routeSequence.forEach(point => {
-        if (point.transport && point.transportId) {
-          const transportId = point.transportId;
-          
-          if (!uniqueTransports.has(transportId)) {
-            const transport = point.transport;
-            
-            // Przygotuj dane transportu
-            uniqueTransports.set(transportId, {
-              id: transport.id,
-              orderNumber: transport.orderNumber || transport.order_number,
-              mpk: transport.mpk,
-              documents: transport.documents,
-              clientName: transport.clientName || transport.client_name,
-              responsiblePerson: transport.responsiblePerson || transport.responsible_person,
-              location: transport.location,
-              delivery_data: transport.delivery, // Już przeparsowane w routeSequence
-              notes: transport.notes,
-              loading_contact: transport.loadingContact || transport.loading_contact,
-              unloading_contact: transport.unloadingContact || transport.unloading_contact,
-              delivery_date: transport.delivery_date || transport.deliveryDate,
-              distance_km: transport.distance_km || transport.distanceKm
-            });
-          }
-        }
-      });
-      
-      allConnectedTransports = Array.from(uniqueTransports.values());
-      console.log('Wyciągnięte transporty z routeSequence:', allConnectedTransports.length);
-      console.log('Lista transportów:', allConnectedTransports.map(t => `ID: ${t.id}, Klient: ${t.clientName}, MPK: ${t.mpk}`));
-    }
-    
-    // Debug - sprawdź czy mamy dane o połączonych transportach
-    console.log('=== DEBUG PRZED WYSYŁANIEM EMAIL ===');
-    console.log('responseData.isMerged:', responseData.isMerged);
-    console.log('Liczba allConnectedTransports:', allConnectedTransports.length);
-    if (allConnectedTransports.length > 0) {
-      console.log('Klienci z połączonych transportów:');
-      allConnectedTransports.forEach((transport, index) => {
-        console.log(`${index + 1}. ID: ${transport.id}, Klient: ${transport.clientName}, MPK: ${transport.mpk}, Dokumenty: ${transport.documents}`);
-      });
-    }
-    console.log('===============================');
-    
-    // Sprawdź czy transport jest połączony
-    const isMerged = responseData.isMerged || false;
     
     // Tworzenie HTML zamówienia
     const htmlContent = generateTransportOrderHTML({
@@ -233,15 +166,14 @@ export async function POST(request) {
       producerAddress,
       delivery,
       responseData,
-      mergedTransports,
-      allConnectedTransports, // NOWE: Przekaż dane o wszystkich połączonych transportach
       user,
-      orderData: {
+      additionalData: {
         towar,
         terminPlatnosci,
         waga,
         dataZaladunku,
-        dataRozladunku
+        dataRozladunku,
+        additionalPlaces: additionalPlacesData
       }
     });
     
@@ -251,29 +183,21 @@ export async function POST(request) {
       port: parseInt(process.env.SMTP_PORT || '465'),
       secure: process.env.SMTP_SECURE === 'true',
       auth: {
-        user: "logistyka@grupaeltron.pl",
+        user: "logistyka@grupaeltron.pl", // Hardcoded - zawsze ten sam adres
         pass: process.env.SMTP_PASSWORD
       }
     });
-    
-    // Przygotuj tytuł e-maila
-    const emailTitle = `Zlecenie transportowe nr ${spedycja.order_number}`;
     
     // Wysyłanie maila
     const mailOptions = {
       from: `"System Transportowy" <logistyka@grupaeltron.pl>`,
       to: emailOdbiorcy,
-      cc: user.email,
-      subject: emailTitle,
+      cc: user.email, // Opcjonalnie dodaj użytkownika inicjującego wysyłkę w kopii
+      subject: `Zlecenie transportowe nr ${spedycja.order_number || spedycja.id}`,
       html: htmlContent
     };
     
     const info = await transporter.sendMail(mailOptions);
-    
-    // POPRAWIONE OBLICZANIE LICZBY TRANSPORTÓW
-    const transportCount = allConnectedTransports && allConnectedTransports.length > 0 
-      ? allConnectedTransports.length  // Użyj rzeczywistej liczby pobranych transportów
-      : 1;
     
     // Zapisz informacje o wysłanym zleceniu
     await db('spedycje')
@@ -289,17 +213,18 @@ export async function POST(request) {
           waga,
           dataZaladunku,
           dataRozladunku,
-          isMerged,
-          mergedTransportsCount: transportCount - 1 // Bez głównego transportu
+          additionalPlaces: additionalPlacesData.map(place => ({
+            type: place.type,
+            transportId: place.transportId,
+            orderNumber: place.orderNumber,
+            route: place.route
+          }))
         })
       });
     
     return NextResponse.json({
       success: true,
-      messageId: info.messageId,
-      message: isMerged 
-        ? `Wysłano zlecenie dla transportu połączonego (${transportCount} tras)`
-        : 'Wysłano zlecenie transportowe'
+      messageId: info.messageId
     });
   } catch (error) {
     console.error('Error sending transport order:', error);
@@ -310,12 +235,12 @@ export async function POST(request) {
   }
 }
 
-// FUNKCJA generująca HTML zamówienia (POPRAWIONA - używa dynamicznie pobranych danych)
-function generateTransportOrderHTML({ spedycja, producerAddress, delivery, responseData, mergedTransports, allConnectedTransports, user, orderData }) {
-  const { towar, terminPlatnosci, waga, dataZaladunku, dataRozladunku } = orderData;
+// Funkcja generująca HTML zamówienia
+function generateTransportOrderHTML({ spedycja, producerAddress, delivery, responseData, user, additionalData }) {
+  const { towar, terminPlatnosci, waga, dataZaladunku, dataRozladunku, additionalPlaces = [] } = additionalData;
   
   const formatDate = (dateString) => {
-    if (!dateString) return 'Nie podano';
+    if (!dateString) return '';
     const date = new Date(dateString);
     return date.toLocaleDateString('pl-PL', {
       year: 'numeric',
@@ -326,309 +251,124 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
     });
   };
   
-  const formatPrice = (price) => {
-    if (!price || price === 0) return 'Do ustalenia';
-    return `${parseFloat(price).toFixed(2)} PLN`;
-  };
-  
-  // Funkcja do formatowania adresu w ładnych linijkach
-  const formatAddressNice = (address, pinLocation = null) => {
+  const formatAddress = (address) => {
     if (!address) return 'Brak danych';
-    
-    let formattedLines = [];
-    
-    // Linia 1: Miejscowość, kod pocztowy
-    if (address.city || address.postalCode) {
-      formattedLines.push(`${address.city || ''}, ${address.postalCode || ''}`.replace(/^,\s*|,\s*$/, ''));
-    }
-    
-    // Linia 2: Ulica i numer budynku
-    if (address.street) {
-      formattedLines.push(address.street);
-    }
-    
-    // Linia 3: Pineska (jeśli jest)
-    if (pinLocation) {
-      formattedLines.push(`Pineska: ${pinLocation}`);
-    }
-    
-    return formattedLines.join('<br>');
-  };
-
-  // POPRAWIONA FUNKCJA do zbierania wszystkich numerów zleceń
-  const getAllOrderNumbers = () => {
-    const orderNumbers = [spedycja.order_number || spedycja.id];
-    
-    // Użyj dynamicznie pobranych danych o połączonych transportach
-    if (allConnectedTransports && Array.isArray(allConnectedTransports)) {
-      allConnectedTransports.forEach(transport => {
-        const orderNum = transport.orderNumber || transport.id;
-        if (orderNum && !orderNumbers.includes(orderNum)) {
-          orderNumbers.push(orderNum);
-        }
-      });
-    }
-    
-    return orderNumbers.filter(Boolean);
+    return `${address.city || ''}, ${address.postalCode || ''}, ${address.street || ''}`;
   };
   
-  // POPRAWIONA FUNKCJA do zbierania wszystkich MPK
-  const getAllMPKs = () => {
-    const mpks = [];
-    
-    // Dodaj MPK głównego transportu
-    if (spedycja.mpk) {
-      mpks.push(spedycja.mpk);
+  const getLoadingLocation = () => {
+    if (spedycja.location === 'Odbiory własne' && producerAddress) {
+      return formatAddress(producerAddress);
+    } else if (spedycja.location === 'Magazyn Białystok') {
+      return 'Grupa Eltron Sp z o.o, ul. Wysockiego 69B, 15-169 Białystok';
+    } else if (spedycja.location === 'Magazyn Zielonka') {
+      return 'Grupa Eltron Sp z o.o, ul. Krótka 2, 05-220 Zielonka';
     }
-    
-    // Użyj dynamicznie pobranych danych o połączonych transportach
-    if (allConnectedTransports && Array.isArray(allConnectedTransports)) {
-      allConnectedTransports.forEach(transport => {
-        if (transport.mpk && !mpks.includes(transport.mpk)) {
-          mpks.push(transport.mpk);
-        }
-      });
-    }
-    
-    return mpks.filter(Boolean);
+    return spedycja.location || 'Brak danych';
   };
   
-  // POPRAWIONA FUNKCJA do zbierania wszystkich dokumentów
-  const getAllDocuments = () => {
-    const documents = [];
-    
-    // Dodaj dokumenty głównego transportu
-    if (spedycja.documents) {
-      documents.push(spedycja.documents);
-    }
-    
-    // Użyj dynamicznie pobranych danych o połączonych transportach
-    if (allConnectedTransports && Array.isArray(allConnectedTransports)) {
-      allConnectedTransports.forEach(transport => {
-        if (transport.documents && !documents.includes(transport.documents)) {
-          documents.push(transport.documents);
-        }
-      });
-    }
-    
-    return documents.filter(Boolean);
-  };
-
-  // POPRAWIONA FUNKCJA do zbierania wszystkich klientów
-  const getAllClients = () => {
-    const clients = [];
-    
-    // Dodaj klienta głównego transportu
-    if (spedycja.client_name) {
-      clients.push({
-        name: spedycja.client_name,
-        mpk: spedycja.mpk || '',
-        orderNumber: spedycja.order_number || spedycja.id
-      });
-    }
-    
-    // Użyj dynamicznie pobranych danych o połączonych transportach
-    if (allConnectedTransports && Array.isArray(allConnectedTransports)) {
-      allConnectedTransports.forEach(transport => {
-        if (transport.clientName) {
-          if (!clients.some(c => c.name === transport.clientName)) {
-            clients.push({
-              name: transport.clientName,
-              mpk: transport.mpk || '',
-              orderNumber: transport.orderNumber || transport.id
-            });
-          }
-        }
-      });
-    }
-    
-    return clients.filter(c => c.name);
-  };
-
-  // POPRAWIONA FUNKCJA do obliczania całkowitej ceny
-  const getTotalPrice = () => {
-    if (responseData) {
-      // Sprawdź różne pola gdzie może być cena
-      if (responseData.totalDeliveryPrice && responseData.totalDeliveryPrice > 0) {
-        return responseData.totalDeliveryPrice;
-      }
-      if (responseData.deliveryPrice && responseData.deliveryPrice > 0) {
-        return responseData.deliveryPrice;
-      }
-    }
-    
-    // Sprawdź w merged_transports
-    if (mergedTransports && mergedTransports.totalMergedCost && mergedTransports.totalMergedCost > 0) {
-      return mergedTransports.totalMergedCost;
-    }
-    
-    return 0;
+  // Formatowanie ceny z dopiskiem "Netto"
+  const formatPrice = (price) => {
+    if (!price) return 'Nie podano';
+    return `${price} PLN Netto`;
   };
   
-  // POPRAWIONA FUNKCJA do obliczania całkowitej odległości
-  const getTotalDistance = () => {
-    // Sprawdź response_data dla rzeczywistej odległości trasy
-    if (responseData) {
-      if (responseData.realRouteDistance && responseData.realRouteDistance > 0) {
-        return responseData.realRouteDistance;
-      }
-      if (responseData.totalDistance && responseData.totalDistance > 0) {
-        return responseData.totalDistance;
-      }
-      if (responseData.distance && responseData.distance > 0) {
-        return responseData.distance;
-      }
+  // Generowanie sekcji dla dodatkowych miejsc
+  const generateAdditionalPlacesHTML = () => {
+    if (!additionalPlaces || additionalPlaces.length === 0) {
+      return '';
     }
     
-    // Sprawdź w merged_transports
-    if (mergedTransports && mergedTransports.totalDistance && mergedTransports.totalDistance > 0) {
-      return mergedTransports.totalDistance;
-    }
+    // Pogrupuj miejsca według typu
+    const loadingPlaces = additionalPlaces.filter(place => place.type === 'załadunek');
+    const unloadingPlaces = additionalPlaces.filter(place => place.type === 'rozładunek');
     
-    // Fallback - suma odległości podstawowych z dynamicznie pobranych danych
-    let totalDistance = spedycja.distance_km || 0;
-    if (allConnectedTransports && Array.isArray(allConnectedTransports)) {
-      allConnectedTransports.forEach(transport => {
-        totalDistance += transport.distance_km || 0;
-      });
-    }
+    let html = '';
     
-    return totalDistance || 'Do ustalenia';
-  };
-  
-  // POPRAWIONA FUNKCJA do generowania sekwencji trasy
-  const generateRouteSequence = () => {
-    const sequence = [];
-    
-    // Sprawdź czy mamy route points z response_data
-    if (responseData && responseData.routeSequence && Array.isArray(responseData.routeSequence)) {
-      responseData.routeSequence.forEach((point, index) => {
-        // Pobierz dane transportu dla tego punktu
-        const transport = allConnectedTransports.find(t => t.id === point.transportId);
+    // Generuj sekcje dla dodatkowych miejsc załadunku
+    if (loadingPlaces.length > 0) {
+      loadingPlaces.forEach((place, index) => {
+        html += `
+        <div class="section">
+          <h2>Dodatkowe miejsce załadunku ${index + 1}</h2>
+          <table class="info-table">
+            <tr>
+              <th>Nr zlecenia:</th>
+              <td>${place.orderNumber || ''} (${place.route || ''})</td>
+            </tr>
+        `;
         
-        // Ustal nazwę firmy i kontakt
-        let companyName = 'Nie podano firmy';
-        let contact = 'Brak kontaktu';
-        let mpk = '';
-        let orderNumber = '';
+        let address = 'Brak danych';
         
-        if (point.type === 'loading') {
-          // Punkt załadunku
-          if (point.company) {
-            companyName = point.company;
-          } else {
-            companyName = 'Grupa Eltron Sp. z o.o.';
-          }
-          
-          if (transport) {
-            contact = transport.loading_contact || 'Brak kontaktu';
-            mpk = transport.mpk || '';
-            orderNumber = transport.orderNumber || '';
-          }
-        } else {
-          // Punkt rozładunku
-          if (transport) {
-            companyName = transport.clientName || 'Nie podano firmy';
-            contact = transport.unloading_contact || 'Brak kontaktu';
-            mpk = transport.mpk || '';
-            orderNumber = transport.orderNumber || '';
-          }
+        if (place.location === 'Odbiory własne' && place.producerAddress) {
+          address = formatAddress(place.producerAddress);
+        } else if (place.location === 'Magazyn Białystok') {
+          address = 'Magazyn Białystok';
+        } else if (place.location === 'Magazyn Zielonka') {
+          address = 'Magazyn Zielonka';
+        } else if (typeof place.address === 'object') {
+          address = formatAddress(place.address);
+        } else if (typeof place.address === 'string') {
+          address = place.address;
         }
         
-        sequence.push({
-          type: point.type === 'loading' ? 'ZAŁADUNEK' : 'ROZŁADUNEK',
-          companyName: companyName,
-          address: point.address || 'Brak adresu',
-          contact: contact,
-          mpk: mpk,
-          orderNumber: orderNumber
-        });
+        html += `
+            <tr>
+              <th>Miejsce załadunku:</th>
+              <td>${address}</td>
+            </tr>
+            <tr>
+              <th>Kontakt do załadunku:</th>
+              <td>${place.loadingContact || place.contact || 'Nie podano'}</td>
+            </tr>
+          </table>
+        </div>
+        `;
       });
-      return sequence;
     }
     
-    // Fallback - jeśli nie ma routeSequence, stwórz podstawową trasę
-    let loadingAddress = 'Nie podano adresu';
-    let loadingCompany = 'Grupa Eltron Sp. z o.o.';
-    
-    if (producerAddress) {
-      loadingAddress = `${producerAddress.city || ''}, ${producerAddress.postalCode || ''}, ${producerAddress.street || ''}`.replace(/^,\s*|,\s*$/g, '');
-      loadingCompany = producerAddress.companyName || producerAddress.company || 'Grupa Eltron Sp. z o.o.';
-    } else if (spedycja.location) {
-      loadingCompany = 'Grupa Eltron Sp. z o.o.';
-      if (spedycja.location.includes('Białystok')) {
-        loadingAddress = 'ul. Wysockiego 69B, 15-169 Białystok';
-      } else if (spedycja.location.includes('Zielonka')) {
-        loadingAddress = 'ul. Krótka 2, 05-220 Zielonka';
-      }
-    }
-    
-    sequence.push({
-      type: 'ZAŁADUNEK',
-      companyName: loadingCompany,
-      address: loadingAddress,
-      contact: spedycja.loading_contact || 'Brak kontaktu',
-      mpk: spedycja.mpk || '',
-      orderNumber: spedycja.order_number || ''
-    });
-    
-    // Dodaj wszystkie rozładunki z połączonych transportów
-    const allClients = getAllClients();
-    allClients.forEach((client, index) => {
-      let unloadingAddress = 'Nie podano adresu';
-      let unloadingContact = 'Brak kontaktu';
-      
-      // Próbuj znaleźć adres dla tego klienta
-      if (index === 0 && delivery) {
-        // Główny transport
-        unloadingAddress = `${delivery.city || ''}, ${delivery.postalCode || ''}, ${delivery.street || ''}`.replace(/^,\s*|,\s*$/g, '');
-        unloadingContact = spedycja.unloading_contact || 'Brak kontaktu';
-      } else {
-        // Połączone transporty - szukaj w dynamicznie pobranych danych
-        if (allConnectedTransports && Array.isArray(allConnectedTransports)) {
-          const transportData = allConnectedTransports.find(t => t.clientName === client.name);
-          if (transportData && transportData.delivery_data) {
-            try {
-              unloadingAddress = `${transportData.delivery_data.city || ''}, ${transportData.delivery_data.postalCode || ''}, ${transportData.delivery_data.street || ''}`.replace(/^,\s*|,\s*$/g, '');
-              unloadingContact = transportData.unloading_contact || 'Brak kontaktu';
-            } catch (e) {
-              console.error('Błąd używania delivery_data:', e);
-            }
-          }
+    // Generuj sekcje dla dodatkowych miejsc rozładunku
+    if (unloadingPlaces.length > 0) {
+      unloadingPlaces.forEach((place, index) => {
+        html += `
+        <div class="section">
+          <h2>Drugie miejsce rozładunku${index > 0 ? ' ' + (index + 1) : ''}</h2>
+          <table class="info-table">
+            <tr>
+              <th>Nr zlecenia:</th>
+              <td>${place.orderNumber || ''} (${place.route || ''})</td>
+            </tr>
+        `;
+        
+        let address = 'Brak danych';
+        
+        if (place.delivery) {
+          address = formatAddress(place.delivery);
+        } else if (typeof place.address === 'object') {
+          address = formatAddress(place.address);
+        } else if (typeof place.address === 'string') {
+          address = place.address;
         }
-      }
-      
-      sequence.push({
-        type: 'ROZŁADUNEK',
-        companyName: client.name,
-        address: unloadingAddress,
-        contact: unloadingContact,
-        mpk: client.mpk,
-        orderNumber: client.orderNumber
+        
+        html += `
+            <tr>
+              <th>Miejsce rozładunku:</th>
+              <td>${address}</td>
+            </tr>
+            <tr>
+              <th>Kontakt do rozładunku:</th>
+              <td>${place.unloadingContact || place.contact || 'Nie podano'}</td>
+            </tr>
+          </table>
+        </div>
+        `;
       });
-    });
-    
-    return sequence;
-  };
-  
-  // POPRAWIONA FUNKCJA obliczania liczby transportów
-  const getTransportCount = () => {
-    // Użyj dynamicznie pobranych danych o połączonych transportach
-    if (allConnectedTransports && Array.isArray(allConnectedTransports) && allConnectedTransports.length > 0) {
-      return allConnectedTransports.length; // Liczba wszystkich transportów (łącznie z głównym)
     }
-    return 1;
+    
+    return html;
   };
   
-  const allOrderNumbers = getAllOrderNumbers();
-  const allMPKs = getAllMPKs();
-  const allDocuments = getAllDocuments();
-  const allClients = getAllClients();
-  const totalPrice = getTotalPrice();
-  const totalDistance = getTotalDistance();
-  const routeSequence = generateRouteSequence();
-  const transportCount = getTransportCount();
-  
+  // Tworzenie HTML-a
   return `
     <!DOCTYPE html>
     <html lang="pl">
@@ -639,182 +379,110 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       <style>
         body {
           font-family: Arial, sans-serif;
-          line-height: 1.4;
+          line-height: 1.6;
           color: #333;
           max-width: 800px;
           margin: 0 auto;
           padding: 20px;
-          background-color: #f8f9fa;
         }
         .header {
-          background: linear-gradient(135deg, #1a71b5, #0056b3);
-          color: white;
-          padding: 30px;
           text-align: center;
-          border-radius: 8px 8px 0 0;
-          margin-bottom: 0;
+          margin-bottom: 30px;
+          border-bottom: 2px solid #1a71b5;
+          padding-bottom: 20px;
         }
         .header h1 {
-          margin: 0 0 10px 0;
-          font-size: 28px;
-          font-weight: bold;
+          color: #1a71b5;
+          margin-bottom: 5px;
         }
         .header p {
-          margin: 0;
-          font-size: 14px;
-          opacity: 0.9;
-        }
-        .important-note {
-          background-color: #fff3cd;
-          border: 2px solid #856404;
-          padding: 15px;
-          margin: 0;
-          font-weight: bold;
-          color: #856404;
-        }
-        .important-warning {
-          background-color: #f8d7da;
-          border: 2px solid #dc3545;
-          padding: 15px;
-          margin: 0;
-          font-weight: bold;
-          color: #721c24;
+          color: #666;
+          margin-top: 0;
         }
         .section {
-          background-color: white;
-          margin: 0;
-          padding: 20px;
-          border-bottom: 1px solid #dee2e6;
+          margin-bottom: 20px;
+          padding: 15px;
+          background-color: #f9f9f9;
+          border-radius: 5px;
         }
         .section h2 {
-          color: #1a71b5;
           margin-top: 0;
-          margin-bottom: 15px;
-          font-size: 20px;
-          border-bottom: 2px solid #e9ecef;
-          padding-bottom: 8px;
+          border-bottom: 1px solid #ddd;
+          padding-bottom: 5px;
+          color: #1a71b5;
         }
         .info-table {
           width: 100%;
           border-collapse: collapse;
-          margin: 15px 0;
         }
         .info-table th {
-          background-color: #f8f9fa;
           text-align: left;
-          padding: 12px;
-          border: 1px solid #dee2e6;
-          font-weight: bold;
-          color: #495057;
-          width: 30%;
+          background-color: #eee;
+          padding: 8px;
+          width: 40%;
         }
         .info-table td {
-          padding: 12px;
-          border: 1px solid #dee2e6;
-          background-color: white;
-        }
-        .clients-section {
-          background-color: #e7f3ff;
-          border: 2px solid #0066cc;
-          padding: 15px;
-          margin: 20px 0;
-          border-radius: 5px;
-        }
-        .client-item {
-          margin-bottom: 10px;
-          padding: 10px;
-          background-color: white;
-          border-radius: 4px;
-          border-left: 4px solid #1a71b5;
-        }
-        .route-item {
-          margin-bottom: 20px;
-          padding: 15px;
-          background-color: white;
-          border-radius: 8px;
-          border-left: 5px solid #1a71b5;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .route-type {
-          font-size: 18px;
-          font-weight: bold;
-          color: #1a71b5;
-          margin-bottom: 10px;
-          text-transform: uppercase;
-        }
-        .route-company {
-          font-size: 16px;
-          font-weight: bold;
-          color: #333;
-          margin-bottom: 8px;
-        }
-        .route-address {
-          font-size: 14px;
-          color: #555;
-          margin-bottom: 8px;
-          line-height: 1.4;
-        }
-        .route-details {
-          font-size: 13px;
-          color: #666;
-        }
-        .route-details div {
-          margin-bottom: 4px;
+          padding: 8px;
+          border-bottom: 1px solid #eee;
         }
         .footer {
-          background-color: #f8f9fa;
-          padding: 15px;
+          margin-top: 30px;
           text-align: center;
-          border-radius: 0 0 8px 8px;
           font-size: 12px;
-          color: #666;
+          color: #777;
+          border-top: 1px solid #ddd;
+          padding-top: 20px;
         }
-        .merged-info {
-          background-color: #e7f3ff;
-          border: 2px solid #0066cc;
-          padding: 15px;
-          margin: 0;
-          color: #003d7a;
+        .important-note {
+          background-color: #f2f9ff;
+          border-left: 4px solid #1a71b5;
+          padding: 10px 15px;
+          margin-bottom: 20px;
           font-weight: bold;
+        }
+        .important-info {
+          background-color: #f9f9f9;
+          padding: 12px;
+          border-radius: 5px;
+          border-left: 4px solid #1a71b5;
+        }
+        .important-warning {
+          background-color: #fff2f2;
+          border-left: 4px solid #e74c3c;
+          margin: 20px 0;
+          padding: 15px;
+          border-radius: 5px;
+          font-weight: bold;
+          color: #c0392b;
         }
       </style>
     </head>
     <body>
       <div class="header">
         <h1>ZLECENIE TRANSPORTOWE</h1>
-        <p>Numery zleceń: ${allOrderNumbers.join(', ')} | Data utworzenia: ${formatDate(new Date().toISOString())}</p>
+        <p>Nr zlecenia: ${spedycja.order_number || spedycja.id} | Data utworzenia: ${formatDate(new Date().toISOString())}</p>
       </div>
       
       <div class="important-note">
-        Proszę o dopisanie na fakturze zamieszczonych poniżej numerów zleceń: ${allOrderNumbers.join(', ')}.
+        Proszę o dopisanie na fakturze zamieszczonego poniżej numeru MPK oraz numeru zlecenia: ${spedycja.order_number || spedycja.id}.
       </div>
       
       <div class="important-warning">
-        <strong>UWAGA!</strong> Na fakturze musi być podany numer zlecenia: ${allOrderNumbers.join(', ')}. 
+        <strong>UWAGA!</strong> Na fakturze musi być podany numer zlecenia: ${spedycja.order_number || spedycja.id}. 
         Faktury bez numeru zlecenia nie będą opłacane.
       </div>
       
-      ${transportCount > 1 ? `
-      <div class="merged-info">
-        <strong>TRANSPORT ŁĄCZONY</strong><br>
-        To zlecenie obejmuje ${transportCount} połączonych transportów w jednej trasie.
-      </div>
-      ` : ''}
-      
-      ${allClients.length > 1 ? `
-      <div class="clients-section">
-        <h3>Lista wszystkich klientów w tym transporcie:</h3>
-        ${allClients.map(client => `
-          <div class="client-item">
-            <strong>${client.name}</strong> ${client.mpk ? `(MPK: ${client.mpk})` : ''} ${client.orderNumber ? `[Zlecenie: ${client.orderNumber}]` : ''}
-          </div>
-        `).join('')}
-      </div>
-      ` : ''}
-      
       <div class="section">
-        <h2>Informacje o transporcie</h2>
+        <h2>Dane podstawowe</h2>
         <table class="info-table">
+          <tr>
+            <th>Numer MPK:</th>
+            <td>${spedycja.mpk || 'Nie podano'}</td>
+          </tr>
+          <tr>
+            <th>Dokumenty:</th>
+            <td>${spedycja.documents || 'Nie podano'}</td>
+          </tr>
           <tr>
             <th>Rodzaj towaru:</th>
             <td>${towar || 'Nie podano'}</td>
@@ -823,38 +491,46 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
             <th>Waga towaru:</th>
             <td>${waga || 'Nie podano'}</td>
           </tr>
+        </table>
+      </div>
+      
+      <div class="section">
+        <h2>${additionalPlaces.some(p => p.type === 'załadunek') ? 'Pierwsze miejsce załadunku' : 'Dane załadunku'}</h2>
+        <table class="info-table">
           <tr>
-            <th>Łączna odległość:</th>
-            <td>${totalDistance} km</td>
+            <th>Miejsce załadunku:</th>
+            <td>${getLoadingLocation()}</td>
           </tr>
           <tr>
-            <th>Wszystkie MPK:</th>
-            <td>${allMPKs.join(', ') || 'Nie podano'}</td>
+            <th>Data załadunku:</th>
+            <td>${formatDate(dataZaladunku) || 'Nie podano'}</td>
           </tr>
           <tr>
-            <th>Wszystkie dokumenty:</th>
-            <td>${allDocuments.join(', ') || 'Nie podano'}</td>
-          </tr>
-          <tr>
-            <th>Liczba klientów:</th>
-            <td>${allClients.length}</td>
+            <th>Kontakt do załadunku:</th>
+            <td>${spedycja.loading_contact || 'Nie podano'}</td>
           </tr>
         </table>
       </div>
       
       <div class="section">
-        <h2>Sekwencja trasy</h2>
-        ${routeSequence.map((point, index) => `
-          <div class="route-item">
-            <div class="route-type">${index + 1}. ${point.type}</div>
-            <div class="route-company">${point.companyName}</div>
-            <div class="route-address">${point.address}</div>
-            <div class="route-details">
-              <div><strong>Kontakt:</strong> ${point.contact}</div>
-            </div>
-          </div>
-        `).join('')}
+        <h2>${additionalPlaces.some(p => p.type === 'rozładunek') ? 'Pierwsze miejsce rozładunku' : 'Dane rozładunku'}</h2>
+        <table class="info-table">
+          <tr>
+            <th>Miejsce rozładunku:</th>
+            <td>${formatAddress(delivery)}</td>
+          </tr>
+          <tr>
+            <th>Data rozładunku:</th>
+            <td>${formatDate(dataRozladunku) || 'Nie podano'}</td>
+          </tr>
+          <tr>
+            <th>Kontakt do rozładunku:</th>
+            <td>${spedycja.unloading_contact || 'Nie podano'}</td>
+          </tr>
+        </table>
       </div>
+      
+      ${generateAdditionalPlacesHTML()}
       
       <div class="section">
         <h2>Dane przewoźnika</h2>
@@ -878,9 +554,9 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
         <h2>Płatność</h2>
         <table class="info-table">
           <tr>
-            <th>Całkowita cena transportu:</th>
-            <td>${formatPrice(totalPrice)}</td>
-        </tr>
+            <th>Cena transportu:</th>
+            <td>${responseData.deliveryPrice ? formatPrice(responseData.deliveryPrice) : 'Nie podano'}</td>
+          </tr>
           <tr>
             <th>Termin płatności:</th>
             <td>${terminPlatnosci || 'Nie podano'}</td>
@@ -891,13 +567,12 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       <div class="section">
         <h2>Uwagi</h2>
         <p>${spedycja.notes || 'Brak uwag'}</p>
-        ${responseData.adminNotes ? 
-          `<p><strong>Uwagi przewoźnika:</strong> ${responseData.adminNotes}</p>` : ''}
+        ${responseData.adminNotes ? `<p><strong>Uwagi przewoźnika:</strong> ${responseData.adminNotes}</p>` : ''}
       </div>
       
       <div class="section">
         <h2>Adres do wysyłki faktur i dokumentów</h2>
-        <p>
+        <p class="important-info">
           Grupa Eltron Sp. z o.o.<br>
           ul. Główna 7<br>
           18-100 Łapy<br>
@@ -908,8 +583,7 @@ function generateTransportOrderHTML({ spedycja, producerAddress, delivery, respo
       </div>
       
       <div class="footer">
-        <p>Zlecenie wygenerowane automatycznie przez System Transportowy | Data: ${formatDate(new Date().toISOString())}</p>
-        <p>Użytkownik: ${user.name || user.email} | Transport ${transportCount > 1 ? 'łączony' : 'pojedynczy'}</p>
+        <p>Zlecenie wygenerowane automatycznie.</p>
       </div>
     </body>
     </html>

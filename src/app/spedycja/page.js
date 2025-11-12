@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react'
 import SpedycjaForm from './components/SpedycjaForm'
 import SpedycjaList from './components/SpedycjaList'
 import Link from 'next/link'
-import { Clipboard, Archive, Edit, CheckCircle, AlertCircle, Copy } from 'lucide-react'
+import { Clipboard, Archive, Edit, CheckCircle, AlertCircle } from 'lucide-react'
 import TransportOrderForm from './components/TransportOrderForm'
+
 
 export default function SpedycjaPage() {
   const [zamowienia, setZamowienia] = useState([]);
@@ -19,22 +20,16 @@ export default function SpedycjaPage() {
   const [selectedOrderZamowienie, setSelectedOrderZamowienie] = useState(null);
   const [currentUserEmail, setCurrentUserEmail] = useState('');
   const [isEditing, setIsEditing] = useState(false);
-  const [isCopying, setIsCopying] = useState(false);
   
-  // Stan: Komunikaty o operacjach
+  // NOWY STAN: Komunikaty o operacjach
   const [operationMessage, setOperationMessage] = useState(null);
-
-  // Dodatkowe stany dla uprawnień
-  const [canAddOrder, setCanAddOrder] = useState(false);
-  const [canRespond, setCanRespond] = useState(false);
-  const [canSendOrder, setCanSendOrder] = useState(false);
 
   const buttonClasses = {
     primary: "px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors flex items-center gap-2",
     outline: "px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors flex items-center gap-2"
   };
 
-  // Funkcja: Wyświetlanie komunikatu operacji
+  // NOWA FUNKCJA: Wyświetlanie komunikatu operacji
   const showOperationMessage = (message, type = 'success') => {
     setOperationMessage({ message, type });
     setTimeout(() => {
@@ -55,26 +50,10 @@ export default function SpedycjaPage() {
         if (data.isAuthenticated && data.user) {
           setIsAdmin(data.isAdmin);
           setCurrentUserEmail(data.user.email);
-          
-          // Ustaw uprawnienia na podstawie roli
-          if (data.user.isAdmin) {
-            setCanAddOrder(true);
-            setCanRespond(true);
-            setCanSendOrder(true);
-          } else {
-            // Sprawdź uprawnienia spedycyjne
-            const permissions = data.user.permissions || {};
-            setCanAddOrder(permissions?.spedycja?.add || false);
-            setCanRespond(permissions?.spedycja?.respond || false);
-            setCanSendOrder(permissions?.spedycja?.sendOrder || false);
-          }
         }
       } catch (error) {
         console.error('Błąd sprawdzania uprawnień użytkownika:', error);
         setIsAdmin(false);
-        setCanAddOrder(false);
-        setCanRespond(false);  
-        setCanSendOrder(false);
       }
     };
     
@@ -88,191 +67,105 @@ export default function SpedycjaPage() {
       setError(null);
       
       // Pobierz dane z API z filtrem statusu
-      const status = showArchive ? 'completed' : 'new,responded';
+      const status = showArchive ? 'completed' : 'new';
       const response = await fetch(`/api/spedycje?status=${status}`);
       
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(`Problem z API: ${response.status}`);
       }
       
       const data = await response.json();
       
       if (data.success) {
+        console.log('Pobrane dane z API:', data.spedycje);
         setZamowienia(data.spedycje);
       } else {
-        throw new Error(data.error || 'Nieznany błąd');
-      }
-    } catch (error) {
-      console.error('Błąd pobierania spedycji:', error);
-      
-      // Fallback do localStorage jeśli API zawiedzie
-      try {
+        // Próbujemy pobrać dane z localStorage dla kompatybilności
         const savedData = localStorage.getItem('zamowieniaSpedycja');
         if (savedData) {
           const parsedData = JSON.parse(savedData);
-          const filteredData = parsedData.filter(zam => {
-            if (showArchive) {
-              return zam.status === 'completed';
-            } else {
-              return zam.status === 'new';
-            }
-          });
+          const filteredData = showArchive 
+            ? parsedData.filter(item => item.status === 'completed')
+            : parsedData.filter(item => item.status === 'new');
           setZamowienia(filteredData);
-          setError('Używam danych offline - niektóre funkcje mogą być ograniczone');
-        } else {
-          setError('Brak danych do wyświetlenia');
-          setZamowienia([]);
+          return;
         }
-      } catch (localError) {
-        console.error('Błąd odczytu localStorage:', localError);
-        setError('Wystąpił błąd podczas pobierania danych: ' + error.message);
-        setZamowienia([]);
+        
+        throw new Error(data.error || 'Błąd pobierania danych');
+      }
+    } catch (error) {
+      console.error('Błąd pobierania danych spedycji:', error);
+      
+      // Próbujemy pobrać dane z localStorage dla kompatybilności
+      const savedData = localStorage.getItem('zamowieniaSpedycja');
+      if (savedData) {
+        const parsedData = JSON.parse(savedData);
+        const filteredData = showArchive 
+          ? parsedData.filter(item => item.status === 'completed')
+          : parsedData.filter(item => item.status === 'new');
+        setZamowienia(filteredData);
+      } else {
+        setError('Wystąpił problem podczas pobierania danych. Spróbuj ponownie później.');
       }
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Funkcja obsługi dodawania nowego zamówienia
-  const handleSubmit = async (data) => {
+  const handleDodajZamowienie = async (noweZamowienie) => {
     try {
-      console.log('Dodawanie nowego zamówienia:', data);
-
-      // Najpierw spróbuj użyć API
+      console.log('Dodawanie nowego zamówienia:', noweZamowienie);
+      
+      // Najpierw spróbuj zapisać do API
       try {
         const response = await fetch('/api/spedycje', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify(data)
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-          fetchSpedycje();
-          setShowForm(false);
-          setSelectedZamowienie(null);
-          setIsEditing(false);
-          setIsCopying(false);
-          showOperationMessage('Zamówienie zostało pomyślnie dodane', 'success');
-          return;
-        } else {
-          throw new Error(result.error || 'Błąd dodawania zamówienia');
-        }
-      } catch (apiError) {
-        console.error('Błąd API, używam localStorage:', apiError);
-      }
-
-      // Jeśli API zawiedzie, użyj localStorage
-      const savedData = localStorage.getItem('zamowieniaSpedycja');
-      const zamowienia = savedData ? JSON.parse(savedData) : [];
-      
-      const newOrder = {
-        ...data,
-        id: Date.now(), // Tymczasowe ID
-        status: 'new',
-        createdAt: new Date().toISOString(),
-        orderNumber: `SP-${Date.now()}`
-      };
-      
-      zamowienia.push(newOrder);
-      localStorage.setItem('zamowieniaSpedycja', JSON.stringify(zamowienia));
-      
-      fetchSpedycje();
-      setShowForm(false);
-      setSelectedZamowienie(null);
-      setIsEditing(false);
-      setIsCopying(false);
-      showOperationMessage('Zamówienie zostało dodane (tryb offline)', 'success');
-    } catch (error) {
-      console.error('Błąd dodawania zamówienia:', error);
-      showOperationMessage('Wystąpił błąd podczas dodawania zamówienia: ' + error.message, 'error');
-    }
-  };
-
-  // Funkcja do oznaczania jako zrealizowane
-  const handleMarkAsCompleted = async (id) => {
-    try {
-      // Najpierw spróbuj użyć API
-      try {
-        const response = await fetch('/api/spedycje/complete', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ id })
+          body: JSON.stringify(noweZamowienie)
         });
         
         const data = await response.json();
         
         if (data.success) {
-          fetchSpedycje(); // Odśwież listę
-          showOperationMessage('Zlecenie zostało oznaczone jako zrealizowane', 'success');
+          // Odświeżamy listę po dodaniu
+          fetchSpedycje();
+          setShowForm(false);
+          showOperationMessage('Zamówienie spedycji zostało pomyślnie dodane', 'success');
           return;
-        } else {
-          throw new Error(data.error || 'Błąd oznaczania jako zrealizowane');
         }
       } catch (apiError) {
         console.error('Błąd API, używam localStorage:', apiError);
       }
       
-      // Jeśli API zawiedzie, użyj localStorage
+      // Zapisz do localStorage jeśli API zawiedzie
+      const zamowienieWithDetails = {
+        ...noweZamowienie,
+        id: Date.now(),
+        status: 'new',
+        createdAt: new Date().toISOString()
+      };
+
       const savedData = localStorage.getItem('zamowieniaSpedycja');
-      if (savedData) {
-        const zamowienia = JSON.parse(savedData);
-        const updatedZamowienia = zamowienia.map(zam => {
-          if (zam.id === id) {
-            return { 
-              ...zam, 
-              status: 'completed',
-              completedAt: new Date().toISOString()
-            };
-          }
-          return zam;
-        });
-        
-        localStorage.setItem('zamowieniaSpedycja', JSON.stringify(updatedZamowienia));
-        fetchSpedycje(); // Odśwież listę
-        showOperationMessage('Zlecenie zostało oznaczone jako zrealizowane (tryb offline)', 'success');
-      }
+      const currentZamowienia = savedData ? JSON.parse(savedData) : [];
+      const updatedZamowienia = [...currentZamowienia, zamowienieWithDetails];
+      localStorage.setItem('zamowieniaSpedycja', JSON.stringify(updatedZamowienia));
+      
+      fetchSpedycje();
+      setShowForm(false);
+      showOperationMessage('Zamówienie spedycji zostało dodane (lokalnie)', 'success');
     } catch (error) {
-      console.error('Błąd oznaczania jako zrealizowane:', error);
-      showOperationMessage('Wystąpił błąd podczas oznaczania jako zrealizowane: ' + error.message, 'error');
+      console.error('Błąd dodawania zlecenia:', error);
+      showOperationMessage('Wystąpił błąd podczas dodawania zlecenia', 'error');
     }
   };
 
-  // Funkcja do kopiowania zamówienia
-  const handleCopy = (zamowienie) => {
-    console.log('Kopiowanie zamówienia:', zamowienie);
-    
-    // Przygotuj dane do skopiowania (bez ID i danych systemowych)
-    const copiedData = {
-      ...zamowienie,
-      id: undefined, // Usunięcie ID żeby utworzyć nowe
-      createdAt: undefined,
-      updatedAt: undefined,
-      status: 'new',
-      response: null,
-      response_data: null,
-      originalOrderNumber: zamowienie.orderNumber || `#${zamowienie.id}` // Zachowaj referencję do oryginalnego
-    };
-    
-    setSelectedZamowienie(copiedData);
-    setIsEditing(false);
-    setIsCopying(true);
-    setShowForm(true);
-    showOperationMessage(`Skopiowano zamówienie ${zamowienie.orderNumber || `#${zamowienie.id}`}. 
-Zmodyfikuj dane i zapisz jako nowe zamówienie.`, 'success');
-  };
-
-  // Funkcja do obsługi edycji zamówienia
+  // Nowa funkcja do obsługi edycji zamówienia
   const handleEdit = (zamowienie) => {
     console.log('Edycja zamówienia:', zamowienie);
     setSelectedZamowienie(zamowienie);
     setIsEditing(true);
-    setIsCopying(false);
     setShowForm(true);
   };
   
@@ -281,58 +174,28 @@ Zmodyfikuj dane i zapisz jako nowe zamówienie.`, 'success');
     try {
       console.log('Zapisywanie zmian zamówienia ID:', id, 'Dane:', updatedData);
       
-      // Najpierw spróbuj użyć API
-      try {
-        const response = await fetch('/api/spedycje/edit', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            id,
-            ...updatedData
-          })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-          fetchSpedycje(); // Odświeżamy listę
-          setShowForm(false);
-          setIsEditing(false);
-          setIsCopying(false);
-          setSelectedZamowienie(null);
-          showOperationMessage('Zamówienie zostało pomyślnie zaktualizowane', 'success');
-          return;
-        } else {
-          throw new Error(data.error || 'Błąd aktualizacji zamówienia');
-        }
-      } catch (apiError) {
-        console.error('Błąd API, używam localStorage:', apiError);
-      }
+      // Wywołaj API
+      const response = await fetch('/api/spedycje/edit', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          id,
+          ...updatedData
+        })
+      });
       
-      // Jeśli API zawiedzie, użyj localStorage
-      const savedData = localStorage.getItem('zamowieniaSpedycja');
-      if (savedData) {
-        const zamowienia = JSON.parse(savedData);
-        const updatedZamowienia = zamowienia.map(zam => {
-          if (zam.id === id) {
-            return { 
-              ...zam, 
-              ...updatedData,
-              updatedAt: new Date().toISOString()
-            };
-          }
-          return zam;
-        });
-        
-        localStorage.setItem('zamowieniaSpedycja', JSON.stringify(updatedZamowienia));
-        fetchSpedycje(); // Odśwież listę
+      const data = await response.json();
+      
+      if (data.success) {
+        fetchSpedycje(); // Odświeżamy listę
         setShowForm(false);
         setIsEditing(false);
-        setIsCopying(false);
         setSelectedZamowienie(null);
-        showOperationMessage('Zamówienie zostało zaktualizowane (tryb offline)', 'success');
+        showOperationMessage('Zamówienie zostało pomyślnie zaktualizowane', 'success');
+      } else {
+        throw new Error(data.error || 'Błąd aktualizacji zamówienia');
       }
     } catch (error) {
       console.error('Błąd edycji zamówienia:', error);
@@ -340,11 +203,74 @@ Zmodyfikuj dane i zapisz jako nowe zamówienie.`, 'success');
     }
   };
 
+  // ZMODYFIKOWANA FUNKCJA handleResponse
+  const handleResponse = async (zamowienieId, response) => {
+    try {
+      console.log('Odpowiedź na zamówienie ID:', zamowienieId, 'Dane odpowiedzi:', response);
+      
+      // Najpierw spróbuj użyć API
+      try {
+        const responseApi = await fetch('/api/spedycje', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            id: zamowienieId,
+            ...response
+          })
+        });
+        
+        const data = await responseApi.json();
+        
+        if (data.success) {
+          setShowForm(false);
+          fetchSpedycje();
+          
+          // Pokaż komunikat z informacją o automatycznych odpowiedziach
+          if (data.message && data.message.includes('połączonych transportów')) {
+            showOperationMessage(data.message, 'success');
+          } else {
+            showOperationMessage('Odpowiedź została pomyślnie zapisana', 'success');
+          }
+          return;
+        }
+      } catch (apiError) {
+        console.error('Błąd API, używam localStorage:', apiError);
+      }
+      
+      // Aktualizuj w localStorage jeśli API zawiedzie
+      const savedData = localStorage.getItem('zamowieniaSpedycja');
+      if (savedData) {
+        const zamowienia = JSON.parse(savedData);
+        const updatedZamowienia = zamowienia.map(zam => {
+          if (zam.id === zamowienieId) {
+            return { 
+              ...zam, 
+              response,
+            };
+          }
+          return zam;
+        });
+        
+        localStorage.setItem('zamowieniaSpedycja', JSON.stringify(updatedZamowienia));
+        fetchSpedycje();
+        showOperationMessage('Odpowiedź została zapisana (lokalnie)', 'success');
+      }
+      
+      setShowForm(false);
+    } catch (error) {
+      console.error('Błąd odpowiedzi na zlecenie:', error);
+      showOperationMessage('Wystąpił błąd podczas zapisywania odpowiedzi', 'error');
+    }
+  };
+
+
   const handleCreateOrder = (zamowienie) => {
     setSelectedOrderZamowienie(zamowienie)
   }
   
-  // Funkcja do wysyłania zamówienia
+  // Dodajmy funkcję do wysyłania zamówienia
   const handleSendOrder = async (orderData) => {
     try {
       console.log('Wysyłanie zlecenia transportowego:', orderData)
@@ -373,55 +299,168 @@ Zmodyfikuj dane i zapisz jako nowe zamówienie.`, 'success');
     }
   }
 
-  // Funkcja sprawdzania uprawnień do dodawania zamówień  
-  const checkCanAddOrder = () => {
-    return true; // Wszyscy mogą dodawać nowe zapytania spedycyjne
+  // Funkcja do pobierania szczegółowych danych zamówienia przed odpowiedzią
+  const handlePrepareResponse = async (zamowienie) => {
+    console.log('Przygotowanie odpowiedzi dla zamówienia:', zamowienie);
+    
+    // Sprawdź, czy zamówienie ma już wszystkie niezbędne dane
+    if (zamowienie.distanceKm || (zamowienie.distance_km !== undefined && zamowienie.distance_km !== null)) {
+      console.log('Zamówienie już ma dane o odległości:', zamowienie.distanceKm || zamowienie.distance_km);
+      setSelectedZamowienie(zamowienie);
+      setIsEditing(false);
+      setShowForm(true);
+      return;
+    }
+    
+    // Próbujemy pobrać pełne dane zamówienia z API
+    try {
+      const response = await fetch(`/api/spedycje/${zamowienie.id}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.success && data.spedycja) {
+          console.log('Pobrane szczegółowe dane zamówienia:', data.spedycja);
+          setSelectedZamowienie(data.spedycja);
+        } else {
+          console.log('Używam dostępnych danych zamówienia:', zamowienie);
+          setSelectedZamowienie(zamowienie);
+        }
+      } else {
+        console.log('Błąd pobierania szczegółów, używam dostępnych danych:', zamowienie);
+        setSelectedZamowienie(zamowienie);
+      }
+    } catch (error) {
+      console.error('Błąd pobierania szczegółów zamówienia:', error);
+      setSelectedZamowienie(zamowienie);
+    }
+    
+    setIsEditing(false);
+    setShowForm(true);
   };
 
-  // Funkcja sprawdzania uprawnień do odpowiadania
-  const checkCanRespond = () => {
-    return isAdmin || canRespond;
+  const handleMarkAsCompleted = async (id) => {
+    try {
+      // Najpierw spróbuj użyć API
+      try {
+        const response = await fetch('/api/spedycje/complete', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ id })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          fetchSpedycje(); // Odśwież listę
+          showOperationMessage('Zlecenie zostało oznaczone jako zrealizowane', 'success');
+          return;
+        }
+      } catch (apiError) {
+        console.error('Błąd API, używam localStorage:', apiError);
+      }
+      
+      // Jeśli API zawiedzie, użyj localStorage
+      const savedData = localStorage.getItem('zamowieniaSpedycja');
+      if (savedData) {
+        const zamowienia = JSON.parse(savedData);
+        const updatedZamowienia = zamowienia.map(zam => {
+          if (zam.id === id) {
+            return { 
+              ...zam, 
+              status: 'completed',
+              completedAt: new Date().toISOString(),
+              // Dodajemy minimalne informacje o odpowiedzi
+              response: {
+                ...(zam.response || {}), // Zachowujemy istniejącą odpowiedź, jeśli istnieje
+                completedManually: true,
+                completedBy: 'Admin',
+                completedAt: new Date().toISOString()
+              }
+            };
+          }
+          return zam;
+        });
+        
+        localStorage.setItem('zamowieniaSpedycja', JSON.stringify(updatedZamowienia));
+        fetchSpedycje();
+        showOperationMessage('Zlecenie zostało oznaczone jako zrealizowane (lokalnie)', 'success');
+      }
+    } catch (error) {
+      console.error('Błąd oznaczania jako zrealizowane:', error);
+      showOperationMessage('Wystąpił błąd podczas oznaczania zlecenia jako zrealizowane', 'error');
+    }
   };
 
-  // Funkcja sprawdzania uprawnień do wysyłania zleceń
-  const checkCanSendOrder = () => {
-    return isAdmin || canSendOrder;
-  };
+  useEffect(() => {
+    // Pobierz pełne uprawnienia użytkownika
+    const fetchUserPermissions = async () => {
+      try {
+        const response = await fetch('/api/user');
+        const data = await response.json();
+        
+        if (data.isAuthenticated && data.user) {
+          setUserRole(data.user.role);
+          setIsAdmin(data.user.isAdmin);
+          setCurrentUserEmail(data.user.email);
+          
+          // Ustaw uprawnienia na podstawie danych z API
+          const permissions = data.user.permissions || {};
+          
+          // Domyślnie admin ma wszystkie uprawnienia
+          if (data.user.isAdmin) {
+            setCanAddOrder(true);
+            setCanRespond(true);
+            setCanSendOrder(true);
+          } else {
+            // Sprawdź uprawnienia spedycyjne
+            setCanAddOrder(permissions?.spedycja?.add || false);
+            setCanRespond(permissions?.spedycja?.respond || false);
+            setCanSendOrder(permissions?.spedycja?.sendOrder || false);
+          }
+        }
+      } catch (error) {
+        console.error('Błąd pobierania danych użytkownika:', error);
+      }
+    };
+    
+    fetchUserPermissions();
+  }, []);
+  
+  // Dodajemy nowe stany do komponentu
+  const [canAddOrder, setCanAddOrder] = useState(false);
+  const [canRespond, setCanRespond] = useState(false);
+  const [canSendOrder, setCanSendOrder] = useState(false);
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
+      <div className="flex justify-center items-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
       </div>
     );
   }
 
-  if (error && zamowienia.length === 0) {
+  if (error) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">
-          <h3 className="font-semibold mb-2">Błąd ładowania</h3>
-          <p className="mb-4">{error}</p>
-          <button 
-            onClick={fetchSpedycje}
-            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
-          >
-            Spróbuj ponownie
-          </button>
+      <div className="max-w-6xl mx-auto">
+        <div className="bg-red-50 text-red-700 p-4 rounded-lg">
+          {error}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Komunikat o operacji */}
+    <div className="max-w-6xl mx-auto">
+      {/* NOWY KOMPONENT: Komunikaty o operacjach */}
       {operationMessage && (
-        <div className={`mb-4 p-4 rounded-lg border ${
+        <div className={`mb-4 p-4 rounded-lg flex items-center ${
           operationMessage.type === 'success' 
-            ? 'bg-green-50 text-green-800 border-green-200' 
-            : 'bg-red-50 text-red-800 border-red-200'
-        } flex items-center`}>
+            ? 'bg-green-50 text-green-700 border border-green-200' 
+            : 'bg-red-50 text-red-700 border border-red-200'
+        }`}>
           {operationMessage.type === 'success' ? (
             <CheckCircle size={20} className="mr-2" />
           ) : (
@@ -431,19 +470,11 @@ Zmodyfikuj dane i zapisz jako nowe zamówienie.`, 'success');
         </div>
       )}
 
-      {/* Komunikat o błędzie, ale z danymi */}
-      {error && zamowienia.length > 0 && (
-        <div className="mb-4 p-4 rounded-lg border bg-yellow-50 text-yellow-800 border-yellow-200 flex items-center">
-          <AlertCircle size={20} className="mr-2" />
-          {error}
-        </div>
-      )}
-
-      <div className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="mb-8 flex justify-between items-center">
         <h1 className="text-3xl font-bold text-gray-900">
           Zamówienia spedycji
         </h1>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex gap-2">
           <button 
             className={!showArchive ? buttonClasses.primary : buttonClasses.outline}
             onClick={() => setShowArchive(false)}
@@ -459,13 +490,12 @@ Zmodyfikuj dane i zapisz jako nowe zamówienie.`, 'success');
             Archiwum
           </Link>
           
-          {checkCanAddOrder() && (
+          {canAddOrder && (
             <button 
               className={buttonClasses.primary}
               onClick={() => {
                 setSelectedZamowienie(null);
                 setIsEditing(false);
-                setIsCopying(false);
                 setShowForm(true);
               }}
             >
@@ -482,15 +512,13 @@ Zmodyfikuj dane i zapisz jako nowe zamówienie.`, 'success');
             <SpedycjaList
               zamowienia={zamowienia}
               showArchive={showArchive}
-              isAdmin={checkCanRespond()}
+              isAdmin={canRespond}
+              onResponse={handlePrepareResponse}
               onMarkAsCompleted={handleMarkAsCompleted}
               onCreateOrder={handleCreateOrder}
-              canSendOrder={checkCanSendOrder()}
+              canSendOrder={canSendOrder}
               onEdit={handleEdit}
-              onCopy={handleCopy}
               currentUserEmail={currentUserEmail}
-              fetchSpedycje={fetchSpedycje}
-              showOperationMessage={showOperationMessage}
             />
           ) : (
             <div className="p-12 text-center text-gray-500">
@@ -506,51 +534,33 @@ Zmodyfikuj dane i zapisz jako nowe zamówienie.`, 'success');
           <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <SpedycjaForm 
               onSubmit={isEditing 
-                ? (data) => handleSaveEdit(selectedZamowienie.id, data)
+                ? (id, data) => handleSaveEdit(selectedZamowienie.id, data)
                 : selectedZamowienie 
-                  ? handleSubmit // To dla kopiowania - traktujemy jako nowe zamówienie
-                  : handleSubmit  // To dla zupełnie nowego zamówienia
-              }
+                  ? handleResponse 
+                  : handleDodajZamowienie}
               onCancel={() => {
                 setShowForm(false);
                 setSelectedZamowienie(null);
                 setIsEditing(false);
-                setIsCopying(false);
               }}
               initialData={selectedZamowienie}
-              isResponse={false} // Nigdy nie używamy trybu odpowiedzi - to jest usunięte
+              isResponse={!!selectedZamowienie && !isEditing}
               isEditing={isEditing}
-              isCopying={isCopying}
             />
           </div>
         </div>
       )}
-
-      {/* Modal zlecenia transportowego */}
-      {selectedOrderZamowienie && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <TransportOrderForm
-              zamowienie={selectedOrderZamowienie}
-              onCancel={() => setSelectedOrderZamowienie(null)}
-              onSubmit={handleSendOrder}
-            />
+        {selectedOrderZamowienie && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+            <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <TransportOrderForm
+                onSubmit={handleSendOrder}
+                onCancel={() => setSelectedOrderZamowienie(null)}
+                zamowienie={selectedOrderZamowienie}
+              />
+            </div>
           </div>
-        </div>
-      )}
-
-      {/* Informacje o statusie systemu */}
-      <div className="mt-8 text-center">
-        <div className="inline-flex items-center text-sm text-gray-500">
-          <div className={`w-2 h-2 rounded-full mr-2 ${
-            error ? 'bg-yellow-500' : 'bg-green-500'
-          }`}></div>
-          {error 
-            ? 'System działa w trybie offline' 
-            : 'System połączony z bazą danych'
-          }
-        </div>
-      </div>
+        )}
     </div>
   );
 }

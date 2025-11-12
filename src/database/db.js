@@ -4,8 +4,6 @@ import * as XLSX from 'xlsx';
 import fs from 'fs';
 import path from 'path';
 import { neon } from '@neondatabase/serverless';
-import { migrateKuriersTable } from './kuriers-migration.js';
-
 
 // Sprawdź, czy jesteśmy w fazie budowania
 const isBuildPhase = process.env.NODE_ENV === 'production' && typeof window === 'undefined' && !process.env.NEXT_RUNTIME;
@@ -385,54 +383,12 @@ const checkTransportsTable = async () => {
   }
 };
 
-// Fragment do dodania w src/database/db.js
-// Funkcja sprawdzająca tabelę spedycji - ZAKTUALIZOWANA
+// Funkcja sprawdzająca tabelę spedycji
 const checkSpedycjeTable = async () => {
   try {
     const tableExists = await db.schema.hasTable('spedycje');
     if (!tableExists) {
-      console.log('Tabela spedycje nie istnieje, tworzę...');
-      await db.schema.createTable('spedycje', table => {
-        table.increments('id').primary();
-        table.string('status').defaultTo('new');
-        table.string('order_number');
-        table.string('created_by');
-        table.string('created_by_email');
-        table.string('responsible_person');
-        table.string('responsible_email');
-        table.string('mpk');
-        table.string('location');
-        table.text('location_data');
-        table.text('delivery_data');
-        table.string('loading_contact');
-        table.string('unloading_contact');
-        table.date('delivery_date');
-        table.string('documents');
-        table.text('notes');
-        table.text('response_data');
-        table.string('completed_by');
-        table.timestamp('created_at').defaultTo(db.fn.now());
-        table.timestamp('completed_at');
-        table.timestamp('responded_at');
-        table.timestamp('updated_at').defaultTo(db.fn.now());
-        table.integer('distance_km');
-        table.boolean('order_sent').defaultTo(false);
-        table.timestamp('order_sent_at');
-        table.string('order_sent_by');
-        table.string('order_recipient');
-        table.text('order_data');
-        table.string('client_name');
-        table.text('goods_description');
-        table.text('responsible_constructions');
-        table.text('merged_transports');
-        // NOWE KOLUMNY dla rodzaju pojazdu i transportu
-        table.string('vehicle_type');
-        table.string('transport_type');
-        // NOWE KOLUMNY dla systemu łączonych transportów
-        table.boolean('is_merged').defaultTo(false);
-        table.boolean('is_drums_transport').defaultTo(false);
-      });
-      console.log('Utworzono tabelę spedycje z wszystkimi kolumnami');
+      console.log('Tabela spedycje nie istnieje');
       return;
     }
 
@@ -447,65 +403,47 @@ const checkSpedycjeTable = async () => {
     const columnNames = columns.rows.map(row => row.column_name);
     console.log('Kolumny w tabeli spedycje:', columnNames);
 
-    // Lista wszystkich wymaganych kolumn
-    const requiredColumns = [
-      { name: 'distance_km', type: 'integer' },
-      { name: 'order_sent', type: 'boolean', default: false },
-      { name: 'order_sent_at', type: 'timestamp' },
-      { name: 'order_sent_by', type: 'string' },
-      { name: 'order_recipient', type: 'string' },
-      { name: 'order_data', type: 'text' },
-      { name: 'client_name', type: 'string' },
-      { name: 'goods_description', type: 'text' },
-      { name: 'responsible_constructions', type: 'text' },
-      { name: 'merged_transports', type: 'text' },
-      { name: 'responded_at', type: 'timestamp' },
-      { name: 'updated_at', type: 'timestamp', default: 'NOW()' },
-      // NOWE KOLUMNY
-      { name: 'vehicle_type', type: 'string' },
-      { name: 'transport_type', type: 'string' },
-      { name: 'is_merged', type: 'boolean', default: false },
-      { name: 'is_drums_transport', type: 'boolean', default: false }
-    ];
-
-    // Sprawdź i dodaj brakujące kolumny
-    for (const column of requiredColumns) {
-      if (!columnNames.includes(column.name)) {
-        console.log(`Dodaję kolumnę ${column.name} do tabeli spedycje`);
-        
-        await db.schema.table('spedycje', table => {
-          switch (column.type) {
-            case 'integer':
-              table.integer(column.name);
-              break;
-            case 'boolean':
-              if (column.default !== undefined) {
-                table.boolean(column.name).defaultTo(column.default);
-              } else {
-                table.boolean(column.name);
-              }
-              break;
-            case 'timestamp':
-              if (column.default) {
-                table.timestamp(column.name).defaultTo(db.fn.now());
-              } else {
-                table.timestamp(column.name);
-              }
-              break;
-            case 'text':
-              table.text(column.name);
-              break;
-            case 'string':
-            default:
-              table.string(column.name);
-              break;
-          }
-        });
-        
-        console.log(`Dodano kolumnę ${column.name} do tabeli spedycje`);
-      }
+    // Sprawdź czy kolumna distance_km istnieje
+    if (!columnNames.includes('distance_km')) {
+      await db.schema.table('spedycje', table => {
+        table.integer('distance_km');
+      });
+      console.log('Dodano kolumnę distance_km do tabeli spedycje');
     }
     
+    // Sprawdź czy kolumny związane z zamówieniem istnieją
+    if (!columnNames.includes('order_sent')) {
+      await db.schema.table('spedycje', table => {
+        table.boolean('order_sent').defaultTo(false);
+        table.timestamp('order_sent_at');
+        table.string('order_sent_by');
+        table.string('order_recipient');
+        table.text('order_data');
+      });
+      console.log('Dodano kolumny zamówienia do tabeli spedycje');
+    }
+    
+    // Sprawdź czy nowe kolumny istnieją
+    if (!columnNames.includes('client_name')) {
+      await db.schema.table('spedycje', table => {
+        table.string('client_name');
+      });
+      console.log('Dodano kolumnę client_name do tabeli spedycje');
+    }
+    
+    if (!columnNames.includes('goods_description')) {
+      await db.schema.table('spedycje', table => {
+        table.text('goods_description');
+      });
+      console.log('Dodano kolumnę goods_description do tabeli spedycje');
+    }
+    
+    if (!columnNames.includes('responsible_constructions')) {
+      await db.schema.table('spedycje', table => {
+        table.text('responsible_constructions');
+      });
+      console.log('Dodano kolumnę responsible_constructions do tabeli spedycje');
+    }
   } catch (error) {
     console.error('Błąd sprawdzania tabeli spedycje:', error);
   }
@@ -564,6 +502,7 @@ const checkDetailedRatingsTable = async () => {
         table.increments('id').primary();
         table.integer('transport_id').notNullable();
         table.string('rater_email').notNullable();
+        table.string('rater_name'); // DODANA KOLUMNA
         table.timestamp('rated_at').defaultTo(db.fn.now());
         
         // Kategoria: Kierowca
@@ -594,14 +533,28 @@ const checkDetailedRatingsTable = async () => {
       
       console.log('Tabela transport_detailed_ratings została utworzona');
     } else {
-      console.log('Tabela transport_detailed_ratings już istnieje');
+      // Sprawdź czy kolumna rater_name istnieje i dodaj ją jeśli nie
+      const columns = await db.raw(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'transport_detailed_ratings' 
+        AND table_schema = 'public'
+      `);
+      
+      const columnNames = columns.rows.map(row => row.column_name);
+      
+      if (!columnNames.includes('rater_name')) {
+        console.log('Dodawanie kolumny rater_name do transport_detailed_ratings...');
+        await db.schema.table('transport_detailed_ratings', table => {
+          table.string('rater_name');
+        });
+        console.log('Kolumna rater_name została dodana');
+      }
+      
+      console.log('Tabela transport_detailed_ratings już istnieje i ma prawidłową strukturę');
     }
-    
-    // Utwórz widok dla statystyk
-    await createRatingSummaryView();
-    
   } catch (error) {
-    console.error('Błąd sprawdzania/tworzenia tabeli transport_detailed_ratings:', error);
+    console.error('Błąd podczas sprawdzania/tworzenia tabeli transport_detailed_ratings:', error);
   }
 };
 

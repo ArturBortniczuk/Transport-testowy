@@ -362,11 +362,7 @@ export default function KalendarzPage() {
         alert('Błąd: Wybierz prawidłowy magazyn')
         return
       }
-
-      if (!selectedDate || !(selectedDate instanceof Date)) {
-        alert('Proszę wybrać datę dostawy');
-        return;
-      }   
+    
       // Pozyskaj współrzędne miejsca docelowego za pomocą Google Geocoding API
       const coordinates = await getGoogleCoordinates(
         nowyTransport.miasto,
@@ -408,9 +404,7 @@ export default function KalendarzPage() {
           loading_level: nowyTransport.poziomZaladunku,
           notes: nowyTransport.informacje,
           is_cyclical: nowyTransport.trasaCykliczna ? 1 : 0,
-          delivery_date: selectedDate && selectedDate instanceof Date ? 
-            format(selectedDate, "yyyy-MM-dd'T'HH:mm:ss") : 
-            format(new Date(), "yyyy-MM-dd'T'HH:mm:ss"),
+          delivery_date: format(selectedDate, "yyyy-MM-dd'T'HH:mm:ss"),
           status: 'active',
           packaging_id: nowyTransport.packagingId,
           connected_transport_id: nowyTransport.connectedTransportId
@@ -436,9 +430,7 @@ export default function KalendarzPage() {
               console.log('Pobrano dane opakowania pomyślnie');
               // Wyślij powiadomienie SMS o odbiorze bębnów
               const transportData = {
-               delivery_date: selectedDate && selectedDate instanceof Date ? 
-                  format(selectedDate, "yyyy-MM-dd'T'HH:mm:ss") : 
-                  format(new Date(), "yyyy-MM-dd'T'HH:mm:ss"),
+                delivery_date: format(selectedDate, "yyyy-MM-dd'T'HH:mm:ss"),
                 source_warehouse: wybranyMagazyn,
                 client_name: nowyTransport.nazwaKlienta
               };
@@ -920,49 +912,39 @@ export default function KalendarzPage() {
            filtryAktywne={filtryAktywne}
          />
   
-        {(() => {
-          if (!selectedDate || !(selectedDate instanceof Date)) {
-            return null;
-          }
-          
-          const dateKey = format(selectedDate, 'yyyy-MM-dd');
-          const transportyNaDzien = transporty[dateKey] || [];
-          const filtrowaneTransporty = transportyNaDzien.filter(t => {
-            const pasujeMagazyn = !filtryAktywne.magazyn || t.zrodlo === filtryAktywne.magazyn;
-            const pasujeKierowca = !filtryAktywne.kierowca || t.kierowcaId === filtryAktywne.kierowca;
-            const pasujeRynek = !filtryAktywne.rynek || t.rynek === filtryAktywne.rynek;
-            return pasujeMagazyn && pasujeKierowca && pasujeRynek && t.status === 'aktywny';
-          });
-          
-          return (
-            <>
-              <div>
-                <div className="space-y-2">
-                  {filtrowaneTransporty.map(t => (
-                    <div key={t.id} className="border p-2 rounded">
-                      {t.miasto} - {t.kodPocztowy}
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
-               <TransportForm
-                 selectedDate={selectedDate}
-                 nowyTransport={nowyTransport}
-                 handleInputChange={handleInputChange}
-                 handleSubmit={handleSubmit}
-                 edytowanyTransport={edytowanyTransport}
-                 handleUpdateTransport={handleUpdateTransport}
-                 setEdytowanyTransport={setEdytowanyTransport}
-                 setNowyTransport={setNowyTransport}
-                 userPermissions={userPermissions}
-                 transporty={transporty}
-                 currentUserEmail={userEmail}
-                 userName={userName || localStorage.getItem('userName') || userEmail}
-               />
-             </>
-           );
-         })()}
+         {selectedDate && (
+           <>
+             <div>
+               <div className="space-y-2">
+                 {transporty[format(selectedDate, 'yyyy-MM-dd')]?.filter(t => {
+                   const pasujeMagazyn = !filtryAktywne.magazyn || t.zrodlo === filtryAktywne.magazyn;
+                   const pasujeKierowca = !filtryAktywne.kierowca || t.kierowcaId === filtryAktywne.kierowca;
+                   const pasujeRynek = !filtryAktywne.rynek || t.rynek === filtryAktywne.rynek;
+                   return pasujeMagazyn && pasujeKierowca && pasujeRynek && t.status === 'aktywny';
+                 }).map(t => (
+                   <div key={t.id} className="border p-2 rounded">
+                     {t.miasto} - {t.kodPocztowy}
+                   </div>
+                 ))}
+               </div>
+             </div>
+             
+             <TransportForm
+               selectedDate={selectedDate}
+               nowyTransport={nowyTransport}
+               handleInputChange={handleInputChange}
+               handleSubmit={handleSubmit}
+               edytowanyTransport={edytowanyTransport}
+               handleUpdateTransport={handleUpdateTransport}
+               setEdytowanyTransport={setEdytowanyTransport}
+               setNowyTransport={setNowyTransport}
+               userPermissions={userPermissions}
+               transporty={transporty}
+               currentUserEmail={userEmail}
+               userName={userName || localStorage.getItem('userName') || userEmail}
+             />
+           </>
+         )}
          
          {przenoszonyTransport && (
            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">

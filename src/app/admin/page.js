@@ -305,29 +305,6 @@ export default function AdminPage() {
               </div>
             </div>
           )}
-
-          {/* NOWA KARTA: Diagnoza DHL API */}
-          <div className="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-300">
-            <div className="p-6">
-              <div className="flex items-center mb-4">
-                <div className="bg-orange-100 p-3 rounded-full">
-                  <svg className="w-6 h-6 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <h3 className="ml-4 text-lg font-medium">Diagnoza DHL API</h3>
-              </div>
-              <p className="text-gray-600 mb-4">
-                Diagnostyka problemów z integracją DHL, testowanie różnych konfiguracji i pomoc w rozwiązywaniu błędów.
-              </p>
-              <Link
-                href="/admin/dhl-help"
-                className="w-full inline-flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
-              >
-                Otwórz narzędzie diagnozy
-              </Link>
-            </div>
-          </div>
         </div>
         
         {/* Sekcja zarządzania uprawnieniami użytkowników - widoczna tylko gdy jest admin */}

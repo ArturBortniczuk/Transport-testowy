@@ -1,112 +1,63 @@
-// src/components/TransportRating.js - POPRAWIONA LOGIKA OCENIANIA
+// src/components/TransportRating.js - zmodyfikowana wersja
 'use client'
 import { useState, useEffect } from 'react'
-import { 
-  X, 
-  ThumbsUp, 
-  ThumbsDown, 
-  Star, 
-  Truck, 
-  Package, 
-  Calendar, 
-  MessageSquare,
-  AlertCircle,
-  CheckCircle,
-  Edit,
-  Save
-} from 'lucide-react'
+import { ThumbsUp, ThumbsDown, X } from 'lucide-react'
 
 export default function TransportRating({ transportId, onClose }) {
-  const [data, setData] = useState(null)
+  const [ratings, setRatings] = useState([])
+  const [isPositive, setIsPositive] = useState(null) // null, true (łapka w górę), false (łapka w dół)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [comment, setComment] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(null)
   const [submitSuccess, setSubmitSuccess] = useState(false)
-  const [isEditMode, setIsEditMode] = useState(false)
-  
-  // Stan formularza oceny
-  const [ratings, setRatings] = useState({
-    driverProfessional: null,
-    driverTasksCompleted: null,
-    cargoComplete: null,
-    cargoCorrect: null,
-    deliveryNotified: null,
-    deliveryOnTime: null
-  })
-  const [comment, setComment] = useState('')
+  const [currentUserEmail, setCurrentUserEmail] = useState(null)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [canBeRated, setCanBeRated] = useState(true)
 
-  // Kategorie ocen
-  const categories = [
-    {
-      id: 'driver',
-      icon: <Truck size={24} className="text-blue-600" />,
-      title: '👨‍💼 Kierowca',
-      criteria: [
-        {
-          key: 'driverProfessional',
-          text: 'Kierowca zachował się profesjonalnie wobec klienta.'
-        },
-        {
-          key: 'driverTasksCompleted',
-          text: 'Kierowca zrealizował wszystkie ustalone zadania.'
-        }
-      ]
-    },
-    {
-      id: 'cargo',
-      icon: <Package size={24} className="text-green-600" />,
-      title: '📦 Towar',
-      criteria: [
-        {
-          key: 'cargoComplete',
-          text: 'Towar był kompletny i zgodny z zamówieniem.'
-        },
-        {
-          key: 'cargoCorrect',
-          text: 'Nie doszło do pomyłki – klient dostał właściwy towar.'
-        }
-      ]
-    },
-    {
-      id: 'delivery',
-      icon: <Calendar size={24} className="text-purple-600" />,
-      title: '📦 Organizacja dostawy',
-      criteria: [
-        {
-          key: 'deliveryNotified',
-          text: 'Dostawa została wcześniej awizowana u klienta.'
-        },
-        {
-          key: 'deliveryOnTime',
-          text: 'Towar dotarł w ustalonym terminie.'
-        }
-      ]
-    }
-  ]
-
-  // Pobierz dane o ocenach
+  // Pobierz dane o bieżącym użytkowniku
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchCurrentUser = async () => {
+      try {
+        const response = await fetch('/api/user')
+        const data = await response.json()
+        
+        if (data.isAuthenticated && data.user) {
+          setCurrentUserEmail(data.user.email)
+          setIsAdmin(data.user.isAdmin)
+        }
+      } catch (error) {
+        console.error('Błąd pobierania danych użytkownika:', error)
+      }
+    }
+    
+    fetchCurrentUser()
+  }, [])
+
+  // Pobierz oceny dla transportu
+  useEffect(() => {
+    const fetchRatings = async () => {
       try {
         setLoading(true)
         const response = await fetch(`/api/transport-ratings?transportId=${transportId}`)
-        const result = await response.json()
+        const data = await response.json()
         
-        if (result.success) {
-          setData(result)
+        if (data.success) {
+          setRatings(data.ratings)
+          setIsPositive(data.isPositive)
+          setCanBeRated(data.canBeRated) // Ustawiamy, czy transport może być oceniony
           
-          // Jeśli użytkownik już ocenił, wypełnij formularz i włącz tryb edycji
-          if (result.hasUserRated && result.userRating) {
-            setRatings(result.userRating.ratings)
-            setComment(result.userRating.comment || '')
-            setIsEditMode(false) // Rozpocznij w trybie tylko do odczytu
-          } else {
-            // Jeśli nie ocenił, od razu tryb edycji
-            setIsEditMode(true)
+          // Sprawdź czy użytkownik już ocenił ten transport
+          if (currentUserEmail) {
+            const userRatingObj = data.ratings.find(r => r.rater_email === currentUserEmail)
+            if (userRatingObj) {
+              setIsPositive(userRatingObj.is_positive)
+              setComment(userRatingObj.comment || '')
+            }
           }
         } else {
-          setError(result.error)
+          setError(data.error)
         }
       } catch (error) {
         console.error('Błąd pobierania ocen:', error)
@@ -117,18 +68,16 @@ export default function TransportRating({ transportId, onClose }) {
     }
     
     if (transportId) {
-      fetchData()
+      fetchRatings()
     }
-  }, [transportId])
+  }, [transportId, currentUserEmail, submitSuccess])
 
   // Funkcja wysyłająca ocenę
   const handleSubmitRating = async (e) => {
     e.preventDefault()
     
-    // Sprawdź czy wszystkie kryteria zostały ocenione
-    const allRated = Object.values(ratings).every(rating => rating !== null)
-    if (!allRated) {
-      setSubmitError('Oceń wszystkie kryteria przed wysłaniem')
+    if (isPositive === null) {
+      setSubmitError('Wybierz ocenę (łapka w górę lub w dół)')
       return
     }
     
@@ -143,31 +92,35 @@ export default function TransportRating({ transportId, onClose }) {
         },
         body: JSON.stringify({
           transportId,
-          ratings,
+          isPositive,
           comment: comment.trim()
         })
       })
       
-      const result = await response.json()
+      const data = await response.json()
       
-      if (result.success) {
+      if (data.success) {
         setSubmitSuccess(true)
-        setIsEditMode(false) // Przejdź w tryb tylko do odczytu
+        setCanBeRated(false) // Po dodaniu oceny już nie można oceniać
         
-        // Odśwież dane
-        const refreshResponse = await fetch(`/api/transport-ratings?transportId=${transportId}`)
-        const refreshResult = await refreshResponse.json()
-        
-        if (refreshResult.success) {
-          setData(refreshResult)
+        // Odśwież oceny, aby wyświetlić nową ocenę
+        const fetchUpdatedRatings = async () => {
+          const response = await fetch(`/api/transport-ratings?transportId=${transportId}`)
+          const data = await response.json()
+          
+          if (data.success) {
+            setRatings(data.ratings)
+          }
         }
         
+        fetchUpdatedRatings()
+        
+        // Wyczyść błędy i ustaw timeout do ukrycia komunikatu sukcesu
         setTimeout(() => {
           setSubmitSuccess(false)
-          onClose() // Zamknij modal po udanym zapisaniu
-        }, 2000)
+        }, 3000)
       } else {
-        setSubmitError(result.error)
+        setSubmitError(data.error)
       }
     } catch (error) {
       console.error('Błąd wysyłania oceny:', error)
@@ -177,276 +130,231 @@ export default function TransportRating({ transportId, onClose }) {
     }
   }
 
-  // Funkcja renderująca przycisk oceny
-  const renderRatingButton = (criteriaKey, value, label) => {
-    const isSelected = ratings[criteriaKey] === value
-    const baseClasses = "flex items-center justify-center px-3 py-2 rounded-md transition-colors text-sm font-medium border"
-    
-    if (!isEditMode) {
-      // Tryb tylko do odczytu - przyciski nieaktywne
-      const readOnlyClasses = isSelected 
-        ? (value ? "bg-green-100 text-green-700 border-green-300" : "bg-red-100 text-red-700 border-red-300")
-        : "bg-gray-50 text-gray-400 border-gray-200"
-      
-      return (
-        <div className={`${baseClasses} ${readOnlyClasses} cursor-not-allowed`}>
-          {value ? <ThumbsUp size={16} className="mr-1" /> : <ThumbsDown size={16} className="mr-1" />}
-          {label}
-        </div>
-      )
+  // Funkcja usuwająca ocenę
+  const handleDeleteRating = async (ratingId) => {
+    if (!confirm('Czy na pewno chcesz usunąć tę ocenę?')) {
+      return
     }
     
-    // Tryb edycji - przyciski aktywne
-    const selectedClasses = value 
-      ? "bg-green-100 text-green-700 border-green-300"
-      : "bg-red-100 text-red-700 border-red-300"
-    const unselectedClasses = "bg-gray-50 text-gray-600 border-gray-300 hover:bg-gray-100"
-    
+    try {
+      const response = await fetch(`/api/transport-ratings?id=${ratingId}`, {
+        method: 'DELETE'
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        // Odśwież listę ocen
+        setSubmitSuccess(true)
+        setCanBeRated(true) // Po usunięciu oceny można znowu oceniać
+        setRatings([]) // Wyczyść listę ocen
+        
+        setTimeout(() => {
+          setSubmitSuccess(false)
+        }, 1000)
+      } else {
+        alert(data.error || 'Nie udało się usunąć oceny')
+      }
+    } catch (error) {
+      console.error('Błąd usuwania oceny:', error)
+      alert('Wystąpił błąd podczas usuwania oceny')
+    }
+  }
+
+  // Renderowanie oceny (łapka w górę/dół)
+  const renderThumb = (positive, interactive = false) => {
+    if (interactive) {
+      // Interaktywne przyciski do wyboru oceny
+      return (
+        <div className="flex space-x-6">
+          <button
+            type="button"
+            onClick={() => setIsPositive(true)}
+            className={`text-2xl p-3 rounded-full transition-colors ${
+              isPositive === true ? 'bg-green-100 text-green-600' : 'text-gray-400 hover:text-green-600'
+            }`}
+            title="Pozytywna ocena"
+          >
+            <ThumbsUp size={32} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsPositive(false)}
+            className={`text-2xl p-3 rounded-full transition-colors ${
+              isPositive === false ? 'bg-red-100 text-red-600' : 'text-gray-400 hover:text-red-600'
+            }`}
+            title="Negatywna ocena"
+          >
+            <ThumbsDown size={32} />
+          </button>
+        </div>
+      )
+    } else {
+      // Statyczne wyświetlanie oceny
+      return positive ? (
+        <ThumbsUp className="text-green-600 w-6 h-6" />
+      ) : (
+        <ThumbsDown className="text-red-600 w-6 h-6" />
+      )
+    }
+  }
+
+  if (loading) {
     return (
-      <button
-        type="button"
-        onClick={() => setRatings(prev => ({ ...prev, [criteriaKey]: value }))}
-        className={`${baseClasses} ${isSelected ? selectedClasses : unselectedClasses}`}
-      >
-        {value ? <ThumbsUp size={16} className="mr-1" /> : <ThumbsDown size={16} className="mr-1" />}
-        {label}
-      </button>
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white p-6 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">Oceny transportu</h2>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+              <X size={24} />
+            </button>
+          </div>
+          <div className="flex justify-center py-8">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          </div>
+        </div>
+      </div>
     )
   }
 
   return (
-    <div className="p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">
-          {data?.hasUserRated 
-            ? (isEditMode ? 'Edytuj ocenę transportu' : 'Twoja ocena transportu') 
-            : 'Oceń transport'
-          }
-        </h2>
-        <button
-          onClick={onClose}
-          className="text-gray-400 hover:text-gray-600 transition-colors"
-        >
-          <X size={24} />
-        </button>
-      </div>
-
-      {/* Komunikaty */}
-      {submitSuccess && (
-        <div className="mb-6 p-4 bg-green-50 text-green-700 rounded-md flex items-center">
-          <CheckCircle size={16} className="mr-2" />
-          Ocena została zapisana pomyślnie!
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white p-6 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold">Oceny transportu</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+            <X size={24} />
+          </button>
         </div>
-      )}
-
-      {submitError && (
-        <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-md flex items-center">
-          <AlertCircle size={16} className="mr-2" />
-          {submitError}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-        </div>
-      ) : error ? (
-        <div className="text-red-500 text-center p-4 bg-red-50 rounded-lg">
-          {error}
-        </div>
-      ) : (
-        <>
-          {/* Informacja dla transportów, które nie mogą być ocenione */}
-          {!data?.canBeRated && !data?.hasUserRated && (
-            <div className="bg-yellow-50 text-yellow-700 p-4 rounded-md mb-6">
-              <p>Ten transport nie może być obecnie oceniony.</p>
-              <p className="text-sm mt-1">Transport można ocenić dopiero po jego ukończeniu.</p>
-            </div>
-          )}
-
-          {/* Panel kontrolny dla użytkownika który już ocenił */}
-          {data?.hasUserRated && (
-            <div className="bg-blue-50 p-4 rounded-md mb-6 flex items-center justify-between">
-              <div>
-                <p className="text-blue-700 font-medium">
-                  {isEditMode ? 'Edytujesz swoją ocenę' : 'Przeglądasz swoją ocenę'}
-                </p>
-                <p className="text-blue-600 text-sm mt-1">
-                  {isEditMode ? 'Wprowadź zmiany i zapisz' : 'Kliknij "Edytuj" aby wprowadzić zmiany'}
-                </p>
-              </div>
-              {!isEditMode && (
-                <button
-                  onClick={() => setIsEditMode(true)}
-                  className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                >
-                  <Edit size={16} className="mr-1" />
-                  Edytuj
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Formularz oceny */}
-          {(data?.canBeRated || data?.hasUserRated) && (
-            <div className="mb-8">
-              {!data?.hasUserRated && (
-                <div className="mb-6 p-4 bg-green-50 text-green-700 rounded-md">
-                  <p className="text-sm">
-                    <strong>Instrukcja:</strong> Oceń każde kryterium jako "Tak" lub "Nie". 
-                    Wszystkie pola są wymagane.
-                  </p>
-                </div>
-              )}
-
-              <form onSubmit={handleSubmitRating} className="space-y-6">
-                {categories.map(category => (
-                  <div key={category.id} className="border border-gray-200 rounded-lg p-6">
-                    <h3 className="text-lg font-semibold mb-4 flex items-center">
-                      {category.icon}
-                      <span className="ml-2">{category.title}</span>
-                    </h3>
-                    
-                    {category.criteria.map(criteria => (
-                      <div key={criteria.key} className="mb-4 last:mb-0">
-                        <p className="text-gray-700 mb-3">{criteria.text}</p>
-                        <div className="flex space-x-3">
-                          {renderRatingButton(criteria.key, true, 'Tak')}
-                          {renderRatingButton(criteria.key, false, 'Nie')}
-                        </div>
-                      </div>
-                    ))}
+        
+        {error ? (
+          <div className="bg-red-50 text-red-700 p-4 rounded-md mb-4">
+            {error}
+          </div>
+        ) : (
+          <>
+            {/* Podsumowanie ocen */}
+            {ratings.length > 0 && (
+              <div className="bg-blue-50 p-4 rounded-md mb-6 flex justify-center">
+                <div className="flex items-center justify-center">
+                  <div className={`p-4 rounded-full ${isPositive ? 'bg-green-100' : 'bg-red-100'}`}>
+                    {renderThumb(isPositive)}
                   </div>
-                ))}
-
-                {/* Pole komentarza */}
-                <div className="border border-gray-200 rounded-lg p-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Dodatkowy komentarz (opcjonalny)
-                  </label>
-                  <textarea
-                    value={comment}
-                    onChange={(e) => setComment(e.target.value)}
-                    rows={4}
-                    disabled={!isEditMode}
-                    className={`w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      !isEditMode ? 'bg-gray-50 text-gray-600 cursor-not-allowed' : ''
-                    }`}
-                    placeholder="Opisz szczegóły transportu, problemy lub pozytywne aspekty..."
-                  />
                 </div>
-                
-                {/* Przyciski akcji */}
-                <div className="flex justify-end space-x-3">
-                  {isEditMode && (
-                    <>
-                      {data?.hasUserRated && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsEditMode(false)
-                            // Przywróć oryginalne wartości
-                            if (data.userRating) {
-                              setRatings(data.userRating.ratings)
-                              setComment(data.userRating.comment || '')
-                            }
-                          }}
-                          className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
-                        >
-                          Anuluj
-                        </button>
-                      )}
-                      <button
-                        type="submit"
-                        disabled={submitting}
-                        className="flex items-center px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-                      >
-                        <Save size={16} className="mr-1" />
-                        {submitting ? 'Zapisywanie...' : (data?.hasUserRated ? 'Zapisz zmiany' : 'Zapisz ocenę')}
-                      </button>
-                    </>
-                  )}
-                </div>
-              </form>
-            </div>
-          )}
-
-          {/* Lista wszystkich ocen - BEZ anonimizacji */}
-          {data?.ratings?.length > 0 && (
-            <div className="mt-6">
-              <h3 className="font-semibold text-lg mb-4">Wszystkie oceny ({data.ratings.length})</h3>
-              <div className="space-y-4">
-                {data.ratings.map((rating, index) => (
-                  <div key={rating.id} className="border border-gray-200 rounded-md p-4">
-                    <div className="flex justify-between items-start mb-3">
-                      <span className="text-sm text-gray-600">
-                        Oceniono przez: {rating.raterEmail}
-                      </span>
-                      <span className="text-sm text-gray-500">
-                        {new Date(rating.ratedAt).toLocaleDateString('pl-PL', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </span>
-                    </div>
+              </div>
+            )}
             
-                    {categories.map(category => (
-                      <div key={category.id} className="mb-4">
-                        <h5 className="font-medium text-sm mb-2 flex items-center">
-                          {category.icon}
-                          <span className="ml-1">{category.title}</span>
-                        </h5>
-                        
-                        {category.criteria.map(criteria => {
-                          const ratingValue = rating.ratings[criteria.key]
-                          if (ratingValue === null || ratingValue === undefined) return null
-                          
-                          return (
-                            <div key={criteria.key} className="flex items-center justify-between text-sm mb-1 pl-6">
-                              <span className="text-gray-600">{criteria.text}</span>
-                              <div className="flex items-center">
-                                {ratingValue ? (
-                                  <ThumbsUp size={14} className="text-green-600" />
-                                ) : (
-                                  <ThumbsDown size={14} className="text-red-600" />
-                                )}
-                                <span className={`ml-1 text-xs ${ratingValue ? 'text-green-600' : 'text-red-600'}`}>
-                                  {ratingValue ? 'Tak' : 'Nie'}
-                                </span>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    ))}
-                    
-                    {rating.comment && (
-                      <div className="mt-3 pt-3 border-t border-gray-100">
-                        <div className="flex items-start">
-                          <MessageSquare size={16} className="text-gray-400 mt-1 mr-2" />
-                          <p className="text-gray-700 text-sm">{rating.comment}</p>
-                        </div>
-                      </div>
-                    )}
+            {/* Formularz dodawania oceny - wyświetl tylko jeśli transport może być oceniony */}
+            {canBeRated ? (
+              <div className="bg-gray-50 p-4 rounded-md mb-6">
+                <h3 className="font-medium mb-3">Oceń transport</h3>
+                <form onSubmit={handleSubmitRating}>
+                  <div className="mb-3 flex justify-center">
+                    {renderThumb(isPositive, true)}
                   </div>
-                ))}
+                  
+                  <div className="mb-3">
+                    <label htmlFor="comment" className="block text-sm font-medium text-gray-700 mb-1">
+                      Komentarz (opcjonalnie)
+                    </label>
+                    <textarea
+                      id="comment"
+                      rows={3}
+                      value={comment}
+                      onChange={(e) => setComment(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Podziel się swoją opinią na temat tego transportu..."
+                    />
+                  </div>
+                  
+                  {submitError && (
+                    <div className="bg-red-50 text-red-700 p-3 rounded-md mb-3 text-sm">
+                      {submitError}
+                    </div>
+                  )}
+                  
+                  {submitSuccess && (
+                    <div className="bg-green-50 text-green-700 p-3 rounded-md mb-3 text-sm">
+                      Twoja ocena została zapisana!
+                    </div>
+                  )}
+                  
+                  <div className="flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={submitting || isPositive === null}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                    >
+                      {submitting ? 'Zapisywanie...' : 'Zapisz ocenę'}
+                    </button>
+                  </div>
+                </form>
               </div>
+            ) : (
+              <div className="bg-blue-50 text-blue-700 p-4 rounded-md mb-6">
+                <p>Ten transport został już oceniony i nie może być oceniony ponownie.</p>
+                <p className="text-sm mt-2">Tylko pierwsza osoba może ocenić transport.</p>
+              </div>
+            )}
+            
+            {/* Lista ocen - zmieniony nagłówek */}
+            <div>
+              <h3 className="font-medium mb-3">
+                {ratings.length > 0 ? "Ocena" : "Brak oceny"}
+              </h3>
+              
+              {ratings.length === 0 ? (
+                <div className="text-center text-gray-500 py-6">
+                  Transport nie został jeszcze oceniony.
+                  {canBeRated && " Bądź pierwszy i oceń!"}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {ratings.map((rating) => (
+                    <div key={rating.id} className="border rounded-md p-4">
+                      <div className="flex justify-between items-start">
+                        <div className="flex items-start">
+                          <div className={`mr-3 p-1 rounded-full ${rating.is_positive ? 'bg-green-100' : 'bg-red-100'}`}>
+                            {renderThumb(rating.is_positive)}
+                          </div>
+                          <div>
+                            <div className="font-medium">{rating.rater_name}</div>
+                            <div className="text-sm text-gray-500">
+                              {new Date(rating.created_at).toLocaleDateString('pl-PL', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {(currentUserEmail === rating.rater_email || isAdmin) && (
+                          <button
+                            onClick={() => handleDeleteRating(rating.id)}
+                            className="text-red-500 hover:text-red-700"
+                            title="Usuń ocenę"
+                          >
+                            <X size={18} />
+                          </button>
+                        )}
+                      </div>
+                      
+                      {rating.comment && (
+                        <div className="mt-2 text-gray-700 whitespace-pre-line ml-9">
+                          {rating.comment}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-
-          {/* Brak ocen */}
-          {data?.stats?.totalRatings === 0 && (
-            <div className="text-center py-8 text-gray-500">
-              <Package size={48} className="mx-auto mb-4 text-gray-300" />
-              <p>Ten transport nie został jeszcze oceniony.</p>
-            </div>
-          )}
-        </>
-      )}
+          </>
+        )}
+      </div>
     </div>
   )
 }

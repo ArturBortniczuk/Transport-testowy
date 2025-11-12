@@ -162,50 +162,6 @@ function addPageContent(doc, transport, safeAddText) {
     return filtered;
   };
 
-  // NOWA FUNKCJA: Pobieranie kontaktu dla transportu
-  const getContactFromTransportId = (transportId, contactType) => {
-    if (!transport.merged_transports?.originalTransports) return '';
-    
-    const originalTransport = transport.merged_transports.originalTransports.find(t => t.id === transportId);
-    if (!originalTransport) return '';
-    
-    return contactType === 'loading' ? 
-      originalTransport.loading_contact || '' : 
-      originalTransport.unloading_contact || '';
-  };
-  
-  // POPRAWIONA FUNKCJA: Formatowanie kompaktowego adresu dla CMR
-  const formatCompactAddressForCMR = (addressData, contact) => {
-    if (!addressData) return '';
-    
-    let formattedAddress = '';
-    
-    // Jeśli to string z nazwą magazynu
-    if (typeof addressData === 'string') {
-      if (addressData.includes('Magazyn Białystok')) {
-        formattedAddress = 'Białystok';
-      } else if (addressData.includes('Magazyn Zielonka')) {
-        formattedAddress = 'Zielonka';
-      } else {
-        formattedAddress = addressData;
-      }
-    } 
-    // Jeśli to obiekt adresowy
-    else if (typeof addressData === 'object' && addressData.city) {
-      formattedAddress = `${addressData.postalCode || ''} ${addressData.city || ''}`;
-      if (addressData.street) {
-        formattedAddress += `, ${addressData.street}`;
-      }
-    }
-    
-    // Dodaj kontakt jeśli jest
-    if (contact) {
-      formattedAddress += `, t:${contact}`;
-    }
-    
-    return formattedAddress.trim();
-  };
-  
   // Funkcja do formatowania kompaktowego adresu
   const formatCompactAddress = (address, contact) => {
     if (!address) return '';

@@ -1,101 +1,31 @@
-// src/app/spedycja/components/SpedycjaList.js
 import React, { useState } from 'react'
 import { format } from 'date-fns'
 import { pl } from 'date-fns/locale'
-import MergedTransportSummary from './MergedTransportSummary'
-import TransportConnectionBadge from './TransportConnectionBadge'
 import { generateCMR } from '@/lib/utils/generateCMR'
-import { Truck, Package, MapPin, Phone, FileText, Calendar, DollarSign, User, Clipboard, ArrowRight, ChevronDown, ChevronUp, AlertCircle, Edit, Pencil, Building, ShoppingBag, Weight, Bot, Link as LinkIcon, Unlink, Copy, ExternalLink, CheckCircle, Clock, Container } from 'lucide-react'
-import MultiTransportResponseForm from './MultiTransportResponseForm'
+import { Truck, Package, MapPin, Phone, FileText, Calendar, DollarSign, User, Clipboard, ArrowRight, ChevronDown, ChevronUp, AlertCircle, Edit, Pencil, Building, ShoppingBag, Weight, Bot, Link as LinkIcon } from 'lucide-react'
 
 export default function SpedycjaList({ 
   zamowienia, 
   showArchive, 
   isAdmin, 
+  onResponse, 
   onMarkAsCompleted, 
   onCreateOrder, 
   canSendOrder,
   onEdit,
-  onCopy,
-  currentUserEmail,
-  fetchSpedycje,
-  showOperationMessage
+  currentUserEmail
 }) {
   const [expandedId, setExpandedId] = useState(null)
-  const [showMultiResponseForm, setShowMultiResponseForm] = useState(false)
 
   const buttonClasses = {
-    primary: "px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-2",
+    primary: "px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors flex items-center gap-2",
     outline: "px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors flex items-center gap-2",
-    success: "px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center gap-2",
-    danger: "px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors flex items-center gap-2"
+    success: "px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors flex items-center gap-2"
   }
 
-  // FUNKCJA: Obsługa odpowiedzi zbiorczej na wiele transportów
-  const handleMultiTransportResponse = async (responseData) => {
-    try {
-      console.log('📤 SpedycjaList: Otrzymałem dane odpowiedzi:', responseData)
-      
-      const payload = {
-        transportIds: responseData.selectedTransports,
-        routeSequence: responseData.routeSequence,
-        driverInfo: responseData.driverInfo,
-        totalPrice: responseData.totalPrice,
-        priceBreakdown: responseData.priceBreakdown,
-        transportDate: responseData.transportDate,
-        notes: responseData.notes,
-        cargoDescription: responseData.cargoDescription,
-        totalWeight: responseData.totalWeight,
-        totalDistance: responseData.totalDistance,
-        isMerged: responseData.selectedTransports.length > 1,
-        // NOWE POLA
-        vehicleType: responseData.vehicleType,
-        transportType: responseData.transportType
-      }
-
-      console.log('📋 SpedycjaList: Wysyłam payload:', payload)
-
-      const response = await fetch('/api/spedycje/multi-response', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload)
-      })
-
-      const data = await response.json()
-      console.log('📨 SpedycjaList: Odpowiedź z API:', data)
-
-      if (data.success) {
-        const transportCount = responseData.selectedTransports.length
-        const message = transportCount > 1 
-          ? `Pomyślnie zapisano odpowiedź łączącą ${transportCount} transport${transportCount === 2 ? 'y' : transportCount > 4 ? 'ów' : 'y'}`
-          : `Pomyślnie zapisano odpowiedź na transport`
-        
-        showOperationMessage(message, 'success')
-        setShowMultiResponseForm(false)
-        
-        // Wywołaj fetchSpedycje jeśli istnieje
-        if (typeof fetchSpedycje === 'function') {
-          await fetchSpedycje()
-        } else {
-          console.log('⚠️ fetchSpedycje nie jest funkcją, odświeżam stronę')
-          window.location.reload()
-        }
-      } else {
-        throw new Error(data.error || 'Nieznany błąd API')
-      }
-    } catch (error) {
-      console.error('❌ SpedycjaList: Błąd odpowiedzi zbiorczej:', error)
-      const errorMessage = error.message || 'Wystąpił nieoczekiwany błąd'
-      showOperationMessage('Wystąpił błąd podczas zapisywania odpowiedzi: ' + errorMessage, 'error')
-    }
-  }
-
-  // FUNKCJE POMOCNICZE
   const formatAddress = (address) => {
     if (!address) return ''
-    return `${address.city || ''}, ${address.postalCode || ''}, ${address.street || ''}`.replace(/^,\s*|,\s*$/g, '')
+    return `${address.city}, ${address.postalCode}, ${address.street}`
   }
 
   const formatDate = (dateString) => {
@@ -110,1173 +40,788 @@ export default function SpedycjaList({
   
   const getLoadingCity = (zamowienie) => {
     if (zamowienie.location === 'Odbiory własne' && zamowienie.producerAddress) {
-      return zamowienie.producerAddress.city || 'Brak miasta';
+      return zamowienie.producerAddress.city || '';
     } else if (zamowienie.location === 'Magazyn Białystok') {
       return 'Białystok';
     } else if (zamowienie.location === 'Magazyn Zielonka') {
       return 'Zielonka';
     }
-    return zamowienie.location || 'Nie podano';
+    return '';
   }
   
   const getDeliveryCity = (zamowienie) => {
     return zamowienie.delivery?.city || '';
   }
 
-  // Funkcja pomocnicza do określania nazwy firmy załadunku
-  const getLoadingCompanyName = (transport) => {
-    if (transport.location === 'Odbiory własne') {
-      // Sprawdź czy są dane w location_data
-      if (transport.location_data || transport.producerAddress) {
-        const locationData = transport.location_data || transport.producerAddress;
-        return locationData.company || transport.clientName || 'Nie podano';
-      }
-      return transport.sourceClientName || transport.clientName || 'Nie podano';
+  // Funkcja do generowania linku do Google Maps
+  const generateGoogleMapsLink = (transport) => {
+    // Pobierz dane źródłowe i docelowe
+    let origin = '';
+    let destination = '';
+    
+    // Ustal miejsce załadunku
+    if (transport.location === 'Odbiory własne' && transport.producerAddress) {
+      const addr = transport.producerAddress;
+      origin = `${addr.city},${addr.postalCode},${addr.street || ''}`;
     } else if (transport.location === 'Magazyn Białystok') {
-      return 'Grupa Eltron Sp. z o.o.';
+      origin = 'Białystok';
     } else if (transport.location === 'Magazyn Zielonka') {
-      return 'Grupa Eltron Sp. z o.o.';
-    }
-    return 'Nie podano';
-  }
-  
-  // Funkcja pomocnicza do określania nazwy firmy rozładunku
-  const getUnloadingCompanyName = (transport) => {
-    // Sprawdź delivery_data (JSON) - priorytet 1
-    if (transport.delivery_data) {
-      try {
-        const deliveryData = typeof transport.delivery_data === 'string' 
-          ? JSON.parse(transport.delivery_data) 
-          : transport.delivery_data
-        if (deliveryData.company && deliveryData.company.trim()) {
-          return deliveryData.company.trim();
-        }
-      } catch (e) {
-        console.error('Błąd parsowania delivery_data:', e)
-      }
+      origin = 'Zielonka';
     }
     
-    // Sprawdź standardowe pole delivery.company - priorytet 2
-    if (transport.delivery && transport.delivery.company && transport.delivery.company.trim()) {
-      return transport.delivery.company.trim();
-    }
-    
-    // Sprawdź clientName - priorytet 3
-    if (transport.clientName && transport.clientName.trim()) {
-      return transport.clientName.trim();
-    }
-    
-    // Ostatnia opcja - sprawdź czy w delivery_data jest nazwa miasta jako firma
-    if (transport.delivery_data) {
-      try {
-        const deliveryData = typeof transport.delivery_data === 'string' 
-          ? JSON.parse(transport.delivery_data) 
-          : transport.delivery_data
-        if (deliveryData.city && deliveryData.city.trim()) {
-          return `Klient w ${deliveryData.city.trim()}`;
-        }
-      } catch (e) {
-        // Ignore error
-      }
-    }
-    
-    // Fallback do miasta z delivery
-    if (transport.delivery && transport.delivery.city) {
-      return `Klient w ${transport.delivery.city}`;
-    }
-    
-    return 'Nie podano'
-  }
-  
-  // Funkcja pomocnicza do określania adresu załadunku
-  const getLoadingAddress = (transport) => {
-    if (transport.location === 'Odbiory własne' && (transport.producerAddress || transport.location_data)) {
-      const locationData = transport.producerAddress || transport.location_data;
-      return formatAddress(locationData);
-    } else if (transport.location === 'Magazyn Białystok') {
-      return 'ul. Wysockiego 69B, 15-169 Białystok';
-    } else if (transport.location === 'Magazyn Zielonka') {
-      return 'ul. Krótka 2, 05-220 Zielonka';
-    }
-    return transport.location || 'Nie podano';
-  }
-
-  // Funkcja pomocnicza do określania adresu rozładunku
-  const getUnloadingAddress = (transport) => {
-    // Sprawdź delivery_data (JSON)
-    if (transport.delivery_data) {
-      try {
-        const deliveryData = typeof transport.delivery_data === 'string' 
-          ? JSON.parse(transport.delivery_data) 
-          : transport.delivery_data
-        return formatAddress(deliveryData) || 'Nie podano'
-      } catch (e) {
-        console.error('Błąd parsowania delivery_data:', e)
-      }
-    }
-    
-    // Sprawdź standardowe pole delivery
+    // Ustal miejsce dostawy
     if (transport.delivery) {
-      return formatAddress(transport.delivery) || 'Nie podano'
+      const addr = transport.delivery;
+      destination = `${addr.city},${addr.postalCode},${addr.street || ''}`;
     }
     
-    return 'Nie podano'
-  }
-
-  // Funkcja do sprawdzania czy transport jest już połączony
-  const isMergedTransport = (zamowienie) => {
-    console.log('🔍 DEBUG isMergedTransport dla ID:', zamowienie.id);
-    console.log('📋 Pełne dane zamówienia:', zamowienie);
+    // Jeśli brakuje któregoś z punktów, zwróć pusty string
+    if (!origin || !destination) return '';
     
-    try {
-      const responseData = zamowienie.response_data ? 
-        (typeof zamowienie.response_data === 'string' ? JSON.parse(zamowienie.response_data) : zamowienie.response_data) 
-        : null;
-      
-      console.log('📊 Response data:', responseData);
-      console.log('🔗 isMerged z response_data:', responseData?.isMerged);
-      console.log('🔗 is_merged z pola:', zamowienie.is_merged);
-      console.log('🔗 merged_transports istnieje:', !!zamowienie.merged_transports);
-      
-      const result = responseData?.isMerged || zamowienie.is_merged || false;
-      console.log('✅ Wynik isMergedTransport:', result);
-      
-      return result;
-    } catch (e) {
-      console.error('❌ Błąd w isMergedTransport:', e);
-      return false;
-    }
-  }
+    // Kodowanie URI komponentów
+    origin = encodeURIComponent(origin);
+    destination = encodeURIComponent(destination);
+    
+    // Zwróć link do Google Maps
+    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
+  };
 
-  // Funkcja do pobierania informacji o osobie odpowiedzialnej
-  const getResponsiblePersonInfo = (transport) => {
-    // Jeśli jest osoba odpowiedzialna
-    if (transport.responsiblePerson) {
+  // FUNKCJA: Sprawdza czy odpowiedź została wygenerowana automatycznie
+  const isAutoGeneratedResponse = (zamowienie) => {
+    return zamowienie.response && zamowienie.response.autoGenerated === true;
+  };
+
+  // NOWA FUNKCJA: Oblicza całkowitą trasę dla połączonych transportów
+  const calculateConnectedRoute = (mainTransport) => {
+    if (!isAutoGeneratedResponse(mainTransport)) {
+      return null;
+    }
+
+    const connectedTransports = mainTransport.response?.connectedTransports || [];
+    if (connectedTransports.length === 0) {
+      return null;
+    }
+
+    // Zbierz wszystkie punkty trasy w odpowiedniej kolejności
+    const routePoints = [];
+    
+    // Posortuj połączone transporty według kolejności
+    const sortedTransports = [...connectedTransports].sort((a, b) => (a.order || 0) - (b.order || 0));
+    
+    // Dodaj punkty z połączonych transportów
+    sortedTransports.forEach(ct => {
+      if (ct.route) {
+        const [start, end] = ct.route.split(' → ');
+        // Dodaj punkt startowy jeśli jeszcze go nie ma
+        if (start && !routePoints.includes(start)) {
+          routePoints.push(start);
+        }
+      }
+    });
+    
+    // Dodaj punkt głównego transportu (załadunek) jeśli jeszcze go nie ma
+    const mainStart = getLoadingCity(mainTransport);
+    if (mainStart && !routePoints.includes(mainStart)) {
+      routePoints.push(mainStart);
+    }
+    
+    // Dodaj punkt docelowy (zawsze na końcu)
+    const mainEnd = getDeliveryCity(mainTransport);
+    if (mainEnd && !routePoints.includes(mainEnd)) {
+      routePoints.push(mainEnd);
+    }
+    
+    // Oblicz całkowitą odległość - POPRAWIONA LOGIKA
+    let totalDistance = 0;
+    
+    // Dodaj odległość głównego transportu
+    totalDistance += mainTransport.distanceKm || 0;
+    
+    // Dodaj odległości z połączonych transportów
+    sortedTransports.forEach(ct => {
+      // Spróbuj znaleźć oryginalny transport w liście wszystkich zamówień
+      // i pobierz jego rzeczywistą odległość
+      const originalTransportDistance = ct.distanceKm || 50; // fallback 50km jeśli nie ma danych
+      totalDistance += originalTransportDistance;
+    });
+    
+    return {
+      route: routePoints.join(' → '),
+      totalDistance: totalDistance,
+      connectedCount: connectedTransports.length
+    };
+  };
+
+  // FUNKCJA POMOCNICZA: Pobiera trasę dla wyświetlenia w nagłówku
+  const getDisplayRoute = (zamowienie) => {
+    const connectedRoute = calculateConnectedRoute(zamowienie);
+    
+    if (connectedRoute) {
       return {
-        name: transport.responsiblePerson,
-        mpk: transport.mpk || transport.responsible_mpk || '', // Sprawdź różne pola MPK
-        email: transport.responsibleEmail || ''
+        text: connectedRoute.route,
+        distance: connectedRoute.totalDistance,
+        isConnected: true
       };
     }
     
-    // Fallback do osoby tworzącej
+    // Dla normalnych transportów
     return {
-      name: transport.createdBy || 'Nie podano',
-      mpk: transport.mpk || transport.created_by_mpk || '', // Sprawdź MPK osoby tworzącej
-      email: transport.createdByEmail || ''
+      text: `${getLoadingCity(zamowienie)} → ${getDeliveryCity(zamowienie)}`,
+      distance: zamowienie.distanceKm || 0,
+      isConnected: false
     };
-  }
+  };
 
-  // Funkcja do pobierania odległości transportu - zwraca obiekt z podstawową i łączną odległością
-  const getTransportDistance = (transport) => {
-    let baseDistance = null; // Podstawowa odległość punktu do punktu
-    let routeDistance = null; // Rzeczywista odległość całej trasy (dla połączonych)
-
-    // 1. Pobierz podstawową odległość z pól bazy danych
-    if (transport.distanceKm && transport.distanceKm > 0) {
-      baseDistance = transport.distanceKm;
-    } else if (transport.distance_km && transport.distance_km > 0) {
-      baseDistance = transport.distance_km;
-    }
-
-    // 2. Sprawdź response_data dla wszystkich transportów (nie tylko połączonych)
-    try {
-      if (transport.response_data) {
-        const responseData = typeof transport.response_data === 'string' 
-          ? JSON.parse(transport.response_data) 
-          : transport.response_data;
-        
-        // Dla transportów połączonych szukaj odległości trasy
-        if (transport.is_merged || transport.isMerged || responseData.isMerged) {
-          if (responseData.realRouteDistance) {
-            routeDistance = responseData.realRouteDistance;
-          } else if (responseData.totalDistance) {
-            routeDistance = responseData.totalDistance;
-          }
-        }
-        
-        // Dla wszystkich transportów - sprawdź czy nie ma lepszej odległości podstawowej
-        if (!baseDistance && responseData.distance && responseData.distance > 0) {
-          baseDistance = responseData.distance;
-        }
-        if (!baseDistance && responseData.distanceKm && responseData.distanceKm > 0) {
-          baseDistance = responseData.distanceKm;
-        }
-      }
-    } catch (e) {
-      console.error('Błąd parsowania response_data dla odległości:', e);
-    }
-
-    return {
-      base: baseDistance,
-      route: routeDistance,
-      isMerged: transport.is_merged || transport.isMerged || false
-    };
-  }
-
-  // Funkcja do wyświetlania odległości w głównej kolumnie tabeli
-  const renderDistanceColumn = (distanceData) => {
-    if (!distanceData.base && !distanceData.route) {
-      return null;
-    }
-
-    if (distanceData.isMerged && distanceData.route && distanceData.base) {
-      // Transport połączony - pokaż format: "📍 335 km | 630 km trasa"
-      return (
-        <div className="text-xs text-gray-500 mt-1">
-          📍 {distanceData.base} km | <span className="font-semibold text-green-600">{distanceData.route} km trasa</span>
-        </div>
-      );
-    } else if (distanceData.route) {
-      return (
-        <div className="text-xs text-gray-500 mt-1">
-          📏 <span className="font-semibold text-green-600">{distanceData.route} km</span>
-        </div>
-      );
-    } else if (distanceData.base) {
-      return (
-        <div className="text-xs text-gray-500 mt-1">
-          📏 {distanceData.base} km
-        </div>
-      );
-    }
-
-    return null;
-  }
-
-  // Funkcja do wyświetlania odległości w rozwinięciu (szczegółowym widoku)
-  const renderDistanceDetails = (distanceData) => {
-    if (!distanceData.base && !distanceData.route) {
-      return null;
-    }
-
-    if (distanceData.isMerged && distanceData.route && distanceData.base) {
-      // Transport połączony - pokaż obie odległości
-      return (
-        <div className="flex items-start gap-1">
-          <MapPin size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
-          <div>
-            <span className="text-gray-500">Odległość:</span>
-            <div className="ml-1">
-              <div className="text-gray-900 font-medium">{distanceData.base} km (bezpośrednia)</div>
-              <div className="text-green-600 font-bold">{distanceData.route} km (rzeczywista trasa)</div>
-            </div>
-          </div>
-        </div>
-      );
-    } else if (distanceData.route) {
-      return (
-        <div className="flex items-start gap-1">
-          <MapPin size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
-          <div>
-            <span className="text-gray-500">Odległość:</span>
-            <span className="ml-1 text-green-600 font-bold">
-              {distanceData.route} km (rzeczywista trasa)
-            </span>
-          </div>
-        </div>
-      );
-    } else if (distanceData.base) {
-      return (
-        <div className="flex items-start gap-1">
-          <MapPin size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
-          <div>
-            <span className="text-gray-500">Odległość:</span>
-            <span className="ml-1 text-gray-900 font-medium">
-              {distanceData.base} km
-            </span>
-          </div>
-        </div>
-      );
-    }
-
-    return null;
-  }
-
-
-  // Funkcja do pobierania statusu transportu
-  const getStatusInfo = (transport) => {
-    switch (transport.status) {
-      case 'new':
-        return {
-          text: 'Nowe',
-          class: 'bg-blue-100 text-blue-800 border border-blue-200',
-          icon: <AlertCircle size={12} />
-        };
-      case 'responded':
-        return {
-          text: 'Odpowiedziane',
-          class: 'bg-green-100 text-green-800 border border-green-200',
-          icon: <CheckCircle size={12} />
-        };
-      case 'completed':
-        return {
-          text: 'Zrealizowane',
-          class: 'bg-gray-100 text-gray-800 border border-gray-200',
-          icon: <CheckCircle size={12} />
-        };
-      default:
-        return {
-          text: transport.status || 'Nieznany',
-          class: 'bg-gray-100 text-gray-800 border border-gray-200',
-          icon: <AlertCircle size={12} />
-        };
-    }
-  }
-
-  // Funkcja do sprawdzania czy można edytować
-  const canEdit = (transport) => {
-    if (!transport) return false;
-    
-    // Admin może edytować wszystko
-    if (isAdmin) return true;
-    
-    // Twórca może edytować swoje transporty
-    if (transport.createdByEmail === currentUserEmail) return true;
-    
-    // Osoba odpowiedzialna może edytować przypisane transporty
-    if (transport.responsibleEmail === currentUserEmail) return true;
-    
-    return false;
-  }
-
-  // Funkcja do tworzenia route display
-  const getDisplayRoute = (transport) => {
-    const loadingCity = getLoadingCity(transport);
-    const deliveryCity = getDeliveryCity(transport);
-    return `${loadingCity} → ${deliveryCity}`;
-  }
-
-  // Funkcja do pobierania odpowiedniej ikony na podstawie typu transportu
-  const getTransportIcon = (transport) => {
-    try {
-      // Sprawdź response_data dla typu transportu
-      if (transport.response_data) {
-        const responseData = typeof transport.response_data === 'string' 
-          ? JSON.parse(transport.response_data) 
-          : transport.response_data;
-        
-        if (responseData.transportType === 'opakowaniowy') {
-          return { icon: Container, color: 'text-orange-600', bgColor: 'bg-orange-100' };
-        }
-      }
-      
-      // Sprawdź standardowe pole response
-      if (transport.response?.transportType === 'opakowaniowy') {
-        return { icon: Container, color: 'text-orange-600', bgColor: 'bg-orange-100' };
-      }
-      
-      // Domyślna ikona ciężarówki
-      return { icon: Truck, color: 'text-blue-600', bgColor: 'bg-blue-100' };
-    } catch (e) {
-      return { icon: Truck, color: 'text-blue-600', bgColor: 'bg-blue-100' };
-    }
-  }
-
-  // Funkcja do generowania URL Google Maps z pełną trasą
-  const generateGoogleMapsUrl = (transport) => {
-    try {
-      // Sprawdź czy to transport połączony z sekwencją trasy
-      if (transport.response_data) {
-        const responseData = typeof transport.response_data === 'string' 
-          ? JSON.parse(transport.response_data) 
-          : transport.response_data;
-        
-        if (responseData?.isMerged && responseData?.routeSequence && responseData.routeSequence.length > 0) {
-          // Użyj sekwencji trasy dla połączonych transportów
-          const sequence = responseData.routeSequence;
-          
-          if (sequence.length === 1) {
-            // Jeden punkt - użyj podstawowej trasy
-            const point = sequence[0];
-            return `https://www.google.com/maps/search/${encodeURIComponent(point.city)}`;
-          } else if (sequence.length === 2) {
-            // Dwa punkty - bezpośrednia trasa
-            const start = sequence[0];
-            const end = sequence[sequence.length - 1];
-            return `https://www.google.com/maps/dir/${encodeURIComponent(start.city)}/${encodeURIComponent(end.city)}`;
-          } else {
-            // Wiele punktów - użyj waypoints
-            const start = sequence[0];
-            const end = sequence[sequence.length - 1];
-            const waypoints = sequence.slice(1, -1); // Wszystkie punkty między pierwszym a ostatnim
-            
-            let url = `https://www.google.com/maps/dir/${encodeURIComponent(start.city)}`;
-            
-            // Dodaj waypoints
-            waypoints.forEach(point => {
-              url += `/${encodeURIComponent(point.city)}`;
-            });
-            
-            // Dodaj punkt końcowy
-            url += `/${encodeURIComponent(end.city)}`;
-            
-            return url;
-          }
-        }
-      }
-      
-      // Fallback dla pojedynczych transportów lub bez sekwencji
-      const startCity = getLoadingCity(transport);
-      const endCity = getDeliveryCity(transport);
-      return `https://www.google.com/maps/dir/${encodeURIComponent(startCity)}/${encodeURIComponent(endCity)}`;
-    } catch (e) {
-      console.error('Błąd generowania URL Google Maps:', e);
-      // Fallback
-      const startCity = getLoadingCity(transport);
-      const endCity = getDeliveryCity(transport);
-      return `https://www.google.com/maps/dir/${encodeURIComponent(startCity)}/${encodeURIComponent(endCity)}`;
-    }
-  }
-
-  // Filtruj zamówienia na podstawie trybu archiwum
-  const filteredSpedycje = zamowienia.filter(zamowienie => {
-    if (showArchive) {
-      return zamowienie.status === 'completed';
+  // Funkcja do określania statusu zamówienia - ZMODYFIKOWANA
+  const getStatusLabel = (zamowienie) => {
+    if (zamowienie.status === 'completed') {
+      return { 
+        label: 'Zakończone', 
+        className: 'bg-green-100 text-green-800 border border-green-300',
+        icon: <Clipboard size={16} className="mr-1" />
+      };
+    } else if (zamowienie.response && Object.keys(zamowienie.response).length > 0) {
+      // Wszystkie odpowiedzi teraz mają ten sam status "Odpowiedziane"
+      return { 
+        label: 'Odpowiedziane', 
+        className: 'bg-yellow-100 text-yellow-800 border border-yellow-300',
+        icon: <Truck size={16} className="mr-1" />
+      };
     } else {
-      return zamowienie.status === 'new' || zamowienie.status === 'responded';
+      return { 
+        label: 'Nowe', 
+        className: 'bg-blue-100 text-blue-800 border border-blue-300',
+        icon: <Package size={16} className="mr-1" />
+      };
     }
-  });
+  }
 
-  return (
-    <div className="w-full max-w-none mx-auto space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-900">
-          {showArchive ? 'Archiwum zapytań spedycyjnych' : 'Nowe zapytania spedycyjne'}
-        </h1>
+  // Funkcja sprawdzająca czy data dostawy została zmieniona
+  const isDeliveryDateChanged = (zamowienie) => {
+    return zamowienie.response && 
+           zamowienie.response.dateChanged === true && 
+           zamowienie.response.newDeliveryDate;
+  }
+
+  // Funkcja pobierająca aktualną datę dostawy (oryginalną lub zmienioną)
+  const getActualDeliveryDate = (zamowienie) => {
+    if (isDeliveryDateChanged(zamowienie)) {
+      return zamowienie.response.newDeliveryDate;
+    }
+    return zamowienie.deliveryDate;
+  }
+
+  // Sprawdza, czy bieżący użytkownik jest twórcą zamówienia
+  const isCreatedByCurrentUser = (zamowienie) => {
+    return zamowienie.createdByEmail === currentUserEmail;
+  }
+
+  // Sprawdza, czy zamówienie może być edytowane
+  const canBeEdited = (zamowienie) => {
+    // Tylko nowe zamówienia bez odpowiedzi mogą być edytowane
+    return zamowienie.status === 'new' && 
+           (!zamowienie.response || Object.keys(zamowienie.response).length === 0);
+  }
+  
+  // Renderuje info o powiązanych transportach
+  const renderConnectedTransports = (transport) => {
+    if (!transport.response || !transport.response.connectedTransports || 
+        !transport.response.connectedTransports.length) return null;
+    
+    const connectedTransports = transport.response.connectedTransports;
+    const connectedRoute = calculateConnectedRoute(transport);
+    
+    return (
+      <div className="mt-4 p-3 bg-indigo-50 border border-indigo-100 rounded-md">
+        <h4 className="font-medium text-indigo-700 mb-2 flex items-center">
+          <LinkIcon size={16} className="mr-2" />
+          Transport połączony
+        </h4>
         
-        {/* Przycisk odpowiedzi zbiorczej - tylko dla osób z uprawnieniami i nowych zapytań */}
-        {!showArchive && filteredSpedycje.filter(s => s.status === 'new').length > 0 && isAdmin && (
-          <button
-            onClick={() => setShowMultiResponseForm(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
-          >
-            <Truck size={20} />
-            Odpowiedz
-            <span className="bg-green-500 text-white px-2 py-1 rounded-full text-xs">
-              {filteredSpedycje.filter(s => s.status === 'new').length}
-            </span>
-          </button>
+        {/* Pokaż pełną trasę */}
+        {connectedRoute && (
+          <div className="mb-3 p-2 bg-white rounded border border-indigo-200">
+            <div className="text-sm font-medium text-indigo-800">
+              Trasa połączona: {connectedRoute.route}
+            </div>
+            <div className="text-xs text-indigo-600 mt-1">
+              Łączna odległość: {connectedRoute.totalDistance} km • 
+              Liczba transportów: {connectedRoute.connectedCount + 1}
+            </div>
+          </div>
         )}
-      </div>
-
-      {/* Modal odpowiedzi zbiorczej */}
-      {showMultiResponseForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <MultiTransportResponseForm
-              availableTransports={filteredSpedycje.filter(transport => transport.status === 'new')}
-              onSubmit={handleMultiTransportResponse}
-              onClose={() => setShowMultiResponseForm(false)}
-            />
+        
+        <div className="text-sm text-indigo-700">
+          <span className="font-medium">Transporty w tej trasie:</span>
+        </div>
+        <div className="space-y-2 mt-2">
+          {connectedTransports.map((ct, index) => (
+            <div key={ct.id} className="flex justify-between items-center text-sm border-b border-indigo-100 pb-2 last:border-0">
+              <div className="flex-1">
+                <div className="font-medium">
+                  {index+1}. {ct.orderNumber || ct.id} {ct.route && `(${ct.route})`}
+                </div>
+                <div className="text-xs text-indigo-700">
+                  {ct.type === 'loading' ? 'Załadunek' : 'Rozładunek'} • 
+                  <span className="ml-1">MPK: {ct.mpk}</span> •
+                  <span className="ml-1">{ct.responsiblePerson || 'Brak'}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+          
+          {/* Pokaż główny transport */}
+          <div className="flex justify-between items-center text-sm font-medium text-indigo-800 pt-2 border-t border-indigo-200">
+            <div className="flex-1">
+              <div>
+                {connectedTransports.length + 1}. {transport.orderNumber || transport.id} (główny transport)
+              </div>
+              <div className="text-xs">
+                {getLoadingCity(transport)} → {getDeliveryCity(transport)} • 
+                <span className="ml-1">MPK: {transport.mpk}</span>
+              </div>
+            </div>
           </div>
         </div>
-      )}
-
-      {/* Lista transportów w formie tabeli z ulepszoną stylistyką */}
-      <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-        {filteredSpedycje.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="bg-gray-100 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6">
-              <Package size={48} className="text-gray-400" />
-            </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">
-              {showArchive ? 'Brak zamówień w archiwum' : 'Brak nowych zamówień'}
-            </h3>
-            <p className="text-gray-600 mb-6">
-              {showArchive 
-                ? 'Nie ma jeszcze zrealizowanych zamówień spedycyjnych.' 
-                : 'Gdy pojawią się nowe zapytania spedycyjne, zobaczysz je tutaj.'
-              }
-            </p>
-            {!showArchive && (
-              <button
-                onClick={onCreateOrder}
-                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-              >
-                <Package size={20} className="mr-2" />
-                Dodaj nowe zamówienie
-              </button>
+        
+        {transport.response.deliveryPrice && (
+          <div className="text-sm text-indigo-800 mt-3 pt-2 border-t border-indigo-100">
+            <span className="font-medium">Całkowity koszt transportu:</span> 
+            <span className="ml-1">{transport.response.deliveryPrice} PLN</span>
+            {transport.response.costPerTransport && (
+              <div className="text-xs text-indigo-600 mt-1">
+                Koszt na transport: {transport.response.costPerTransport} PLN
+              </div>
             )}
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
-                <tr>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    <div className="flex items-center gap-2">
-                      <Truck size={14} className="text-blue-600" />
-                      Trasa
-                    </div>
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    <div className="flex items-center gap-2">
-                      <Building size={14} className="text-green-600" />
-                      Firmy
-                    </div>
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    <div className="flex items-center gap-2">
-                      <Calendar size={14} className="text-purple-600" />
-                      Daty
-                    </div>
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    <div className="flex items-center gap-2">
-                      <FileText size={14} className="text-orange-600" />
-                      Numer/MPK
-                    </div>
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    <div className="flex items-center gap-2">
-                      <AlertCircle size={14} className="text-yellow-600" />
-                      Status
-                    </div>
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    <div className="flex items-center gap-2">
-                      <User size={14} className="text-indigo-600" />
-                      Akcje
-                    </div>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredSpedycje.map((zamowienie) => {
-                  const statusInfo = getStatusInfo(zamowienie);
-                  const responsibleInfo = getResponsiblePersonInfo(zamowienie);
-                  const isMerged = isMergedTransport(zamowienie);
-                  const distanceData = getTransportDistance(zamowienie);
-                  
-                  return (
-                    <React.Fragment key={zamowienie.id}>
-                      {/* Główny wiersz */}
-                      <tr className="hover:bg-blue-50 transition-colors border-l-4 border-l-transparent hover:border-l-blue-400">
-                        {/* Trasa */}
-                        <td className="px-6 py-5">
-                          <div className="flex items-center gap-3">
-                            {(() => {
-                              const iconInfo = getTransportIcon(zamowienie);
-                              const IconComponent = iconInfo.icon;
-                              return (
-                                <div className={`${iconInfo.bgColor} rounded-lg p-2`}>
-                                  <IconComponent size={16} className={iconInfo.color} />
-                                </div>
-                              );
-                            })()}
-                            <div>
-                              <div className="font-semibold text-gray-900 text-sm">
-                                {getLoadingCity(zamowienie)} → {getDeliveryCity(zamowienie)}
-                              </div>
-                              {/* Badge dla transportów połączonych */}
-                              <TransportConnectionBadge transport={zamowienie} />
-                              {renderDistanceColumn(distanceData)}
-                            </div>
-                          </div>
-                        </td>
-                        
-                        {/* Firmy */}
-                        <td className="px-6 py-5">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <Building size={12} className="text-green-600 flex-shrink-0" />
-                              <div className="font-medium text-gray-900 text-sm truncate">
-                                {getLoadingCompanyName(zamowienie)}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <ArrowRight size={12} className="text-gray-400 flex-shrink-0" />
-                              <div className="text-gray-600 text-sm truncate">
-                                {getUnloadingCompanyName(zamowienie)}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        
-                        {/* Daty */}
-                        <td className="px-6 py-5">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <Clock size={12} className="text-blue-600 flex-shrink-0" />
-                              <span className="text-sm text-gray-900">
-                                {formatDate(zamowienie.createdAt)}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Calendar size={12} className="text-purple-600 flex-shrink-0" />
-                              <span className="text-sm text-gray-600">
-                                {formatDate(zamowienie.deliveryDate)}
-                              </span>
-                            </div>
-                          </div>
-                        </td>
-                        
-                        {/* Numer/MPK */}
-                        <td className="px-6 py-5">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <FileText size={12} className="text-orange-600 flex-shrink-0" />
-                              <span className="text-sm font-mono text-gray-900">
-                                {zamowienie.orderNumber || 'Brak numeru'}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Clipboard size={12} className="text-indigo-600 flex-shrink-0" />
-                              <span className="text-sm text-gray-600">
-                                {responsibleInfo.mpk || 'Brak MPK'}
-                              </span>
-                            </div>
-                          </div>
-                        </td>
-                        
-                        {/* Status */}
-                        <td className="px-6 py-5">
-                          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${statusInfo.class} shadow-sm`}>
-                            {statusInfo.icon}
-                            {statusInfo.text}
-                          </span>
-                        </td>
-                        
-                        {/* Akcje */}
-                        <td className="px-6 py-5">
-                          <div className="flex items-center gap-1">
-                            {/* Przycisk rozwijania */}
-                            <button
-                              onClick={() => setExpandedId(expandedId === zamowienie.id ? null : zamowienie.id)}
-                              className={`p-2 rounded-lg transition-colors ${
-                                expandedId === zamowienie.id 
-                                  ? 'bg-blue-100 text-blue-600' 
-                                  : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
-                              }`}
-                              title="Rozwiń szczegóły"
-                            >
-                              {expandedId === zamowienie.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                            </button>
-                            
-                            {/* Przycisk edycji */}
-                            {canEdit(zamowienie) && zamowienie.status !== 'completed' && (
-                              <button
-                                onClick={() => onEdit(zamowienie)}
-                                className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded-lg transition-colors"
-                                title="Edytuj"
-                              >
-                                <Edit size={16} />
-                              </button>
-                            )}
-                            
-                            {/* Przycisk oznaczania jako zrealizowane */}
-                            {isAdmin && zamowienie.status === 'responded' && (
-                              <button
-                                onClick={() => onMarkAsCompleted(zamowienie.id)}
-                                className="p-2 text-green-600 hover:text-green-800 hover:bg-green-100 rounded-lg transition-colors"
-                                title="Oznacz jako zrealizowane"
-                              >
-                                <CheckCircle size={16} />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                      
-                      {/* Rozwinięte szczegóły */}
-                      {expandedId === zamowienie.id && (
-                        <tr>
-                          <td colSpan="6" className="px-8 py-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-l-blue-400">
-                            {/* Panel podsumowania transportów połączonych */}
-                            {isMergedTransport(zamowienie) && (
-                              <MergedTransportSummary 
-                                transport={zamowienie} 
-                                allTransports={zamowienia}
-                                mergedData={(() => {
-                                  try {
-                                    // NAPRAWIONA LOGIKA: obsługuj transporty główne i dodatkowe
-                                    console.log(`🔧 Przetwarzam dane dla transportu ${zamowienie.id}`);
-                                    
-                                    // Sprawdź czy to transport dodatkowy
-                                    let isSecondaryTransport = false;
-                                    let mainTransportId = null;
-                                    
-                                    if (zamowienie.response_data) {
-                                      const responseData = typeof zamowienie.response_data === 'string' 
-                                        ? JSON.parse(zamowienie.response_data) 
-                                        : zamowienie.response_data;
-                                      
-                                      if (responseData.isSecondaryMerged && responseData.mainTransportId) {
-                                        isSecondaryTransport = true;
-                                        mainTransportId = responseData.mainTransportId;
-                                      }
-                                    }
-                                    
-                                    if (zamowienie.merged_transports && !isSecondaryTransport) {
-                                      const mergedData = typeof zamowienie.merged_transports === 'string' 
-                                        ? JSON.parse(zamowienie.merged_transports) 
-                                        : zamowienie.merged_transports;
-                                        
-                                      if (mergedData.isSecondary && mergedData.mainTransportId) {
-                                        isSecondaryTransport = true;
-                                        mainTransportId = mergedData.mainTransportId;
-                                      }
-                                    }
-                                    
-                                    // Jeśli to transport dodatkowy, znajdź dane głównego transportu
-                                    if (isSecondaryTransport && mainTransportId) {
-                                      console.log(`🔍 Transport ${zamowienie.id} jest dodatkowy, szukam głównego ${mainTransportId}`);
-                                      
-                                      const mainTransport = zamowienia.find(z => z.id === mainTransportId);
-                                      if (mainTransport) {
-                                        console.log(`✅ Znaleziono główny transport, przetwarzam jego dane`);
-                                        
-                                        // Rekursywnie wywołaj tę samą logikę dla głównego transportu
-                                        const mainResponseData = mainTransport.response_data ? 
-                                          (typeof mainTransport.response_data === 'string' ? JSON.parse(mainTransport.response_data) : mainTransport.response_data) 
-                                          : null;
-                                        
-                                        if (mainResponseData && mainResponseData.routeSequence) {
-                                          // Znajdź wszystkie transporty w tej grupie
-                                          const connectedTransports = zamowienia.filter(z => {
-                                            const zResponseData = z.response_data ? 
-                                              (typeof z.response_data === 'string' ? JSON.parse(z.response_data) : z.response_data) 
-                                              : null;
-                                            return zResponseData?.isMerged === true && 
-                                                  (zResponseData.mainTransportId === mainTransportId || z.id === mainTransportId);
-                                          });
-                                          
-                                          const originalTransports = connectedTransports.map(z => {
-                                            return {
-                                              id: z.id,
-                                              orderNumber: z.order_number,
-                                              mpk: z.mpk,
-                                              route: `${getLoadingCity(z)} → ${getDeliveryCity(z)}`,
-                                              costAssigned: mainResponseData.costBreakdown?.[z.id] || 0,
-                                              distance: z.distanceKm || z.distance_km || 0,
-                                              clientName: z.client_name,
-                                              documents: z.documents,
-                                              responsiblePerson: z.responsible_person || z.responsiblePerson
-                                            };
-                                          });
-                                          
-                                          return {
-                                            originalTransports: originalTransports,
-                                            totalDistance: mainResponseData.distance || mainResponseData.totalDistance || mainResponseData.realRouteDistance || 0,
-                                            totalValue: mainResponseData.totalDeliveryPrice || mainResponseData.totalPrice || mainResponseData.deliveryPrice || 0,
-                                            routeSequence: mainResponseData.routeSequence || []
-                                          };
-                                        }
-                                      }
-                                    }
-                                    
-                                    // Dla transportu głównego - użyj standardowej logiki
-                                    const responseData = typeof zamowienie.response_data === 'string' 
-                                      ? JSON.parse(zamowienie.response_data) 
-                                      : zamowienie.response_data;
-                                    
-                                    if (responseData && responseData.routeSequence) {
-                                      // Znajdź wszystkie transporty w tej grupie
-                                      const connectedTransports = zamowienia.filter(z => {
-                                        const zResponseData = z.response_data ? 
-                                          (typeof z.response_data === 'string' ? JSON.parse(z.response_data) : z.response_data) 
-                                          : null;
-                                        return zResponseData?.isMerged === true && 
-                                              (zResponseData.mainTransportId === zamowienie.id || z.id === zamowienie.id);
-                                      });
-                                      
-                                      const originalTransports = connectedTransports.map(z => {
-                                        return {
-                                          id: z.id,
-                                          orderNumber: z.order_number,
-                                          mpk: z.mpk,
-                                          route: `${getLoadingCity(z)} → ${getDeliveryCity(z)}`,
-                                          costAssigned: responseData.costBreakdown?.[z.id] || 0,
-                                          distance: z.distanceKm || z.distance_km || 0,
-                                          clientName: z.client_name,
-                                          documents: z.documents,
-                                          responsiblePerson: z.responsible_person || z.responsiblePerson
-                                        };
-                                      });
-                                      
-                                      return {
-                                        originalTransports: originalTransports,
-                                        totalDistance: responseData.distance || responseData.totalDistance || responseData.realRouteDistance || 0,
-                                        totalValue: responseData.totalDeliveryPrice || responseData.totalPrice || responseData.deliveryPrice || 0,
-                                        routeSequence: responseData.routeSequence || []
-                                      };
-                                    }
-                                    
-                                    // Fallback do starych danych merged_transports
-                                    return typeof zamowienie.merged_transports === 'string' 
-                                      ? JSON.parse(zamowienie.merged_transports) 
-                                      : zamowienie.merged_transports;
-                                  } catch (e) {
-                                    console.error('🚨 Błąd przetwarzania danych merged transport:', e);
-                                    return null;
-                                  }
-                                })()}
-                              />
-                            )}
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                              
-                              {/* Sekcja 1: Informacje podstawowe */}
-                              <div className="bg-white rounded-lg p-4 shadow-sm border border-blue-200">
-                                <h4 className="text-sm font-bold text-blue-900 border-b border-blue-200 pb-2 mb-3 flex items-center gap-2">
-                                  <User size={16} className="text-blue-600" />
-                                  Informacje podstawowe
-                                </h4>
-                                
-                                <div className="space-y-2 text-sm">
-                                  <div className="flex items-start gap-1">
-                                    <User size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
-                                    <div>
-                                      <span className="text-gray-500">Zgłosił:</span>
-                                      <span className="ml-1 text-gray-900 font-medium">
-                                        {zamowienie.createdBy || 'Nie podano'}
-                                      </span>
-                                      {zamowienie.createdByEmail && (
-                                        <div className="text-xs text-gray-500 mt-0.5">
-                                          {zamowienie.createdByEmail}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                  
-                                  <div className="flex items-start gap-1">
-                                    <User size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
-                                    <div>
-                                      <div>
-                                        <span className="text-gray-500">Odpowiedzialny:</span>
-                                        <span className="ml-1 text-gray-900 font-medium">
-                                          {responsibleInfo.name}
-                                        </span>
-                                      </div>
-                                      {responsibleInfo.mpk && (
-                                        <div className="mt-1">
-                                          <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs font-medium">
-                                            MPK: {responsibleInfo.mpk}
-                                          </span>
-                                        </div>
-                                      )}
-                                      {responsibleInfo.email && (
-                                        <div className="text-xs text-gray-500 mt-0.5">
-                                          {responsibleInfo.email}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                  
-                                  <div className="flex items-start gap-1">
-                                    <Calendar size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
-                                    <div>
-                                      <span className="text-gray-500">Data utworzenia:</span>
-                                      <span className="ml-1 text-gray-900">
-                                        {formatDate(zamowienie.createdAt)}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  
-                                  {renderDistanceDetails(distanceData)}
-                                  
-                                  {zamowienie.orderNumber && (
-                                    <div className="flex items-start gap-1">
-                                      <FileText size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
-                                      <div>
-                                        <span className="text-gray-500">Numer zamówienia:</span>
-                                        <span className="ml-1 text-gray-900 font-mono">
-                                          {zamowienie.orderNumber}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  )}
-                                  
-                                  {zamowienie.documents && (
-                                    <div className="flex items-start gap-1">
-                                      <FileText size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
-                                      <div>
-                                        <span className="text-gray-500">Dokumenty:</span>
-                                        <span className="ml-1 text-gray-900">
-                                          {zamowienie.documents}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  )}
-                                  
-                                  {zamowienie.notes && (
-                                    <div className="flex items-start gap-1">
-                                      <FileText size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
-                                      <div>
-                                        <span className="text-gray-500">Uwagi:</span>
-                                        <div className="ml-1 text-gray-900 text-sm">
-                                          {zamowienie.notes}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                              
-                              {/* Sekcja 2: Adresy */}
-                              <div className="bg-white rounded-lg p-4 shadow-sm border border-green-200">
-                                <h4 className="text-sm font-bold text-green-900 border-b border-green-200 pb-2 mb-3 flex items-center gap-2">
-                                  <MapPin size={16} className="text-green-600" />
-                                  Szczegóły adresów
-                                </h4>
-                                
-                                <div className="space-y-2 text-sm">
-                                  <div>
-                                    <div className="text-gray-500 mb-1">📦 Załadunek:</div>
-                                    <div className="text-gray-900 font-medium">{getLoadingCompanyName(zamowienie)}</div>
-                                    <div className="text-gray-600">{getLoadingAddress(zamowienie)}</div>
-                                  </div>
-                                  
-                                  <div>
-                                    <div className="text-gray-500 mb-1">🏢 Rozładunek:</div>
-                                    <div className="text-gray-900 font-medium">{getUnloadingCompanyName(zamowienie)}</div>
-                                    <div className="text-gray-600">{getUnloadingAddress(zamowienie)}</div>
-                                  </div>
-                                </div>
-                              </div>
-                              
-                              {/* Sekcja 3: Odpowiedź */}
-                              <div className="bg-white rounded-lg p-4 shadow-sm border border-purple-200">
-                                <h4 className="text-sm font-bold text-purple-900 border-b border-purple-200 pb-2 mb-3 flex items-center gap-2">
-                                  <CheckCircle size={16} className="text-purple-600" />
-                                  Odpowiedź spedycyjna
-                                </h4>
-                                
-                                <div className="space-y-2 text-sm">
-                                  {/* Informacje o odpowiedzi jeśli istnieją */}
-                                  {zamowienie.response ? (
-                                    <div>
-                                      <div className="text-gray-500 mb-2 font-medium">Odpowiedź spedycyjna:</div>
-                                      <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-2">
-                                        {zamowienie.response.driverName && (
-                                          <div className="flex items-center gap-2">
-                                            <User size={12} className="text-green-600" />
-                                            <span className="text-sm">
-                                              <span className="text-gray-600">Kierowca:</span>
-                                              <span className="ml-1 font-medium">{zamowienie.response.driverName}</span>
-                                            </span>
-                                          </div>
-                                        )}
-                                        {zamowienie.response.driverPhone && (
-                                          <div className="flex items-center gap-2">
-                                            <Phone size={12} className="text-green-600" />
-                                            <span className="text-sm">
-                                              <span className="text-gray-600">Tel:</span>
-                                              <span className="ml-1 font-mono">{zamowienie.response.driverPhone}</span>
-                                            </span>
-                                          </div>
-                                        )}
-                                        {zamowienie.response.vehicleNumber && (
-                                          <div className="flex items-center gap-2">
-                                            <Truck size={12} className="text-green-600" />
-                                            <span className="text-sm">
-                                              <span className="text-gray-600">Pojazd:</span>
-                                              <span className="ml-1 font-mono">{zamowienie.response.vehicleNumber}</span>
-                                            </span>
-                                          </div>
-                                        )}
-                                        {zamowienie.response.vehicleType && (
-                                          <div className="flex items-center gap-2">
-                                            <Truck size={12} className="text-green-600" />
-                                            <span className="text-sm">
-                                              <span className="text-gray-600">Rodzaj pojazdu:</span>
-                                              <span className="ml-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs font-medium">
-                                                {zamowienie.response.vehicleType}
-                                              </span>
-                                            </span>
-                                          </div>
-                                        )}
-                                        {zamowienie.response.transportType && (
-                                          <div className="flex items-center gap-2">
-                                            <Package size={12} className="text-green-600" />
-                                            <span className="text-sm">
-                                              <span className="text-gray-600">Rodzaj transportu:</span>
-                                              <span className="ml-1 px-2 py-0.5 bg-purple-100 text-purple-800 rounded text-xs font-medium">
-                                                {zamowienie.response.transportType}
-                                              </span>
-                                            </span>
-                                          </div>
-                                        )}
-                                        {zamowienie.response.deliveryPrice && (
-                                          <div className="flex items-center gap-2">
-                                            <DollarSign size={12} className="text-green-600" />
-                                            <span className="text-sm">
-                                              <span className="text-gray-600">Cena transportu:</span>
-                                              <span className="ml-1 font-bold text-green-700">
-                                                {zamowienie.response.deliveryPrice} PLN
-                                              </span>
-                                            </span>
-                                          </div>
-                                        )}
-                                        {(() => {
-                                          try {
-                                            const responseData = zamowienie.response_data ? 
-                                              (typeof zamowienie.response_data === 'string' ? 
-                                                JSON.parse(zamowienie.response_data) : 
-                                                zamowienie.response_data) : null;
-                                            
-                                            const goodsPrice = responseData?.goodsPrice || zamowienie.response?.goodsPrice;
-                                            
-                                            return goodsPrice && (
-                                              <div className="flex items-center gap-2">
-                                                <Package size={12} className="text-blue-600" />
-                                                <span className="text-sm">
-                                                  <span className="text-gray-600">Cena towaru:</span>
-                                                  <span className="ml-1 font-bold text-blue-700">
-                                                    {goodsPrice} PLN
-                                                  </span>
-                                                </span>
-                                              </div>
-                                            );
-                                          } catch (e) {
-                                            return null;
-                                          }
-                                        })()}
-                                        {zamowienie.response.notes && (
-                                          <div className="mt-2 pt-2 border-t border-green-200">
-                                            <span className="text-gray-600">Uwagi przewoźnika:</span>
-                                            <div className="mt-1 text-sm text-gray-700">
-                                              {zamowienie.response.notes}
-                                            </div>
-                                          </div>
-                                        )}
-                                        
-                                        {/* Dodatkowe informacje z response_data jeśli istnieją */}
-                                        {(() => {
-                                          try {
-                                            const responseData = zamowienie.response_data ? 
-                                              (typeof zamowienie.response_data === 'string' ? 
-                                                JSON.parse(zamowienie.response_data) : 
-                                                zamowienie.response_data) : null;
-                                            
-                                            return responseData && (
-                                              <div className="mt-2 pt-2 border-t border-green-200">
-                                                {responseData.notes && responseData.notes !== zamowienie.response?.notes && (
-                                                  <div className="mb-2">
-                                                    <span className="text-gray-600">Notatki odpowiadającego:</span>
-                                                    <div className="mt-1 text-sm text-gray-700">
-                                                      {responseData.notes}
-                                                    </div>
-                                                  </div>
-                                                )}
-                                                
-                                                {responseData.cargoDescription && (
-                                                  <div className="mb-2">
-                                                    <span className="text-gray-600">Opis ładunku:</span>
-                                                    <div className="mt-1 text-sm text-gray-700">
-                                                      {responseData.cargoDescription}
-                                                    </div>
-                                                  </div>
-                                                )}
-                                                
-                                                {responseData.totalWeight && (
-                                                  <div className="mb-2">
-                                                    <span className="text-gray-600">Łączna waga:</span>
-                                                    <div className="mt-1 text-sm text-gray-700">
-                                                      {responseData.totalWeight} kg
-                                                    </div>
-                                                  </div>
-                                                )}
-                                                
-                                                {responseData.isMerged && (
-                                                  <div className="mb-2">
-                                                    <div className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200">
-                                                      <LinkIcon size={10} className="mr-1" />
-                                                      Transport połączony
-                                                      {responseData.isMainMerged && ' (główny)'}
-                                                      {responseData.isSecondaryMerged && ` (z ${responseData.mainTransportId})`}
-                                                    </div>
-                                                  </div>
-                                                )}
-                                              </div>
-                                            );
-                                          } catch (e) {
-                                            return null;
-                                          }
-                                        })()}
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="text-center py-4">
-                                      <div className="bg-gray-100 rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-2">
-                                        <Clock size={24} className="text-gray-400" />
-                                      </div>
-                                      <div className="text-gray-500 text-sm">
-                                        Oczekuje na odpowiedź
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                              
-                              {/* Sekcja 4: Akcje - przyciski działań */}
-                              {zamowienie.response && (
-                                <div className="col-span-full bg-white rounded-lg p-4 shadow-sm border border-orange-200">
-                                  <h4 className="text-sm font-bold text-orange-900 border-b border-orange-200 pb-2 mb-4 flex items-center gap-2">
-                                    <Truck size={16} className="text-orange-600" />
-                                    Działania
-                                  </h4>
-                                  
-                                  <div className="flex flex-wrap gap-3">
-                                    {/* Przycisk Google Maps */}
-                                    <button
-                                      onClick={() => {
-                                        const url = generateGoogleMapsUrl(zamowienie)
-                                        window.open(url, '_blank')
-                                      }}
-                                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                                    >
-                                      <MapPin size={16} />
-                                      Zobacz trasę w Google Maps
-                                      {isMergedTransport(zamowienie) && (
-                                        <span className="ml-1 px-1 py-0.5 bg-blue-500 rounded text-xs">
-                                          PEŁNA TRASA
-                                        </span>
-                                      )}
-                                    </button>
-                                    
-                                    {/* Przycisk generowania CMR */}
-                                    <button
-                                      onClick={() => {
-                                        try {
-                                          generateCMR(zamowienie)
-                                        } catch (error) {
-                                          console.error('Błąd generowania CMR:', error)
-                                          alert('Wystąpił błąd podczas generowania CMR')
-                                        }
-                                      }}
-                                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
-                                    >
-                                      <FileText size={16} />
-                                      Generuj CMR
-                                    </button>
-                                    
-                                    {/* Przycisk tworzenia zlecenia transportowego */}
-                                    {canSendOrder && (
-                                      <button
-                                        onClick={() => onCreateOrder(zamowienie)}
-                                        className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
-                                      >
-                                        <Clipboard size={16} />
-                                        Stwórz zlecenie transportowe
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
         )}
       </div>
-    </div>
-  )
+    );
+  };
+  
+  // Renderuje info o odpowiedzialnych budowach
+  const renderResponsibleConstructions = (transport) => {
+    if (!transport.responsibleConstructions || !transport.responsibleConstructions.length) return null;
+    
+    return (
+      <div className="mt-2">
+        <div className="font-medium text-sm">Budowy:</div>
+        <div className="flex flex-wrap gap-2 mt-1">
+          {transport.responsibleConstructions.map(construction => (
+            <div key={construction.id} className="bg-green-50 text-green-700 px-2 py-1 rounded-md text-xs flex items-center">
+              <Building size={12} className="mr-1" />
+              {construction.name}
+              <span className="ml-1 text-green-600">({construction.mpk})</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+  
+  // Renderuje info o towarze
+  const renderGoodsInfo = (transport) => {
+    if (!transport.goodsDescription) return null;
+    
+    return (
+      <div className="mt-3 bg-blue-50 p-2 rounded-md border border-blue-100">
+        <div className="flex items-center text-blue-700 font-medium">
+          <ShoppingBag size={14} className="mr-1" />
+          Towar
+        </div>
+        {transport.goodsDescription.description && (
+          <p className="text-sm mt-1">{transport.goodsDescription.description}</p>
+        )}
+        {transport.goodsDescription.weight && (
+          <p className="text-sm flex items-center mt-1">
+            <Weight size={12} className="mr-1" />
+            Waga: {transport.goodsDescription.weight}
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="divide-y">
+      {zamowienia
+        .filter(z => showArchive ? z.status === 'completed' : z.status === 'new')
+        .map((zamowienie) => {
+          const statusInfo = getStatusLabel(zamowienie);
+          const dateChanged = isDeliveryDateChanged(zamowienie);
+          const displayDate = getActualDeliveryDate(zamowienie);
+          const canEdit = canBeEdited(zamowienie) && (isAdmin || isCreatedByCurrentUser(zamowienie));
+          const isAutoResponse = isAutoGeneratedResponse(zamowienie);
+          const displayRoute = getDisplayRoute(zamowienie);
+          
+          return (
+            <div key={zamowienie.id} className="p-4 hover:bg-gray-50 transition-colors">
+              <div 
+                onClick={() => setExpandedId(expandedId === zamowienie.id ? null : zamowienie.id)}
+                className="flex justify-between items-start cursor-pointer"
+              >
+                <div className="flex items-start">
+                  <div className="mr-3 mt-1">
+                    <div className={`h-8 w-8 rounded-full flex items-center justify-center text-blue-700 ${
+                      isAutoResponse ? 'bg-purple-100' : 'bg-blue-100'
+                    }`}>
+                      {isAutoResponse ? <Bot size={18} /> : <Truck size={18} />}
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="font-medium flex items-center">
+                      <span className={displayRoute.isConnected ? "text-blue-600 font-semibold" : ""}>
+                        {displayRoute.text}
+                      </span>
+                      {zamowienie.clientName && (
+                        <span className="ml-2 text-sm text-gray-600">
+                          ({zamowienie.clientName})
+                        </span>
+                      )}
+                      {displayRoute.isConnected && (
+                        <span className="ml-2 bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs flex items-center">
+                          <LinkIcon size={12} className="mr-1" />
+                          Połączone ({displayRoute.distance} km)
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-sm text-gray-500 flex items-center mt-1">
+                      <Calendar size={14} className="mr-1" />
+                      Data dostawy: 
+                      {dateChanged ? (
+                        <span className="ml-1 flex items-center">
+                          <span className="line-through text-gray-400">{formatDate(zamowienie.deliveryDate)}</span>
+                          <ArrowRight size={12} className="mx-1 text-yellow-500" />
+                          <span className="bg-yellow-50 px-1.5 py-0.5 rounded text-yellow-700 font-medium">
+                            {formatDate(displayDate)}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="ml-1">{formatDate(displayDate)}</span>
+                      )}
+                    </p>
+                    <p className="text-sm text-gray-500 flex items-center mt-1">
+                      <FileText size={14} className="mr-1" />
+                      {zamowienie.orderNumber && <span className="font-medium mr-2">{zamowienie.orderNumber}</span>}
+                      MPK: {zamowienie.mpk}
+                    </p>
+                    
+                    {/* Wyświetl informację o budowach */}
+                    {zamowienie.responsibleConstructions && zamowienie.responsibleConstructions.length > 0 && (
+                      <div className="flex items-center mt-1">
+                        <Building size={14} className="mr-1 text-green-600" />
+                        <span className="text-sm text-green-600">
+                          Budowa: {zamowienie.responsibleConstructions[0].name}
+                          {zamowienie.responsibleConstructions.length > 1 && ` +${zamowienie.responsibleConstructions.length - 1}`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className={`px-3 py-1 rounded-full text-sm flex items-center ${statusInfo.className}`}>
+                    {statusInfo.icon}
+                    {statusInfo.label}
+                  </span>
+                  
+                  {expandedId === zamowienie.id ? (
+                    <button 
+                      className="p-1 rounded-full hover:bg-gray-200"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setExpandedId(null)
+                      }}
+                    >
+                      <ChevronUp size={20} />
+                    </button>
+                  ) : (
+                    <button 
+                      className="p-1 rounded-full hover:bg-gray-200"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setExpandedId(zamowienie.id)
+                      }}
+                    >
+                      <ChevronDown size={20} />
+                    </button>
+                  )}
+                  
+                  {/* Przycisk edycji - widoczny dla twórcy lub admina */}
+                  {canEdit && (
+                    <button 
+                      type="button"
+                      className={buttonClasses.outline}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onEdit(zamowienie)
+                      }}
+                    >
+                      <Pencil size={16} />
+                      Edytuj
+                    </button>
+                  )}
+                  
+                  {/* Przyciski admina - odpowiadanie i oznaczanie jako zrealizowane */}
+                  {isAdmin && zamowienie.status === 'new' && (
+                    <>
+                      {/* Pokaż przycisk "Odpowiedz" tylko jeśli NIE MA odpowiedzi */}
+                      {(!zamowienie.response || Object.keys(zamowienie.response).length === 0) && (
+                        <button 
+                          type="button"
+                          className={buttonClasses.outline}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onResponse(zamowienie)
+                          }}
+                        >
+                          <Clipboard size={16} />
+                          Odpowiedz
+                        </button>
+                      )}
+                      
+                      {/* Pokaż przycisk "Edytuj odpowiedź" tylko jeśli JUŻ MA odpowiedź */}
+                      {(zamowienie.response && Object.keys(zamowienie.response).length > 0) && (
+                        <button 
+                          type="button"
+                          className={buttonClasses.outline}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onResponse(zamowienie)
+                          }}
+                        >
+                          <Edit size={16} />
+                          Edytuj odpowiedź
+                        </button>
+                      )}
+                      
+                      <button 
+                        type="button"
+                        className={buttonClasses.success}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (confirm('Czy na pewno chcesz oznaczyć to zlecenie jako zrealizowane?')) {
+                            onMarkAsCompleted(zamowienie.id)
+                          }
+                        }}
+                      >
+                        <Truck size={16} />
+                        Zrealizowane
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {expandedId === zamowienie.id && (
+                <div className="mt-6 pl-4 border-l-4 border-blue-200 animate-fadeIn">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
+                    {/* Sekcja 1: Dane zamówienia i zamawiającego */}
+                    <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                      <h4 className="font-medium mb-3 pb-2 border-b flex items-center text-blue-700">
+                        <FileText size={18} className="mr-2" />
+                        Dane zamówienia
+                      </h4>
+                      <p className="text-sm mb-2"><span className="font-medium">Numer zamówienia:</span> {zamowienie.orderNumber || '-'}</p>
+                      <p className="text-sm mb-2"><span className="font-medium">MPK:</span> {zamowienie.mpk}</p>
+                      <p className="text-sm mb-2"><span className="font-medium">Osoba dodająca:</span> {zamowienie.createdBy || zamowienie.requestedBy}</p>
+                      <p className="text-sm mb-2"><span className="font-medium">Osoba odpowiedzialna:</span> {zamowienie.responsiblePerson || zamowienie.createdBy || zamowienie.requestedBy}</p>
+                      <p className="text-sm mb-2"><span className="font-medium">Dokumenty:</span> {zamowienie.documents}</p>
+                      
+                      {/* Dodana informacja o nazwie klienta/odbiorcy */}
+                      {zamowienie.clientName && (
+                        <p className="text-sm mb-2"><span className="font-medium">Nazwa klienta/odbiorcy:</span> {zamowienie.clientName}</p>
+                      )}
+                      
+                      {/* Informacje o budowach */}
+                      {renderResponsibleConstructions(zamowienie)}
+                      
+                      {/* Informacja o towarze */}
+                      {renderGoodsInfo(zamowienie)}
+                    </div>
+
+                    {/* Sekcja 2: Szczegóły załadunku/dostawy */}
+                    <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                      <h4 className="font-medium mb-3 pb-2 border-b flex items-center text-green-700">
+                        <MapPin size={18} className="mr-2" />
+                        Szczegóły załadunku
+                      </h4>
+                      {zamowienie.location === 'Odbiory własne' ? (
+                        <p className="mb-2">{formatAddress(zamowienie.producerAddress)}</p>
+                      ) : (
+                        <p className="mb-2">{zamowienie.location}</p>
+                      )}
+                      <p className="text-sm text-gray-600 mb-3 flex items-center">
+                        <Phone size={14} className="mr-1" />
+                        Kontakt: {zamowienie.loadingContact}
+                      </p>
+                      
+                      <h4 className="font-medium mt-5 mb-3 pb-2 border-b flex items-center text-orange-700">
+                        <MapPin size={18} className="mr-2" />
+                        Szczegóły dostawy
+                      </h4>
+                      <p className="mb-2">{formatAddress(zamowienie.delivery)}</p>
+                      <p className="text-sm text-gray-600 mb-3 flex items-center">
+                        <Phone size={14} className="mr-1" />
+                        Kontakt: {zamowienie.unloadingContact}
+                      </p>
+                      
+                      {/* Link do Google Maps */}
+                      {generateGoogleMapsLink(zamowienie) && (
+                        <div className="mt-4">
+                          <a 
+                            href={generateGoogleMapsLink(zamowienie)} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-2 rounded-md flex items-center w-fit transition-colors"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MapPin size={16} className="mr-2" />
+                            Zobacz trasę na Google Maps
+                          </a>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Sekcja 3: Informacje o transporcie */}
+                    <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                      <h4 className="font-medium mb-3 pb-2 border-b flex items-center text-purple-700">
+                        <Truck size={18} className="mr-2" />
+                        Informacje o transporcie
+                      </h4>
+                      
+                      {/* Data dostawy z wyróżnieniem, jeśli zmieniona */}
+                      <div className="text-sm mb-2">
+                        <div className="flex items-center">
+                          <Calendar size={14} className="mr-2 text-gray-500" />
+                          <span className="font-medium">Data dostawy:</span>
+                        </div>
+                        
+                        {dateChanged ? (
+                          <div className="ml-7 mt-1 p-2 bg-yellow-50 rounded-md border border-yellow-200">
+                            <div className="flex items-center text-yellow-800">
+                              <AlertCircle size={14} className="mr-1" />
+                              <span className="font-medium">Uwaga: Data została zmieniona!</span>
+                            </div>
+                            <div className="mt-1 flex items-center">
+                              <span className="text-gray-500">Data pierwotna:</span>
+                              <span className="ml-1 line-through text-gray-500">{formatDate(zamowienie.deliveryDate)}</span>
+                            </div>
+                            <div className="mt-1 flex items-center">
+                              <span className="text-gray-800 font-medium">Data aktualna:</span>
+                              <span className="ml-1 font-medium text-green-700">{formatDate(zamowienie.response.newDeliveryDate)}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="ml-7 mt-1">
+                            {formatDate(zamowienie.deliveryDate)}
+                          </div>
+                        )}
+                      </div>
+                      
+                      <p className="text-sm mb-2 flex items-center">
+                        <Calendar size={14} className="mr-2 text-gray-500" />
+                        <span className="font-medium">Data dodania:</span> {formatDate(zamowienie.createdAt)}
+                      </p>
+                      
+                      <p className="text-sm mb-2 flex items-center">
+                        <MapPin size={14} className="mr-2 text-gray-500" />
+                        <span className="font-medium">Odległość:</span> 
+                        <span className="bg-blue-50 px-2 py-0.5 rounded ml-1 font-medium">
+                          {displayRoute.isConnected 
+                            ? `${displayRoute.distance} km (trasa połączona)`
+                            : `${displayRoute.distance} km`}
+                        </span>
+                      </p>
+                      
+                      {zamowienie.response && zamowienie.response.deliveryPrice && (
+                        <>
+                          <p className="text-sm mb-2 flex items-center">
+                        <DollarSign size={14} className="mr-2 text-gray-500" />
+                           <span className="font-medium">Cena transportu:</span> 
+                           <span className="bg-green-50 px-2 py-0.5 rounded ml-1 font-medium">
+                             {zamowienie.response.deliveryPrice} PLN
+                           </span>
+                         </p>
+                         <p className="text-sm mb-2 flex items-center">
+                           <DollarSign size={14} className="mr-2 text-gray-500" />
+                           <span className="font-medium">Cena za km:</span> 
+                           <span className="bg-green-50 px-2 py-0.5 rounded ml-1 font-medium">
+                             {(() => {
+                               const totalDistance = displayRoute.distance;
+                               return totalDistance > 0 
+                                 ? (zamowienie.response.deliveryPrice / totalDistance).toFixed(2)
+                                 : '0.00';
+                             })()} PLN/km
+                           </span>
+                         </p>
+                       </>
+                     )}
+                     
+                     {zamowienie.notes && (
+                       <div className="mt-3 bg-gray-50 p-2 rounded-md">
+                         <p className="text-sm"><span className="font-medium">Uwagi:</span> {zamowienie.notes}</p>
+                       </div>
+                     )}
+                   </div>
+                 </div>
+
+                 {canEdit && (
+                   <div className="mt-4 flex justify-end">
+                     <button 
+                       type="button"
+                       className={buttonClasses.primary}
+                       onClick={(e) => {
+                         e.stopPropagation()
+                         onEdit(zamowienie)
+                       }}
+                     >
+                       <Pencil size={16} />
+                       Edytuj zamówienie
+                     </button>
+                   </div>
+                 )}
+
+                 {zamowienie.response && (
+                   <div className={`mt-4 p-5 rounded-lg border shadow-sm ${
+                     isAutoResponse 
+                       ? 'bg-purple-50 border-purple-200' 
+                       : 'bg-gray-50 border-gray-200'
+                   }`}>
+                     <h4 className="font-medium mb-3 pb-2 border-b border-gray-200 flex items-center text-gray-800">
+                       {isAutoResponse ? <Bot size={18} className="mr-2" /> : <Truck size={18} className="mr-2" />}
+                       {isAutoResponse ? 'Szczegóły realizacji (transport połączony)' : 'Szczegóły realizacji'}
+                     </h4>
+                     
+                     {/* Renderuj informacje o powiązanych transportach */}
+                     {renderConnectedTransports(zamowienie)}
+                     
+                     {zamowienie.response.completedManually ? (
+                       <div className="bg-blue-50 text-blue-800 p-3 rounded-md border border-blue-100 flex items-center">
+                         <Clipboard size={18} className="mr-2" />
+                         Zamówienie zostało ręcznie oznaczone jako zrealizowane.
+                       </div>
+                     ) : (
+                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                         {/* Informacje o przewoźniku */}
+                         <div className="bg-white p-3 rounded-md shadow-sm border border-gray-100">
+                           <h5 className="text-sm font-medium mb-2 pb-1 border-b flex items-center text-blue-600">
+                             <User size={14} className="mr-1" />
+                             Dane przewoźnika
+                           </h5>
+                           <p className="text-sm mb-1.5"><span className="font-medium">Kierowca:</span> {zamowienie.response.driverName} {zamowienie.response.driverSurname}</p>
+                           <p className="text-sm mb-1.5"><span className="font-medium">Telefon:</span> {zamowienie.response.driverPhone}</p>
+                           <p className="text-sm mb-1.5"><span className="font-medium">Numery auta:</span> {zamowienie.response.vehicleNumber}</p>
+                         </div>
+                         
+                         {/* Informacje o kosztach */}
+                         <div className="bg-white p-3 rounded-md shadow-sm border border-gray-100">
+                           <h5 className="text-sm font-medium mb-2 pb-1 border-b flex items-center text-green-600">
+                             <DollarSign size={14} className="mr-1" />
+                             Dane finansowe
+                           </h5>
+                           <p className="text-sm mb-1.5"><span className="font-medium">Cena całkowita:</span> 
+                             <span className="bg-green-50 px-2 py-0.5 rounded ml-1">
+                               {zamowienie.response.deliveryPrice} PLN
+                             </span>
+                           </p>
+                           <p className="text-sm mb-1.5"><span className="font-medium">Odległość całkowita:</span> 
+                             {`${displayRoute.distance} km${displayRoute.isConnected ? ' (łącznie)' : ''}`}
+                           </p>
+                           {(() => {
+                             const totalDistance = displayRoute.distance;
+                             
+                             if (totalDistance > 0 && zamowienie.response.deliveryPrice > 0) {
+                               return (
+                                 <p className="text-sm mb-1.5"><span className="font-medium">Koszt za km:</span> 
+                                   <span className="bg-green-50 px-2 py-0.5 rounded ml-1">
+                                     {(zamowienie.response.deliveryPrice / totalDistance).toFixed(2)} PLN/km
+                                   </span>
+                                 </p>
+                               );
+                             }
+                             return null;
+                           })()}
+                           
+                           {/* Podział kosztów dla połączonych transportów */}
+                           {isAutoResponse && zamowienie.response.costPerTransport && (
+                             <div className="mt-2 pt-2 border-t border-gray-100">
+                               <p className="text-sm text-blue-600">
+                                 <span className="font-medium">Koszt na transport:</span> 
+                                 <span className="ml-1">{zamowienie.response.costPerTransport} PLN</span>
+                               </p>
+                               <p className="text-xs text-gray-500 mt-1">
+                                 {(() => {
+                                   const connectedRoute = calculateConnectedRoute(zamowienie);
+                                   return connectedRoute ? `Podzielone na ${connectedRoute.connectedCount + 1} transporty` : '';
+                                 })()}
+                               </p>
+                             </div>
+                           )}
+                         </div>
+                         
+                         {/* Informacje o realizacji */}
+                         <div className="bg-white p-3 rounded-md shadow-sm border border-gray-100">
+                           <h5 className="text-sm font-medium mb-2 pb-1 border-b flex items-center text-purple-600">
+                             <Calendar size={14} className="mr-1" />
+                             Informacje o realizacji
+                           </h5>
+                           <p className="text-sm mb-1.5"><span className="font-medium">Data odpowiedzi:</span> {formatDate(zamowienie.completedAt || zamowienie.createdAt)}</p>
+                           
+                           {/* Wyświetl informację o automatycznym generowaniu */}
+                           {isAutoResponse && (
+                             <div className="bg-purple-50 p-2 rounded-md border border-purple-100 mt-2 mb-1.5">
+                               <p className="text-xs font-medium text-purple-800 flex items-center">
+                                 <Bot size={12} className="mr-1" />
+                                 Transport połączony
+                               </p>
+                             </div>
+                           )}
+                           
+                           {zamowienie.response.dateChanged && (
+                             <div className="bg-yellow-50 p-2 rounded-md border border-yellow-100 mt-2 mb-1.5">
+                               <p className="text-sm font-medium text-yellow-800">Zmieniono datę dostawy:</p>
+                               <p className="text-xs flex justify-between mt-1">
+                                 <span>Z: <span className="line-through">{formatDate(zamowienie.response.originalDeliveryDate)}</span></span>
+                                 <span>→</span>
+                                 <span>Na: <span className="font-medium">{formatDate(zamowienie.response.newDeliveryDate)}</span></span>
+                               </p>
+                             </div>
+                           )}
+                           
+                           {zamowienie.response.adminNotes && (
+                             <p className="text-sm"><span className="font-medium">Uwagi:</span> {zamowienie.response.adminNotes}</p>
+                           )}
+                         </div>
+                       </div>
+                     )}
+                     
+                     <div className="mt-5 flex space-x-3">
+                       <button 
+                         type="button"
+                         className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors flex items-center gap-2"
+                         onClick={() => generateCMR(zamowienie)}
+                       >
+                         <FileText size={16} />
+                         Generuj CMR
+                       </button>
+                       {zamowienie.response && !showArchive && canSendOrder && (
+                         <button 
+                           type="button"
+                           className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors flex items-center gap-2"
+                           onClick={() => onCreateOrder(zamowienie)}
+                         >
+                           <Truck size={16} />
+                           Stwórz zlecenie transportowe
+                         </button>
+                       )}
+                     </div>
+                   </div>
+                 )}
+               </div>
+             )}
+           </div>
+         );
+       })}
+   </div>
+ )
 }

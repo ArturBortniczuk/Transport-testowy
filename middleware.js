@@ -29,7 +29,6 @@ export const config = {
     '/admin/:path*',
     '/spedycja/:path*',
     '/kurier/:path*',
-    '/archiwum-kurier/:path*',  
     '/archiwum/:path*',
     '/archiwum-spedycji/:path*',
     '/change-password/:path*'
