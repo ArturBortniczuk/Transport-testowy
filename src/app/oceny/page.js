@@ -484,14 +484,42 @@ function TransportWlasnyTable({ transports, onRate, getMagazynName, getDriverNam
             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
               {transport.distance ? `${transport.distance} km` : '-'}
             </td>
-            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-              {transport.wz_number || '-'}
+            <td className="px-4 py-3 text-sm text-gray-900">
+              {(() => {
+                const docs = transport.wz_number || '-'
+                if (docs === '-') return docs
+                
+                // Jeśli dokument jest dłuższy niż 30 znaków, skróć i dodaj tooltip
+                if (docs.length > 30) {
+                  const shortened = docs.substring(0, 30) + '...'
+                  return (
+                    <span title={docs} className="cursor-help">
+                      {shortened}
+                    </span>
+                  )
+                }
+                return docs
+              })()}
             </td>
             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
               {transport.client_name}
             </td>
-            <td className="px-4 py-3 text-sm text-gray-900 max-w-xs truncate" title={transport.notes}>
-              {transport.notes || '-'}
+            <td className="px-4 py-3 text-sm text-gray-900 max-w-xs">
+              {(() => {
+                const notes = transport.notes || '-'
+                if (notes === '-') return notes
+                
+                // Jeśli uwagi są dłuższe niż 50 znaków, skróć i dodaj tooltip
+                if (notes.length > 50) {
+                  const shortened = notes.substring(0, 50) + '...'
+                  return (
+                    <span title={notes} className="cursor-help">
+                      {shortened}
+                    </span>
+                  )
+                }
+                return notes
+              })()}
             </td>
             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
               {transport.requester_name || transport.requester_email}
@@ -595,11 +623,39 @@ function TransportSpedycyjnyTable({ transports, onRate, getMagazynName }) {
               <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                 {pricePerKm !== '-' ? `${pricePerKm} zł` : '-'}
               </td>
-              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                {transport.documents || '-'}
+              <td className="px-4 py-3 text-sm text-gray-900">
+                {(() => {
+                  const docs = transport.documents || '-'
+                  if (docs === '-') return docs
+                  
+                  // Jeśli dokument jest dłuższy niż 40 znaków, skróć i dodaj tooltip
+                  if (docs.length > 40) {
+                    const shortened = docs.substring(0, 40) + '...'
+                    return (
+                      <span title={docs} className="cursor-help">
+                        {shortened}
+                      </span>
+                    )
+                  }
+                  return docs
+                })()}
               </td>
-              <td className="px-4 py-3 text-sm text-gray-900 max-w-xs truncate" title={transport.goods_description}>
-                {transport.goods_description || '-'}
+              <td className="px-4 py-3 text-sm text-gray-900 max-w-xs">
+                {(() => {
+                  const desc = transport.goods_description || '-'
+                  if (desc === '-') return desc
+                  
+                  // Jeśli opis jest dłuższy niż 50 znaków, skróć i dodaj tooltip
+                  if (desc.length > 50) {
+                    const shortened = desc.substring(0, 50) + '...'
+                    return (
+                      <span title={desc} className="cursor-help">
+                        {shortened}
+                      </span>
+                    )
+                  }
+                  return desc
+                })()}
               </td>
               <td className="px-4 py-3 whitespace-nowrap text-sm">
                 {transport.has_rating ? (

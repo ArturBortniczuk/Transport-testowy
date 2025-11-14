@@ -45,8 +45,8 @@ export async function GET(request) {
       }, { status: 400 })
     }
 
-    // Sprawdź czy spedycja istnieje
-    const spedition = await db('speditions')
+    // Sprawdź czy spedycja istnieje (POPRAWIONA NAZWA TABELI)
+    const spedition = await db('spedycje')
       .where('id', speditionId)
       .select('status')
       .first()
@@ -163,8 +163,8 @@ export async function POST(request) {
       }, { status: 400 })
     }
     
-    // Sprawdź czy spedycja istnieje i można ją ocenić
-    const spedition = await db('speditions')
+    // Sprawdź czy spedycja istnieje i można ją ocenić (POPRAWIONA NAZWA TABELI)
+    const spedition = await db('spedycje')
       .where('id', speditionId)
       .select('*')
       .first()
@@ -233,8 +233,7 @@ export async function POST(request) {
       delivery_on_time: ratings.deliveryOnTime,
       documents_complete: ratings.documentsComplete,
       documents_correct: ratings.documentsCorrect,
-      comment: comment || '',
-      created_at: new Date()
+      comment: comment || ''
     }
     
     let ratingId
