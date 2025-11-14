@@ -71,14 +71,20 @@ export default function CompleteRatingModal({ transport, onClose, onSuccess, get
       const response = await fetch(`/api/transport-detailed-ratings?transportId=${transport.id}`)
       const data = await response.json()
       
+      console.log('📊 Dane oceny z API:', data)
+      
       if (data.success) {
         const hasRating = data.stats.totalRatings > 0
+        console.log('📈 hasRating:', hasRating, 'totalRatings:', data.stats.totalRatings)
+        
         setHasMainRating(hasRating)
         setUserHasRated(data.hasUserRated)
         setOverallPercentage(data.stats.overallRatingPercentage)
         
         // Załaduj ocenę - najpierw szukaj oceny użytkownika, potem pierwszej dostępnej
         const ratingToLoad = data.rating || (data.allRatings && data.allRatings[0])
+        
+        console.log('🎯 Ocena do załadowania:', ratingToLoad)
         
         if (ratingToLoad) {
           setRatings({
@@ -93,7 +99,7 @@ export default function CompleteRatingModal({ transport, onClose, onSuccess, get
         }
       }
     } catch (error) {
-      console.error('Błąd pobierania oceny:', error)
+      console.error('❌ Błąd pobierania oceny:', error)
     } finally {
       setLoading(false)
     }
