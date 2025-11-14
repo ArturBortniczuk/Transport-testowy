@@ -53,10 +53,17 @@ export async function GET(request) {
     }
     
     // Pobierz wszystkie oceny dla transportu spedycyjnego
-    const allDetailedRatings = await db('spedition_detailed_ratings')
-      .where('spedition_id', speditionId)
-      .orderBy('rated_at', 'desc')
-      .select('*')
+    let allDetailedRatings = []
+    try {
+      allDetailedRatings = await db('spedition_detailed_ratings')
+        .where('spedition_id', speditionId)
+        .orderBy('id', 'desc')  // POPRAWKA: używamy 'id' zamiast 'rated_at'
+        .select('*')
+    } catch (error) {
+      console.error('Błąd pobierania ocen spedycji:', error)
+      // Jeśli błąd, zwróć puste dane
+      allDetailedRatings = []
+    }
     
     const totalRatings = allDetailedRatings.length
     
