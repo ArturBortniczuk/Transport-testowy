@@ -485,41 +485,17 @@ function TransportWlasnyTable({ transports, onRate, getMagazynName, getDriverNam
               {transport.distance ? `${transport.distance} km` : '-'}
             </td>
             <td className="px-4 py-3 text-sm text-gray-900">
-              {(() => {
-                const docs = transport.wz_number || '-'
-                if (docs === '-') return docs
-                
-                // Jeśli dokument jest dłuższy niż 30 znaków, skróć i dodaj tooltip
-                if (docs.length > 30) {
-                  const shortened = docs.substring(0, 30) + '...'
-                  return (
-                    <span title={docs} className="cursor-help">
-                      {shortened}
-                    </span>
-                  )
-                }
-                return docs
-              })()}
+              <div className="max-w-[200px] truncate" title={transport.wz_number || '-'}>
+                {transport.wz_number || '-'}
+              </div>
             </td>
             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
               {transport.client_name}
             </td>
-            <td className="px-4 py-3 text-sm text-gray-900 max-w-xs">
-              {(() => {
-                const notes = transport.notes || '-'
-                if (notes === '-') return notes
-                
-                // Jeśli uwagi są dłuższe niż 50 znaków, skróć i dodaj tooltip
-                if (notes.length > 50) {
-                  const shortened = notes.substring(0, 50) + '...'
-                  return (
-                    <span title={notes} className="cursor-help">
-                      {shortened}
-                    </span>
-                  )
-                }
-                return notes
-              })()}
+            <td className="px-4 py-3 text-sm text-gray-900">
+              <div className="max-w-xs truncate" title={transport.notes || '-'}>
+                {transport.notes || '-'}
+              </div>
             </td>
             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
               {transport.requester_name || transport.requester_email}
@@ -532,10 +508,13 @@ function TransportWlasnyTable({ transports, onRate, getMagazynName, getDriverNam
             </td>
             <td className="px-4 py-3 whitespace-nowrap text-sm">
               {transport.has_rating ? (
-                <span className="flex items-center text-green-600">
+                <button
+                  onClick={() => onRate(transport)}
+                  className="flex items-center text-green-600 hover:text-green-700 transition-colors"
+                >
                   <Star className="w-4 h-4 mr-1 fill-current" />
-                  Oceniony
-                </span>
+                  <span className="underline">Zobacz ocenę</span>
+                </button>
               ) : (
                 <button
                   onClick={() => onRate(transport)}
@@ -624,38 +603,14 @@ function TransportSpedycyjnyTable({ transports, onRate, getMagazynName }) {
                 {pricePerKm !== '-' ? `${pricePerKm} zł` : '-'}
               </td>
               <td className="px-4 py-3 text-sm text-gray-900">
-                {(() => {
-                  const docs = transport.documents || '-'
-                  if (docs === '-') return docs
-                  
-                  // Jeśli dokument jest dłuższy niż 40 znaków, skróć i dodaj tooltip
-                  if (docs.length > 40) {
-                    const shortened = docs.substring(0, 40) + '...'
-                    return (
-                      <span title={docs} className="cursor-help">
-                        {shortened}
-                      </span>
-                    )
-                  }
-                  return docs
-                })()}
+                <div className="max-w-[150px] truncate" title={transport.documents || '-'}>
+                  {transport.documents || '-'}
+                </div>
               </td>
-              <td className="px-4 py-3 text-sm text-gray-900 max-w-xs">
-                {(() => {
-                  const desc = transport.goods_description || '-'
-                  if (desc === '-') return desc
-                  
-                  // Jeśli opis jest dłuższy niż 50 znaków, skróć i dodaj tooltip
-                  if (desc.length > 50) {
-                    const shortened = desc.substring(0, 50) + '...'
-                    return (
-                      <span title={desc} className="cursor-help">
-                        {shortened}
-                      </span>
-                    )
-                  }
-                  return desc
-                })()}
+              <td className="px-4 py-3 text-sm text-gray-900">
+                <div className="max-w-xs truncate" title={transport.goods_description || '-'}>
+                  {transport.goods_description || '-'}
+                </div>
               </td>
               <td className="px-4 py-3 whitespace-nowrap text-sm">
                 {transport.has_rating ? (
