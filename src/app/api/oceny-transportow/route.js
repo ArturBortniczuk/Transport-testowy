@@ -1,4 +1,4 @@
-// src/app/api/oceny-transportow/route.js - API DO POBIERANIA TRANSPORTÓW DO OCENY
+// src/app/api/oceny-transportow/route.js - API DO POBIERANIA TRANSPORTÓW DO OCENY (POPRAWIONE)
 import { NextResponse } from 'next/server'
 import db from '@/database/db'
 
@@ -81,17 +81,7 @@ export async function GET(request) {
         }))
       }
 
-      // Pobierz dodatkowe informacje
-      // Nazwy kierowców
-      const driverIds = [...new Set(transports.map(t => t.driver_id).filter(Boolean))]
-      let drivers = []
-      if (driverIds.length > 0) {
-        drivers = await db('kierowcy')
-          .whereIn('id', driverIds)
-          .select('id', 'imie', 'nazwisko')
-      }
-
-      // Nazwy użytkowników (osób odpowiedzialnych)
+      // Pobierz nazwy użytkowników (osób odpowiedzialnych)
       const emails = [...new Set(transports.map(t => t.requester_email).filter(Boolean))]
       let users = []
       if (emails.length > 0) {
@@ -100,29 +90,26 @@ export async function GET(request) {
           .select('email', 'name')
       }
 
-      // Dodaj nazwy do transportów
+      // Dodaj nazwy użytkowników do transportów (NIE pobieramy kierowców z bazy!)
       transports = transports.map(transport => {
-        const driver = drivers.find(d => d.id === parseInt(transport.driver_id))
         const user = users.find(u => u.email === transport.requester_email)
         
         return {
           ...transport,
-          driver_name: driver ? `${driver.imie} ${driver.nazwisko || ''}`.trim() : null,
           requester_name: user ? user.name : null
+          // driver_id pozostaje jako ID - mapowanie na nazwę będzie w komponencie
         }
       })
 
     } else if (type === 'spedycyjny') {
-      // Pobierz transporty spedycyjne
-      transports = await db('speditions')
+      // Pobierz transporty spedycyjne (POPRAWIONA NAZWA TABELI: spedycje)
+      transports = await db('spedycje')
         .where('status', 'completed')
-        .whereBetween('created_at', [startDate, endDate])
-        .orderBy('created_at', 'desc')
+        .whereBetween('delivery_date', [startDate, endDate]) // UŻYWAMY delivery_date zamiast created_at
+        .orderBy('delivery_date', 'desc')
         .select('*')
 
       // Sprawdź które transporty mają ocenę
-      // Dla spedycji będziemy używać osobnej tabeli ocen (zrobimy to później)
-      // Na razie oznacz wszystkie jako nieocenione
       const transportIds = transports.map(t => t.id)
       
       if (transportIds.length > 0) {
@@ -155,7 +142,7 @@ export async function GET(request) {
       }
 
       // Pobierz nazwy użytkowników (osób odpowiedzialnych)
-      const emails = [...new Set(transports.map(t => t.requester_email).filter(Boolean))]
+      const emails = [...new Set(transports.map(t => t.responsible_email).filter(Boolean))]
       let users = []
       if (emails.length > 0) {
         users = await db('users')
@@ -165,11 +152,45 @@ export async function GET(request) {
 
       // Dodaj nazwy do transportów
       transports = transports.map(transport => {
-        const user = users.find(u => u.email === transport.requester_email)
+        const user = users.find(u => u.email === transport.responsible_email)
+        
+        // Parsuj response_data jeśli istnieje
+        let response = null
+        if (transport.response_data) {
+          try {
+            response = JSON.parse(transport.response_data)
+          } catch (e) {
+            console.error('Błąd parsowania response_data:', e)
+          }
+        }
+
+        // Parsuj delivery_data
+        let delivery = null
+        if (transport.delivery_data) {
+          try {
+            delivery = JSON.parse(transport.delivery_data)
+          } catch (e) {
+            console.error('Błąd parsowania delivery_data:', e)
+          }
+        }
+
+        // Parsuj location_data
+        let producerAddress = null
+        if (transport.location_data) {
+          try {
+            producerAddress = JSON.parse(transport.location_data)
+          } catch (e) {
+            console.error('Błąd parsowania location_data:', e)
+          }
+        }
         
         return {
           ...transport,
-          requester_name: user ? user.name : null
+          requester_name: user ? user.name : null,
+          requester_email: transport.responsible_email,
+          response,
+          delivery,
+          producerAddress
         }
       })
     }

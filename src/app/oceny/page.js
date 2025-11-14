@@ -6,6 +6,7 @@ import { pl } from 'date-fns/locale'
 import { Star, Filter, ChevronDown, Calendar, AlertCircle } from 'lucide-react'
 import CompleteRatingModal from '@/components/CompleteRatingModal'
 import SpeditionRatingModal from '@/components/SpeditionRatingModal'
+import { KIEROWCY } from '@/app/kalendarz/constants' // Import stałej kierowców
 
 export default function OcenyPage() {
   const [activeTab, setActiveTab] = useState('wlasny') // 'wlasny' lub 'spedycyjny'
@@ -107,8 +108,13 @@ export default function OcenyPage() {
   // Filtrowanie transportów
   const filteredTransports = transports.filter(transport => {
     // Filtr osoby odpowiedzialnej
-    if (selectedRequester && transport.requester_email !== selectedRequester) {
-      return false
+    if (selectedRequester) {
+      const email = activeTab === 'wlasny' 
+        ? transport.requester_email 
+        : transport.responsible_email
+      if (email !== selectedRequester) {
+        return false
+      }
     }
     
     // Filtr klienta
@@ -117,13 +123,24 @@ export default function OcenyPage() {
     }
     
     // Filtr magazynu
-    if (selectedWarehouse && transport.source_warehouse !== selectedWarehouse) {
-      return false
+    if (selectedWarehouse) {
+      const warehouse = activeTab === 'wlasny' 
+        ? transport.source_warehouse 
+        : (transport.location === 'Magazyn Białystok' ? 'bialystok' : 
+           transport.location === 'Magazyn Zielonka' ? 'zielonka' : null)
+      if (warehouse !== selectedWarehouse) {
+        return false
+      }
     }
     
     // Filtr miasta
-    if (selectedCity && !transport.destination_city?.toLowerCase().includes(selectedCity.toLowerCase())) {
-      return false
+    if (selectedCity) {
+      const city = activeTab === 'wlasny' 
+        ? transport.destination_city 
+        : transport.delivery?.city
+      if (!city?.toLowerCase().includes(selectedCity.toLowerCase())) {
+        return false
+      }
     }
     
     // Filtr budowy (tylko dla transportu własnego)
@@ -155,6 +172,13 @@ export default function OcenyPage() {
       case 'zielonka': return 'Zielonka'
       default: return warehouse || 'Nieznany'
     }
+  }
+
+  // Funkcja do pobierania nazwy kierowcy z ID
+  const getDriverName = (driverId) => {
+    if (!driverId) return 'Brak kierowcy'
+    const driver = KIEROWCY.find(k => k.id === parseInt(driverId))
+    return driver ? driver.imie : 'Nieznany kierowca'
   }
 
   if (loading && transports.length === 0) {
@@ -385,6 +409,7 @@ export default function OcenyPage() {
                 transports={filteredTransports}
                 onRate={handleOpenRatingModal}
                 getMagazynName={getMagazynName}
+                getDriverName={getDriverName}
               />
             ) : (
               <TransportSpedycyjnyTable 
@@ -397,26 +422,28 @@ export default function OcenyPage() {
         )}
       </div>
 
-      {/* Modal oceny - tutaj podepniemy komponenty */}
+      {/* Modal oceny - odpowiedni dla typu transportu */}
       {showRatingModal && selectedTransport && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg max-w-2xl">
-            <p>Modal oceny dla transportu #{selectedTransport.id}</p>
-            <button 
-              onClick={handleCloseRatingModal}
-              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md"
-            >
-              Zamknij
-            </button>
-          </div>
-        </div>
+        activeTab === 'wlasny' ? (
+          <CompleteRatingModal
+            transport={selectedTransport}
+            onClose={handleCloseRatingModal}
+            onSuccess={fetchTransports}
+          />
+        ) : (
+          <SpeditionRatingModal
+            transport={selectedTransport}
+            onClose={handleCloseRatingModal}
+            onSuccess={fetchTransports}
+          />
+        )
       )}
     </div>
   )
 }
 
 // Komponent tabeli dla transportu własnego
-function TransportWlasnyTable({ transports, onRate, getMagazynName }) {
+function TransportWlasnyTable({ transports, onRate, getMagazynName, getDriverName }) {
   return (
     <table className="min-w-full divide-y divide-gray-200">
       <thead className="bg-gray-50">
@@ -473,7 +500,7 @@ function TransportWlasnyTable({ transports, onRate, getMagazynName }) {
               {transport.mpk || '-'}
             </td>
             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-              {transport.driver_name || '-'}
+              {getDriverName(transport.driver_id)}
             </td>
             <td className="px-4 py-3 whitespace-nowrap text-sm">
               {transport.has_rating ? (
@@ -528,7 +555,9 @@ function TransportSpedycyjnyTable({ transports, onRate, getMagazynName }) {
           return (
             <tr key={transport.id} className="hover:bg-gray-50">
               <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                {format(new Date(transport.created_at), 'dd.MM.yyyy', { locale: pl })}
+                {transport.delivery_date 
+                  ? format(new Date(transport.delivery_date), 'dd.MM.yyyy', { locale: pl })
+                  : '-'}
               </td>
               <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                 {transport.order_number || '-'}
@@ -542,10 +571,12 @@ function TransportSpedycyjnyTable({ transports, onRate, getMagazynName }) {
                   : '-'}
               </td>
               <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                {getMagazynName(transport.location)}
+                {transport.location === 'Magazyn Białystok' ? 'Białystok' : 
+                 transport.location === 'Magazyn Zielonka' ? 'Zielonka' : 
+                 transport.location || '-'}
               </td>
               <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                {transport.requester_name || transport.requester_email || '-'}
+                {transport.requester_name || transport.responsible_person || '-'}
               </td>
               <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                 {transport.response?.distanceKm ? `${transport.response.distanceKm} km` : '-'}
@@ -565,7 +596,7 @@ function TransportSpedycyjnyTable({ transports, onRate, getMagazynName }) {
                 {pricePerKm !== '-' ? `${pricePerKm} zł` : '-'}
               </td>
               <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                {transport.goods || '-'}
+                {transport.documents || '-'}
               </td>
               <td className="px-4 py-3 text-sm text-gray-900 max-w-xs truncate" title={transport.goods_description}>
                 {transport.goods_description || '-'}
