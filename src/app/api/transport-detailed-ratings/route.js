@@ -1,4 +1,4 @@
-// src/app/api/transport-detailed-ratings/route.js - CZYSTA WERSJA Z POPRAWNĄ LOGIKĄ ODBIORCÓW
+// src/app/api/transport-detailed-ratings/route.js - POPRAWIONA WERSJA
 import { NextResponse } from 'next/server';
 import db from '@/database/db';
 import nodemailer from 'nodemailer';
@@ -53,69 +53,80 @@ const sendRatingNotification = async (transportId, ratingId) => {
       .first();
     
     const raterInfo = {
-      name: rater ? rater.name : 'Nieznany użytkownik',
+      name: rater ? rater.name : rating.rater_email,
       email: rating.rater_email
     };
     
-    // Logika odbiorców - tylko odpowiedni magazyn + Mateusz
-    const getEmailRecipients = (transport) => {
-      const recipients = [];
-      
-      // ZAWSZE dodaj Mateusza
-      recipients.push('mateusz.klewinowski@grupaeltron.pl');
-      
-      // Dodaj odpowiedni magazyn na podstawie source_warehouse
-      if (transport.source_warehouse === 'bialystok') {
-        recipients.push('magazynbialystok@grupaeltron.pl');
-      } else if (transport.source_warehouse === 'zielonka') {
-        recipients.push('magazynzielonka@grupaeltron.pl');
-      } else {
-        // Jeśli nie ma source_warehouse lub jest nieznany, dodaj oba magazyny
-        recipients.push('magazynbialystok@grupaeltron.pl');
-        recipients.push('magazynzielonka@grupaeltron.pl');
-      }
-      
-      return recipients;
-    };
-    
-    const uniqueRecipients = getEmailRecipients(transport);
-    
-    // Sprawdź konfigurację SMTP
-    if (!process.env.SMTP_PASSWORD) {
-      return { success: false, error: 'Konfiguracja SMTP nie jest dostępna' };
-    }
-    
-    // Konfiguracja nodemailer
+    // Konfiguracja transportera email
     const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '465'),
-      secure: process.env.SMTP_SECURE === 'true',
+      host: process.env.SMTP_HOST || 'mail.grupaeltron.pl',
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      secure: false,
       auth: {
-        user: "logistyka@grupaeltron.pl",
+        user: process.env.SMTP_USER || 'logistyka@grupaeltron.pl',
         pass: process.env.SMTP_PASSWORD
+      },
+      tls: {
+        rejectUnauthorized: false
       }
     });
     
-    // Funkcja do formatowania danych oceny
+    // Lista unikalnych odbiorców
+    const recipients = new Set();
+    
+    // 1. Dodaj osobę odpowiedzialną za transport
+    if (transport.requester_email) {
+      recipients.add(transport.requester_email);
+    }
+    
+    // 2. Dodaj wszystkich adminów
+    const admins = await db('users')
+      .where(function() {
+        this.where('is_admin', true)
+          .orWhere('is_admin', 1)
+          .orWhere('is_admin', 't')
+          .orWhere('is_admin', 'TRUE')
+          .orWhere('is_admin', 'true')
+          .orWhere('role', 'admin');
+      })
+      .select('email');
+    
+    admins.forEach(admin => {
+      if (admin.email) {
+        recipients.add(admin.email);
+      }
+    });
+    
+    // 3. Usuń osobę oceniającą z listy odbiorców (nie wysyłamy jej samej sobie)
+    recipients.delete(rating.rater_email);
+    
+    const uniqueRecipients = Array.from(recipients);
+    
+    if (uniqueRecipients.length === 0) {
+      return { 
+        success: false, 
+        error: 'Brak odbiorców powiadomienia' 
+      };
+    }
+    
+    // Formatuj dane oceny do wyświetlenia
     const formatRatingData = (rating) => {
-      const criteria = [
-        { key: 'driver_professional', label: 'Kierowca profesjonalny' },
-        { key: 'driver_tasks_completed', label: 'Zadania kierowcy wykonane' },
-        { key: 'cargo_complete', label: 'Towar kompletny' },
-        { key: 'cargo_correct', label: 'Towar zgodny' },
-        { key: 'delivery_notified', label: 'Powiadomienie o dostawie' },
-        { key: 'delivery_on_time', label: 'Dostawa na czas' }
-      ];
-      
-      return criteria.map(criterion => ({
-        label: criterion.label,
-        value: rating[criterion.key] ? '✅ TAK' : '❌ NIE'
-      }));
+      return ([
+        { category: '👤 Kierowca', label: 'Profesjonalne zachowanie', value: rating.driver_professional },
+        { category: '👤 Kierowca', label: 'Wykonał wszystkie zadania', value: rating.driver_tasks_completed },
+        { category: '📦 Towar', label: 'Towar kompletny', value: rating.cargo_complete },
+        { category: '📦 Towar', label: 'Towar prawidłowy', value: rating.cargo_correct },
+        { category: '🚚 Dostawa', label: 'Dostawa zgłoszona', value: rating.delivery_notified },
+        { category: '🚚 Dostawa', label: 'Dostawa na czas', value: rating.delivery_on_time }
+      ].map(item => ({
+        ...item,
+        value: item.value === true ? '✅ TAK' : item.value === false ? '❌ NIE' : '➖ Brak oceny'
+      })));
     };
     
     // Generuj HTML emaila
     const criteriaFormatted = formatRatingData(rating);
-    const ratingDate = new Date(rating.created_at).toLocaleString('pl-PL');
+    const ratingDate = new Date(rating.rated_at).toLocaleString('pl-PL'); // ZMIENIONE z created_at na rated_at
     
     const htmlContent = `
       <!DOCTYPE html>
@@ -248,10 +259,10 @@ export async function GET(request) {
       });
     }
     
-    // Pobierz wszystkie oceny dla transportu
+    // Pobierz wszystkie oceny dla transportu - ZMIENIONE created_at na rated_at
     const allDetailedRatings = await db('transport_detailed_ratings')
       .where('transport_id', transportId)
-      .orderBy('created_at', 'desc')
+      .orderBy('rated_at', 'desc')  // POPRAWKA: było created_at, teraz rated_at
       .select('*');
     
     const totalRatings = allDetailedRatings.length;
@@ -368,6 +379,7 @@ export async function POST(request) {
         table.increments('id').primary();
         table.integer('transport_id').notNullable();
         table.string('rater_email').notNullable();
+        table.string('rater_name');
         table.boolean('driver_professional');
         table.boolean('driver_tasks_completed');
         table.boolean('cargo_complete');
@@ -375,7 +387,7 @@ export async function POST(request) {
         table.boolean('delivery_notified');
         table.boolean('delivery_on_time');
         table.text('comment');
-        table.timestamp('created_at').defaultTo(db.fn.now());
+        table.timestamp('rated_at').defaultTo(db.fn.now()); // UŻYWAMY rated_at
         
         table.index(['transport_id']);
         table.unique(['transport_id', 'rater_email']);
@@ -388,9 +400,16 @@ export async function POST(request) {
       .where('rater_email', userId)
       .first();
 
+    // Pobierz dane użytkownika
+    const user = await db('users')
+      .where('email', userId)
+      .select('name')
+      .first();
+
     const ratingData = {
       transport_id: transportId,
       rater_email: userId,
+      rater_name: user?.name || userId,
       driver_professional: ratings.driverProfessional,
       driver_tasks_completed: ratings.driverTasksCompleted,
       cargo_complete: ratings.cargoComplete,
@@ -411,7 +430,7 @@ export async function POST(request) {
       
       ratingId = existingRating.id;
     } else {
-      // Dodaj nową ocenę
+      // Dodaj nową ocenę - NIE dodajemy rated_at bo ma domyślną wartość
       const insertResult = await db('transport_detailed_ratings')
         .insert(ratingData)
         .returning('id');
