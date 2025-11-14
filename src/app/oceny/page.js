@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { Star, Filter, ChevronDown, Calendar, AlertCircle } from 'lucide-react'
+import CompleteRatingModal from '@/components/CompleteRatingModal'
+import SpeditionRatingModal from '@/components/SpeditionRatingModal'
 
 export default function OcenyPage() {
   const [activeTab, setActiveTab] = useState('wlasny') // 'wlasny' lub 'spedycyjny'
