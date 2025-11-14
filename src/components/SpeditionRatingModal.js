@@ -73,19 +73,22 @@ export default function SpeditionRatingModal({ transport, onClose, onSuccess }) 
         setHasMainRating(data.stats.totalRatings > 0)
         setUserHasRated(data.hasUserRated)
         
-        // Jeśli użytkownik ma ocenę, załaduj ją
-        if (data.rating) {
+        // Jeśli są jakiekolwiek oceny, załaduj pierwszą (lub ocenę użytkownika)
+        if (data.allRatings && data.allRatings.length > 0) {
+          // Znajdź ocenę użytkownika lub weź pierwszą
+          const ratingToShow = data.rating || data.allRatings[0]
+          
           setRatings({
-            carrierProfessional: data.rating.carrier_professional,
-            loadingOnTime: data.rating.loading_on_time,
-            cargoComplete: data.rating.cargo_complete,
-            cargoUndamaged: data.rating.cargo_undamaged,
-            deliveryNotified: data.rating.delivery_notified,
-            deliveryOnTime: data.rating.delivery_on_time,
-            documentsComplete: data.rating.documents_complete,
-            documentsCorrect: data.rating.documents_correct
+            carrierProfessional: ratingToShow.carrier_professional,
+            loadingOnTime: ratingToShow.loading_on_time,
+            cargoComplete: ratingToShow.cargo_complete,
+            cargoUndamaged: ratingToShow.cargo_undamaged,
+            deliveryNotified: ratingToShow.delivery_notified,
+            deliveryOnTime: ratingToShow.delivery_on_time,
+            documentsComplete: ratingToShow.documents_complete,
+            documentsCorrect: ratingToShow.documents_correct
           })
-          setComment(data.rating.comment || '')
+          setComment(ratingToShow.comment || '')
         }
       }
     } catch (error) {

@@ -63,17 +63,20 @@ export default function CompleteRatingModal({ transport, onClose, onSuccess }) {
         setHasMainRating(data.stats.totalRatings > 0)
         setUserHasRated(data.hasUserRated)
         
-        // Jeśli użytkownik ma ocenę, załaduj ją
-        if (data.rating) {
+        // Jeśli są jakiekolwiek oceny, załaduj pierwszą (lub ocenę użytkownika)
+        if (data.allRatings && data.allRatings.length > 0) {
+          // Znajdź ocenę użytkownika lub weź pierwszą
+          const ratingToShow = data.rating || data.allRatings[0]
+          
           setRatings({
-            driverProfessional: data.rating.driver_professional,
-            driverTasksCompleted: data.rating.driver_tasks_completed,
-            cargoComplete: data.rating.cargo_complete,
-            cargoCorrect: data.rating.cargo_correct,
-            deliveryNotified: data.rating.delivery_notified,
-            deliveryOnTime: data.rating.delivery_on_time
+            driverProfessional: ratingToShow.driver_professional,
+            driverTasksCompleted: ratingToShow.driver_tasks_completed,
+            cargoComplete: ratingToShow.cargo_complete,
+            cargoCorrect: ratingToShow.cargo_correct,
+            deliveryNotified: ratingToShow.delivery_notified,
+            deliveryOnTime: ratingToShow.delivery_on_time
           })
-          setComment(data.rating.comment || '')
+          setComment(ratingToShow.comment || '')
         }
       }
     } catch (error) {
@@ -186,7 +189,7 @@ export default function CompleteRatingModal({ transport, onClose, onSuccess }) {
               <h2 className="text-2xl font-bold text-gray-900">
                 {!hasMainRating 
                   ? 'Oceń transport' 
-                  : 'Ocena transportu'
+                  : (isEditMode ? 'Edytuj ocenę transportu' : 'Ocena transportu')
                 }
               </h2>
               <p className="text-gray-600 mt-1">
@@ -229,6 +232,15 @@ export default function CompleteRatingModal({ transport, onClose, onSuccess }) {
                     <h4 className="font-medium text-sm mb-3 text-gray-800">{category.title}</h4>
                     {category.criteria.map(criteria => {
                       const ratingValue = ratings[criteria.key]
+                      
+                      if (ratingValue === null || ratingValue === undefined) {
+                        return (
+                          <div key={criteria.key} className="flex items-center justify-between text-sm mb-2 p-2 bg-gray-50 rounded">
+                            <span className="text-gray-500 text-xs">{criteria.text}</span>
+                            <span className="text-gray-400 text-xs">Brak oceny</span>
+                          </div>
+                        );
+                      }
                       
                       return (
                         <div key={criteria.key} className={`flex items-center justify-between text-sm mb-2 p-2 rounded ${
