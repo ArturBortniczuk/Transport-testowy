@@ -204,7 +204,7 @@ export default function SpeditionRatingModal({ transport, onClose, onSuccess }) 
               <h2 className="text-2xl font-bold text-gray-900">
                 {!hasMainRating 
                   ? 'Oceń transport spedycyjny' 
-                  : 'Ocena transportu spedycyjnego'
+                  : (isEditMode ? 'Edytuj ocenę transportu spedycyjnego' : 'Ocena transportu spedycyjnego')
                 }
               </h2>
               <p className="text-gray-600 mt-1">
@@ -248,6 +248,15 @@ export default function SpeditionRatingModal({ transport, onClose, onSuccess }) 
                     <h4 className="font-medium text-sm mb-3 text-gray-800">{category.title}</h4>
                     {category.criteria.map(criteria => {
                       const ratingValue = ratings[criteria.key]
+                      
+                      if (ratingValue === null || ratingValue === undefined) {
+                        return (
+                          <div key={criteria.key} className="flex items-center justify-between text-sm mb-2 p-2 bg-gray-50 rounded">
+                            <span className="text-gray-500 text-xs">{criteria.text}</span>
+                            <span className="text-gray-400 text-xs">Brak oceny</span>
+                          </div>
+                        );
+                      }
                       
                       return (
                         <div key={criteria.key} className={`flex items-center justify-between text-sm mb-2 p-2 rounded ${
