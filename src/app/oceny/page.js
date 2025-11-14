@@ -429,6 +429,7 @@ export default function OcenyPage() {
             transport={selectedTransport}
             onClose={handleCloseRatingModal}
             onSuccess={fetchTransports}
+            getMagazynName={getMagazynName}
           />
         ) : (
           <SpeditionRatingModal
@@ -614,10 +615,13 @@ function TransportSpedycyjnyTable({ transports, onRate, getMagazynName }) {
               </td>
               <td className="px-4 py-3 whitespace-nowrap text-sm">
                 {transport.has_rating ? (
-                  <span className="flex items-center text-green-600">
+                  <button
+                    onClick={() => onRate(transport)}
+                    className="flex items-center text-green-600 hover:text-green-700 transition-colors"
+                  >
                     <Star className="w-4 h-4 mr-1 fill-current" />
-                    Oceniony
-                  </span>
+                    <span className="underline">Zobacz ocenę</span>
+                  </button>
                 ) : (
                   <button
                     onClick={() => onRate(transport)}

@@ -1,7 +1,9 @@
-// src/components/SpeditionRatingModal.js - MODAL OCENY TRANSPORTU SPEDYCYJNEGO
+// src/components/SpeditionRatingModal.js - PEŁNY MODAL Z KOMENTARZAMI dla spedycji
 'use client'
 import { useState, useEffect } from 'react'
-import { X, ThumbsUp, ThumbsDown, CheckCircle, AlertCircle, MessageSquare, Edit } from 'lucide-react'
+import { X, ThumbsUp, ThumbsDown, CheckCircle, AlertCircle, MessageSquare, Edit, Send } from 'lucide-react'
+import { format } from 'date-fns'
+import { pl } from 'date-fns/locale'
 
 export default function SpeditionRatingModal({ transport, onClose, onSuccess }) {
   const [ratings, setRatings] = useState({
@@ -20,10 +22,19 @@ export default function SpeditionRatingModal({ transport, onClose, onSuccess }) 
   const [success, setSuccess] = useState(false)
   const [isEditMode, setIsEditMode] = useState(false)
   const [loading, setLoading] = useState(true)
+  
+  // Stan ocen
   const [hasMainRating, setHasMainRating] = useState(false)
   const [userHasRated, setUserHasRated] = useState(false)
+  const [overallPercentage, setOverallPercentage] = useState(null)
+  
+  // Komentarze
+  const [newComment, setNewComment] = useState('')
+  const [addingComment, setAddingComment] = useState(false)
+  const [allComments, setAllComments] = useState([])
+  const [loadingComments, setLoadingComments] = useState(true)
 
-  // Kategorie oceny dla SPEDYCJI
+  // Kategorie oceny DLA SPEDYCJI
   const categories = [
     {
       id: 'carrier',
@@ -60,52 +71,67 @@ export default function SpeditionRatingModal({ transport, onClose, onSuccess }) 
   ]
 
   useEffect(() => {
-    fetchExistingRating()
+    loadExistingRating()
+    fetchComments()
   }, [transport.id])
 
-  const fetchExistingRating = async () => {
+  const loadExistingRating = async () => {
     try {
       setLoading(true)
       const response = await fetch(`/api/spedition-detailed-ratings?speditionId=${transport.id}`)
       const data = await response.json()
       
       if (data.success) {
-        setHasMainRating(data.stats.totalRatings > 0)
+        const hasRating = data.stats.totalRatings > 0
+        setHasMainRating(hasRating)
         setUserHasRated(data.hasUserRated)
+        setOverallPercentage(data.stats.overallRatingPercentage)
         
-        // Jeśli są jakiekolwiek oceny, załaduj pierwszą (lub ocenę użytkownika)
-        if (data.allRatings && data.allRatings.length > 0) {
-          // Znajdź ocenę użytkownika lub weź pierwszą
-          const ratingToShow = data.rating || data.allRatings[0]
-          
+        const ratingToLoad = data.rating || (data.allRatings && data.allRatings[0])
+        
+        if (ratingToLoad) {
           setRatings({
-            carrierProfessional: ratingToShow.carrier_professional,
-            loadingOnTime: ratingToShow.loading_on_time,
-            cargoComplete: ratingToShow.cargo_complete,
-            cargoUndamaged: ratingToShow.cargo_undamaged,
-            deliveryNotified: ratingToShow.delivery_notified,
-            deliveryOnTime: ratingToShow.delivery_on_time,
-            documentsComplete: ratingToShow.documents_complete,
-            documentsCorrect: ratingToShow.documents_correct
+            carrierProfessional: ratingToLoad.carrier_professional,
+            loadingOnTime: ratingToLoad.loading_on_time,
+            cargoComplete: ratingToLoad.cargo_complete,
+            cargoUndamaged: ratingToLoad.cargo_undamaged,
+            deliveryNotified: ratingToLoad.delivery_notified,
+            deliveryOnTime: ratingToLoad.delivery_on_time,
+            documentsComplete: ratingToLoad.documents_complete,
+            documentsCorrect: ratingToLoad.documents_correct
           })
-          setComment(ratingToShow.comment || '')
+          setComment(ratingToLoad.comment || '')
         }
       }
     } catch (error) {
       console.error('Błąd pobierania oceny spedycji:', error)
-      // Jeśli endpoint nie istnieje, oznacz jako nieoceniony
       setHasMainRating(false)
       setUserHasRated(false)
-      setLoading(false)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchComments = async () => {
+    try {
+      setLoadingComments(true)
+      // TODO: Stworzyć API dla komentarzy spedycji (na razie pusta lista)
+      // const response = await fetch(`/api/spedition-comments?speditionId=${transport.id}`)
+      // const data = await response.json()
+      // if (data.success) {
+      //   setAllComments(data.comments || [])
+      // }
+      setAllComments([])
+    } catch (error) {
+      console.error('Błąd pobierania komentarzy:', error)
+    } finally {
+      setLoadingComments(false)
     }
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     
-    // Sprawdź czy wszystkie kryteria są wypełnione
     const allRated = Object.values(ratings).every(rating => rating !== null)
     if (!allRated) {
       setError('Proszę ocenić wszystkie kryteria')
@@ -119,9 +145,7 @@ export default function SpeditionRatingModal({ transport, onClose, onSuccess }) 
     try {
       const response = await fetch('/api/spedition-detailed-ratings', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           speditionId: transport.id,
           ratings,
@@ -133,9 +157,11 @@ export default function SpeditionRatingModal({ transport, onClose, onSuccess }) 
 
       if (data.success) {
         setSuccess(true)
+        await loadExistingRating()
+        setIsEditMode(false)
+        
         setTimeout(() => {
           if (onSuccess) onSuccess()
-          onClose()
         }, 1500)
       } else {
         setError(data.error || 'Wystąpił błąd podczas zapisywania oceny')
@@ -148,11 +174,31 @@ export default function SpeditionRatingModal({ transport, onClose, onSuccess }) 
     }
   }
 
-  const RatingButton = ({ criteriaKey, value, label, readOnly = false }) => {
-    const baseClasses = "flex items-center px-3 py-2 rounded-md border text-sm font-medium transition-colors"
-    const isSelected = ratings[criteriaKey] === value
+  const handleAddComment = async () => {
+    if (!newComment.trim()) return
     
-    if (readOnly) {
+    try {
+      setAddingComment(true)
+      setError('')
+      
+      // TODO: Stworzyć API dla komentarzy spedycji
+      alert('Komentarze dla spedycji będą dostępne wkrótce')
+      setNewComment('')
+    } catch (error) {
+      console.error('Błąd dodawania komentarza:', error)
+      setError('Wystąpił błąd podczas dodawania komentarza')
+    } finally {
+      setAddingComment(false)
+    }
+  }
+
+  const RatingButton = ({ criteriaKey, value, label }) => {
+    const isSelected = ratings[criteriaKey] === value
+    const disabled = hasMainRating && !isEditMode
+    
+    const baseClasses = "flex items-center px-3 py-2 rounded-md border text-sm font-medium transition-colors"
+    
+    if (disabled) {
       const readOnlyClasses = value !== null 
         ? (value ? "bg-green-100 text-green-700 border-green-300" : "bg-red-100 text-red-700 border-red-300")
         : "bg-gray-50 text-gray-400 border-gray-200"
@@ -204,7 +250,7 @@ export default function SpeditionRatingModal({ transport, onClose, onSuccess }) 
               <h2 className="text-2xl font-bold text-gray-900">
                 {!hasMainRating 
                   ? 'Oceń transport spedycyjny' 
-                  : (isEditMode ? 'Edytuj ocenę transportu spedycyjnego' : 'Ocena transportu spedycyjnego')
+                  : 'Ocena i komentarze transportu spedycyjnego'
                 }
               </h2>
               <p className="text-gray-600 mt-1">
@@ -212,10 +258,7 @@ export default function SpeditionRatingModal({ transport, onClose, onSuccess }) 
                 {transport.response?.driverName && ` - ${transport.response.driverName}`}
               </p>
             </div>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
-            >
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
               <X size={24} />
             </button>
           </div>
@@ -235,11 +278,11 @@ export default function SpeditionRatingModal({ transport, onClose, onSuccess }) 
             </div>
           )}
 
-          {/* Wyświetlanie istniejącej oceny */}
+          {/* SEKCJA OCENY */}
           {hasMainRating && !isEditMode && (
             <div className="mb-8 p-6 bg-blue-50 rounded-lg border border-blue-200">
               <h3 className="text-lg font-semibold mb-4 text-blue-900">
-                ⭐ Transport został oceniony
+                ⭐ Ocena transportu: {overallPercentage}%
               </h3>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -248,15 +291,6 @@ export default function SpeditionRatingModal({ transport, onClose, onSuccess }) 
                     <h4 className="font-medium text-sm mb-3 text-gray-800">{category.title}</h4>
                     {category.criteria.map(criteria => {
                       const ratingValue = ratings[criteria.key]
-                      
-                      if (ratingValue === null || ratingValue === undefined) {
-                        return (
-                          <div key={criteria.key} className="flex items-center justify-between text-sm mb-2 p-2 bg-gray-50 rounded">
-                            <span className="text-gray-500 text-xs">{criteria.text}</span>
-                            <span className="text-gray-400 text-xs">Brak oceny</span>
-                          </div>
-                        );
-                      }
                       
                       return (
                         <div key={criteria.key} className={`flex items-center justify-between text-sm mb-2 p-2 rounded ${
@@ -285,7 +319,7 @@ export default function SpeditionRatingModal({ transport, onClose, onSuccess }) 
 
               {comment && (
                 <div className="mt-4 p-4 bg-white rounded-lg border border-blue-200">
-                  <h5 className="font-medium text-sm text-blue-800 mb-2">💬 Komentarz:</h5>
+                  <h5 className="font-medium text-sm text-blue-800 mb-2">💬 Komentarz do oceny:</h5>
                   <p className="text-gray-700 text-sm italic">"{comment}"</p>
                 </div>
               )}
@@ -304,8 +338,8 @@ export default function SpeditionRatingModal({ transport, onClose, onSuccess }) 
 
           {/* Formularz oceny */}
           {(!hasMainRating || isEditMode) && (
-            <form onSubmit={handleSubmit}>
-              <div className="mb-8">
+            <form onSubmit={handleSubmit} className="mb-8">
+              <div className="p-6 border border-gray-200 rounded-lg">
                 <h3 className="text-lg font-semibold mb-4">
                   {userHasRated ? 'Edytuj swoją ocenę' : 'Oceń transport według kryteriów'}
                 </h3>
@@ -319,60 +353,63 @@ export default function SpeditionRatingModal({ transport, onClose, onSuccess }) 
                         <div key={criteria.key} className="mb-3 last:mb-0">
                           <p className="text-sm text-gray-700 mb-2">{criteria.text}</p>
                           <div className="flex space-x-2">
-                            <RatingButton
-                              criteriaKey={criteria.key}
-                              value={true}
-                              label="TAK"
-                            />
-                            <RatingButton
-                              criteriaKey={criteria.key}
-                              value={false}
-                              label="NIE"
-                            />
+                            <RatingButton criteriaKey={criteria.key} value={true} label="TAK" />
+                            <RatingButton criteriaKey={criteria.key} value={false} label="NIE" />
                           </div>
                         </div>
                       ))}
                     </div>
                   ))}
                 </div>
-              </div>
 
-              {/* Komentarz */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <MessageSquare className="inline w-4 h-4 mr-1" />
-                  Komentarz (opcjonalnie)
-                </label>
-                <textarea
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  rows={4}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 focus:ring-2 focus:ring-blue-500"
-                  placeholder="Dodaj komentarz do oceny (np. uwagi o przewoźniku, problemach)..."
-                />
-              </div>
+                <div className="mt-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <MessageSquare className="inline w-4 h-4 mr-1" />
+                    Komentarz (opcjonalnie)
+                  </label>
+                  <textarea
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    rows={4}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 focus:ring-2 focus:ring-blue-500"
+                    placeholder="Dodaj komentarz do oceny (np. uwagi o przewoźniku, problemach)..."
+                  />
+                </div>
 
-              {/* Przyciski */}
-              <div className="flex justify-end space-x-3">
-                {isEditMode && (
+                <div className="flex justify-end space-x-3 mt-6">
+                  {isEditMode && (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditMode(false)}
+                      className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+                    >
+                      Anuluj
+                    </button>
+                  )}
                   <button
-                    type="button"
-                    onClick={() => setIsEditMode(false)}
-                    className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+                    type="submit"
+                    disabled={submitting}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50"
                   >
-                    Anuluj
+                    {submitting ? 'Zapisywanie...' : (userHasRated ? 'Aktualizuj ocenę' : 'Zapisz ocenę')}
                   </button>
-                )}
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {submitting ? 'Zapisywanie...' : (userHasRated ? 'Aktualizuj ocenę' : 'Zapisz ocenę')}
-                </button>
+                </div>
               </div>
             </form>
           )}
+
+          {/* SEKCJA KOMENTARZY */}
+          <div className="border-t border-gray-200 pt-6">
+            <h3 className="text-lg font-semibold mb-4 flex items-center">
+              <MessageSquare className="w-5 h-5 mr-2" />
+              Komentarze i dyskusja
+            </h3>
+
+            <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+              <MessageSquare className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+              <p>Komentarze dla transportów spedycyjnych będą dostępne wkrótce</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
