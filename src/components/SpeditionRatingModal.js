@@ -115,13 +115,12 @@ export default function SpeditionRatingModal({ transport, onClose, onSuccess }) 
   const fetchComments = async () => {
     try {
       setLoadingComments(true)
-      // TODO: Stworzyć API dla komentarzy spedycji (na razie pusta lista)
-      // const response = await fetch(`/api/spedition-comments?speditionId=${transport.id}`)
-      // const data = await response.json()
-      // if (data.success) {
-      //   setAllComments(data.comments || [])
-      // }
-      setAllComments([])
+      const response = await fetch(`/api/spedition-comments?speditionId=${transport.id}`)
+      const data = await response.json()
+      
+      if (data.success) {
+        setAllComments(data.comments || [])
+      }
     } catch (error) {
       console.error('Błąd pobierania komentarzy:', error)
     } finally {
@@ -181,9 +180,23 @@ export default function SpeditionRatingModal({ transport, onClose, onSuccess }) 
       setAddingComment(true)
       setError('')
       
-      // TODO: Stworzyć API dla komentarzy spedycji
-      alert('Komentarze dla spedycji będą dostępne wkrótce')
-      setNewComment('')
+      const response = await fetch('/api/spedition-comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          speditionId: transport.id,
+          comment: newComment.trim()
+        })
+      })
+      
+      const result = await response.json()
+      
+      if (result.success) {
+        setNewComment('')
+        await fetchComments() // Odśwież listę komentarzy
+      } else {
+        setError(result.error || 'Nie udało się dodać komentarza')
+      }
     } catch (error) {
       console.error('Błąd dodawania komentarza:', error)
       setError('Wystąpił błąd podczas dodawania komentarza')
@@ -405,9 +418,52 @@ export default function SpeditionRatingModal({ transport, onClose, onSuccess }) 
               Komentarze i dyskusja
             </h3>
 
-            <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
-              <MessageSquare className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-              <p>Komentarze dla transportów spedycyjnych będą dostępne wkrótce</p>
+            {/* Formularz dodawania komentarza */}
+            <div className="mb-6">
+              <textarea
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 focus:ring-2 focus:ring-blue-500"
+                placeholder="Dodaj komentarz do tego transportu spedycyjnego..."
+              />
+              <div className="flex justify-end mt-2">
+                <button
+                  onClick={handleAddComment}
+                  disabled={addingComment || !newComment.trim()}
+                  className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50"
+                >
+                  <Send size={16} className="mr-2" />
+                  {addingComment ? 'Wysyłanie...' : 'Dodaj komentarz'}
+                </button>
+              </div>
+            </div>
+
+            {/* Lista komentarzy */}
+            <div className="space-y-4">
+              {loadingComments ? (
+                <div className="text-center py-4 text-gray-500">Ładowanie komentarzy...</div>
+              ) : allComments.length === 0 ? (
+                <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+                  <MessageSquare className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                  <p>Brak komentarzy</p>
+                  <p className="text-sm mt-1">Bądź pierwszy który skomentuje ten transport</p>
+                </div>
+              ) : (
+                allComments.map((commentItem, index) => (
+                  <div key={index} className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <span className="font-medium text-gray-900">{commentItem.commenter_email}</span>
+                        <span className="text-xs text-gray-500 ml-2">
+                          {commentItem.created_at && format(new Date(commentItem.created_at), 'dd.MM.yyyy HH:mm', { locale: pl })}
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-gray-700 text-sm">{commentItem.comment}</p>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-// src/app/api/spedition-detailed-ratings/route.js - API OCEN TRANSPORTU SPEDYCYJNEGO
+// src/app/api/spedition-detailed-ratings/route.js - API dla szczegółowych ocen spedycji
 import { NextResponse } from 'next/server'
 import db from '@/database/db'
 
@@ -22,64 +22,40 @@ const validateSession = async (authToken) => {
   }
 }
 
-// GET - Pobierz ocenę spedycji
+// GET - Pobierz oceny transportu spedycyjnego
 export async function GET(request) {
   try {
-    const authToken = request.cookies.get('authToken')?.value
-    const userId = await validateSession(authToken)
-    
-    if (!userId) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Unauthorized' 
-      }, { status: 401 })
-    }
-
     const { searchParams } = new URL(request.url)
     const speditionId = searchParams.get('speditionId')
+    const raterEmail = searchParams.get('raterEmail')
+    
+    const authToken = request.cookies.get('authToken')?.value
+    const userId = await validateSession(authToken)
     
     if (!speditionId) {
       return NextResponse.json({ 
         success: false, 
-        error: 'Brak ID spedycji' 
+        error: 'Spedition ID is required' 
       }, { status: 400 })
     }
-
-    // Sprawdź czy spedycja istnieje (POPRAWIONA NAZWA TABELI)
-    const spedition = await db('spedycje')
-      .where('id', speditionId)
-      .select('status')
-      .first()
     
-    if (!spedition) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Spedycja nie istnieje' 
-      }, { status: 404 })
-    }
-
-    // Sprawdź czy tabela ocen istnieje
-    const hasTable = await db.schema.hasTable('spedition_detailed_ratings')
-    
-    if (!hasTable) {
-      // Jeśli tabela nie istnieje, zwróć domyślne wartości
+    // Sprawdź czy tabela istnieje
+    const tableExists = await db.schema.hasTable('spedition_detailed_ratings')
+    if (!tableExists) {
       return NextResponse.json({ 
         success: true, 
         rating: null,
-        stats: {
-          totalRatings: 0,
-          overallRatingPercentage: null
-        },
-        canBeRated: spedition.status === 'completed',
+        stats: { totalRatings: 0, overallRatingPercentage: null },
+        canBeRated: userId ? true : false,
         hasUserRated: false,
         allRatings: []
       })
     }
     
-    // Pobierz wszystkie oceny dla spedycji
+    // Pobierz wszystkie oceny dla transportu spedycyjnego
     const allDetailedRatings = await db('spedition_detailed_ratings')
       .where('spedition_id', speditionId)
-      .orderBy('created_at', 'desc')
+      .orderBy('rated_at', 'desc')
       .select('*')
     
     const totalRatings = allDetailedRatings.length
@@ -115,11 +91,17 @@ export async function GET(request) {
     }
     
     // Sprawdź czy użytkownik może ocenić i czy już ocenił
-    const canBeRated = spedition.status === 'completed' && totalRatings === 0
-    const hasUserRated = allDetailedRatings.some(r => r.rater_email === userId)
+    const canBeRated = userId ? totalRatings === 0 : false
+    const hasUserRated = userId ? 
+      allDetailedRatings.some(r => r.rater_email === userId) : false
     
-    // Pobierz ocenę użytkownika
-    const rating = allDetailedRatings.find(r => r.rater_email === userId)
+    // Pobierz konkretną ocenę użytkownika jeśli podano raterEmail
+    let rating = null
+    if (raterEmail) {
+      rating = allDetailedRatings.find(r => r.rater_email === raterEmail)
+    } else if (userId) {
+      rating = allDetailedRatings.find(r => r.rater_email === userId)
+    }
     
     return NextResponse.json({ 
       success: true, 
@@ -141,9 +123,10 @@ export async function GET(request) {
   }
 }
 
-// POST - Dodaj lub zaktualizuj ocenę spedycji
+// POST - Dodaj/aktualizuj ocenę transportu spedycyjnego
 export async function POST(request) {
   try {
+    // Sprawdzamy uwierzytelnienie
     const authToken = request.cookies.get('authToken')?.value
     const userId = await validateSession(authToken)
     
@@ -163,34 +146,33 @@ export async function POST(request) {
       }, { status: 400 })
     }
     
-    // Sprawdź czy spedycja istnieje i można ją ocenić (POPRAWIONA NAZWA TABELI)
+    // Sprawdź czy transport spedycyjny istnieje i można go ocenić
     const spedition = await db('spedycje')
       .where('id', speditionId)
-      .select('*')
+      .select('status')
       .first()
     
     if (!spedition) {
       return NextResponse.json({ 
         success: false, 
-        error: 'Spedycja nie istnieje' 
+        error: 'Transport spedycyjny nie istnieje' 
       }, { status: 404 })
     }
-    
+
     if (spedition.status !== 'completed') {
       return NextResponse.json({ 
         success: false, 
-        error: 'Można oceniać tylko ukończone transporty' 
+        error: 'Można ocenić tylko ukończone transporty' 
       }, { status: 400 })
     }
 
-    // Sprawdź czy tabela istnieje, jeśli nie - utwórz
-    const hasTable = await db.schema.hasTable('spedition_detailed_ratings')
+    // Sprawdź czy tabela szczegółowych ocen istnieje, jeśli nie - utwórz ją
+    const detailedRatingsExist = await db.schema.hasTable('spedition_detailed_ratings')
     
-    if (!hasTable) {
-      console.log('Tworzenie tabeli spedition_detailed_ratings...')
-      await db.schema.createTable('spedition_detailed_ratings', table => {
+    if (!detailedRatingsExist) {
+      await db.schema.createTable('spedition_detailed_ratings', (table) => {
         table.increments('id').primary()
-        table.integer('spedition_id').unsigned().notNullable()
+        table.integer('spedition_id').notNullable()
         table.string('rater_email').notNullable()
         table.string('rater_name')
         table.boolean('carrier_professional')
@@ -202,29 +184,29 @@ export async function POST(request) {
         table.boolean('documents_complete')
         table.boolean('documents_correct')
         table.text('comment')
-        table.timestamp('created_at').defaultTo(db.fn.now())
-        table.index('spedition_id')
-        table.index('rater_email')
+        table.timestamp('rated_at').defaultTo(db.fn.now())
+        
+        table.index(['spedition_id'])
+        table.unique(['spedition_id', 'rater_email'])
       })
-      console.log('Tabela spedition_detailed_ratings utworzona')
     }
-    
-    // Pobierz nazwę użytkownika
-    const user = await db('users')
-      .where('email', userId)
-      .select('name')
-      .first()
-    
-    // Sprawdź czy użytkownik już ocenił tę spedycję
+
+    // Sprawdź czy użytkownik już ocenił ten transport
     const existingRating = await db('spedition_detailed_ratings')
       .where('spedition_id', speditionId)
       .where('rater_email', userId)
       .first()
 
+    // Pobierz dane użytkownika
+    const user = await db('users')
+      .where('email', userId)
+      .select('name')
+      .first()
+
     const ratingData = {
       spedition_id: speditionId,
       rater_email: userId,
-      rater_name: user?.name || null,
+      rater_name: user?.name || userId,
       carrier_professional: ratings.carrierProfessional,
       loading_on_time: ratings.loadingOnTime,
       cargo_complete: ratings.cargoComplete,
@@ -237,6 +219,7 @@ export async function POST(request) {
     }
     
     let ratingId
+    let isNewRating = false
     
     if (existingRating) {
       // Aktualizuj istniejącą ocenę
@@ -252,21 +235,23 @@ export async function POST(request) {
         .returning('id')
       
       ratingId = insertResult[0]?.id || insertResult[0]
+      isNewRating = true
     }
     
     return NextResponse.json({ 
       success: true, 
-      message: existingRating ? 'Ocena została zaktualizowana' : 'Ocena została dodana',
+      message: existingRating ? 'Ocena spedycji została zaktualizowana' : 'Ocena spedycji została dodana',
       ratingId: ratingId
     })
     
   } catch (error) {
     console.error('Error adding spedition rating:', error)
     
+    // Sprawdź czy błąd to duplikat klucza
     if (error.code === 'ER_DUP_ENTRY' || error.message.includes('UNIQUE constraint')) {
       return NextResponse.json({ 
         success: false, 
-        error: 'Już oceniłeś tę spedycję. Spróbuj odświeżyć stronę.' 
+        error: 'Już oceniłeś ten transport spedycyjny. Spróbuj odświeżyć stronę.' 
       }, { status: 409 })
     }
     
