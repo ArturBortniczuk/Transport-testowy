@@ -397,8 +397,7 @@ export async function POST(request) {
       cargo_correct: ratings.cargoCorrect,
       delivery_notified: ratings.deliveryNotified,
       delivery_on_time: ratings.deliveryOnTime,
-      comment: comment || '',
-      created_at: new Date()
+      comment: comment || ''
     };
     
     let ratingId;
